@@ -22,6 +22,8 @@ const props = defineProps({
 
 const pr_adaptive_grid_ref = ref()
 
+const viewSize = reactive({ width: 0, height: 0 })
+
 const styleMap = reactive(new Map())
 
 const StyleItem = computed(() => {
@@ -39,14 +41,28 @@ const initStyle = () => {
   }
 }
 
-initStyle()
+watch(
+  () => viewSize,
+  () => initStyle(),
+  {
+    deep: true
+  }
+)
 
+let timer = 0
 let observer: ResizeObserver
 onMounted(async () => {
   // 创建dom监听
   const createObserver = () => {
     observer = new ResizeObserver((items) => {
-      console.log('\x1b[38;2;0;151;255m%c%s\x1b[0m', 'color:#0097ff;', `------->Breathe: items`, items)
+      clearTimeout(timer)
+      timer = setTimeout(() => {
+        const [dom] = items
+        const { contentRect } = dom
+        const { width, height } = contentRect
+        viewSize.width = width
+        viewSize.height = height
+      }, 100)
     })
     observer.observe(pr_adaptive_grid_ref.value, { box: 'border-box' })
   }
@@ -60,12 +76,22 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .pr-adaptive-grid {
+  padding: 8px;
+  box-sizing: border-box;
   position: relative;
   width: 100%;
   height: 100%;
+  display: flex;
+  gap: 8px;
 }
 .pr-adaptive-grid-item {
   position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  margin: auto;
+  opacity: 0;
   box-shadow: 0 0 0 1px #000000 inset;
 }
 </style>

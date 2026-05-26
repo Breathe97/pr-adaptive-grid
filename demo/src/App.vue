@@ -25,5 +25,6 @@ const list = ref<ListItem[]>([
   display: flex;
   align-items: center;
   justify-content: center;
+  color: red;
 }
 </style>
