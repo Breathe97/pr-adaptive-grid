@@ -1,4 +1,5 @@
 body {
   margin: 0;
   color: #ffffff;
+  user-select: none;
 }
