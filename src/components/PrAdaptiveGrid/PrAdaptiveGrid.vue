@@ -1,9 +1,13 @@
 <template>
-  <div ref="pr_adaptive_grid_ref" class="pr-adaptive-grid"></div>
+  <div ref="pr_adaptive_grid_ref" class="pr-adaptive-grid">
+    <div class="pr-adaptive-grid-item" v-for="item in list" :key="item.id" :style="[StyleItem(item.id)]">
+      <slot :item="item" />
+    </div>
+  </div>
 </template>
 
 <script lang="ts" setup>
-import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
+import { ref, reactive, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import type { ListItem } from '../../types'
 
 const emit = defineEmits(['change'])
@@ -18,7 +22,24 @@ const props = defineProps({
 
 const pr_adaptive_grid_ref = ref()
 
-const onResize = (e: ResizeObserverCallback) => {}
+const styleMap = reactive(new Map())
+
+const StyleItem = computed(() => {
+  return function (id: string) {
+    return styleMap.get(id)
+  }
+})
+
+const initStyle = () => {
+  const { list } = props
+  for (const item of list) {
+    const { id, w, h } = item
+    const style = { width: `${w}px`, height: `${h}px` }
+    styleMap.set(id, style)
+  }
+}
+
+initStyle()
 
 let observer: ResizeObserver
 onMounted(async () => {
@@ -42,5 +63,9 @@ onBeforeUnmount(() => {
   position: relative;
   width: 100%;
   height: 100%;
+}
+.pr-adaptive-grid-item {
+  position: absolute;
+  box-shadow: 0 0 0 1px #000000 inset;
 }
 </style>
