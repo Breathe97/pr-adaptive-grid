@@ -36,7 +36,7 @@ const initStyle = () => {
   const { list } = props
   for (const item of list) {
     const { id, w, h } = item
-    const style = { width: `${w}px`, height: `${h}px` }
+    const style = { width: `${w}px`, height: `${h}px`, opacity: '1' }
     styleMap.set(id, style)
   }
 }
@@ -93,5 +93,8 @@ onBeforeUnmount(() => {
   margin: auto;
   opacity: 0;
   box-shadow: 0 0 0 1px #000000 inset;
+  transition-property: all;
+  transition-duration: 500ms;
+  transition-timing-function: ease-out;
 }
 </style>

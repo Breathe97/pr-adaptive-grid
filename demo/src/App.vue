@@ -13,8 +13,8 @@ import { PrAdaptiveGrid } from '../../src/index.ts'
 import type { ListItem } from '../../src/index.ts'
 
 const list = ref<ListItem[]>([
-  { id: '1', w: 200, h: 300 },
-  { id: '2', w: 200, h: 300 }
+  { id: '1', w: 320, h: 220 },
+  { id: '2', w: 320, h: 220 }
 ])
 </script>
 <style scoped>
