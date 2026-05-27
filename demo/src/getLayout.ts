@@ -27,7 +27,7 @@ const getRowsMode1 = (n: number): number => {
  * mode 1 每行个数：base=⌊N/rows⌋，余数从最后一行往前每行 +1。
  * 例：10→[3,3,4]  21→[4,4,4,4,5]
  */
-export const getRowCountsMode1 = (n: number): number[] => {
+const getRowCountsMode1 = (n: number): number[] => {
   if (n <= 0) return []
 
   const rowCount = getRowsMode1(n)
@@ -38,7 +38,7 @@ export const getRowCountsMode1 = (n: number): number[] => {
 }
 
 /** 各行 lcm，用于网格等分列数 */
-export const getGridCols = (rowCounts: number[]): number => {
+const getGridCols = (rowCounts: number[]): number => {
   if (!rowCounts.length) return 1
   return rowCounts.reduce((a, b) => lcm(a, b))
 }
