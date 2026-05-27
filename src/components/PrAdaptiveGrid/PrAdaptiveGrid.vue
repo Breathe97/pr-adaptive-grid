@@ -143,9 +143,8 @@ onBeforeUnmount(() => {
   box-sizing: border-box;
 }
 .pr-adaptive-grid-item-span {
-  visibility: hidden;
   pointer-events: none;
-  background-color: red;
+  background-color: rgb(65, 65, 65);
 }
 .pr-adaptive-grid-item {
   position: absolute;
@@ -153,9 +152,9 @@ onBeforeUnmount(() => {
   top: 0;
   z-index: 1;
   transition:
-    transform 500ms ease-out,
-    width 500ms ease-out,
-    height 500ms ease-out;
+    transform 300ms ease-out,
+    width 300ms ease-out,
+    height 300ms ease-out;
   will-change: transform;
   box-shadow: 0 0 0 1px #000000 inset;
 }
