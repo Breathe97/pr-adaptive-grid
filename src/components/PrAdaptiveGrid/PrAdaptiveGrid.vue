@@ -34,6 +34,11 @@ const props = defineProps({
     type: Number,
     default: () => 0
   },
+  /** 单行轨道高度（px）；不传则按容器首屏可视高度自动计算 */
+  itemHeight: {
+    type: Number,
+    default: undefined
+  },
   direction: {
     type: String as () => GridDirection,
     default: () => 'right' as GridDirection
@@ -42,6 +47,11 @@ const props = defineProps({
 
 const pr_adaptive_grid_ref = ref<HTMLElement>()
 const pr_adaptive_grid_content_ref = ref<HTMLElement>()
+
+/** 首屏按最多 4 行均分容器高度（与 mode2 左侧 fullId 占 4 行一致） */
+const FIRST_SCREEN_ROWS = 4
+
+const containerViewportHeight = ref(0)
 
 const contentLayoutMap = reactive(new Map<string, GridLayoutRect>())
 const stickyOffsetMap = reactive(new Map<string, GridLayoutRect>())
@@ -59,13 +69,41 @@ const ScrollContainerStyle = computed(() => {
   }
 })
 
+/** 未传 itemHeight 时：首屏高度 / min(rows, 4)，避免总行数增多时挤压单行 */
+const resolvedRowHeight = computed(() => {
+  if (props.itemHeight != null && props.itemHeight > 0) {
+    return props.itemHeight
+  }
+  if (containerViewportHeight.value <= 0 || props.rows <= 0) return 0
+
+  const firstScreenRows = Math.min(props.rows, FIRST_SCREEN_ROWS)
+  return containerViewportHeight.value / firstScreenRows
+})
+
 const ContainerStyle = computed(() => {
   const { gap, rows, cols } = props
+  const rowHeight = resolvedRowHeight.value
+
+  if (!rowHeight) {
+    return {
+      gap: `${gap}px`,
+      display: 'grid',
+      width: '100%',
+      height: '100%',
+      'grid-template-columns': `repeat(${cols}, 1fr)`,
+      'grid-template-rows': `repeat(${rows}, 1fr)`
+    }
+  }
+
+  const contentHeight = rows * rowHeight + Math.max(0, rows - 1) * gap
+
   return {
     gap: `${gap}px`,
     display: 'grid',
+    width: '100%',
+    minHeight: `${contentHeight}px`,
     'grid-template-columns': `repeat(${cols}, 1fr)`,
-    'grid-template-rows': `repeat(${rows}, 1fr)`
+    'grid-template-rows': `repeat(${rows}, ${rowHeight}px)`
   }
 })
 
@@ -83,9 +121,17 @@ const ItemSpanStyle = computed(() => {
 })
 
 /** 根据网格轨道计算像素矩形（x/y 为 1-based，与 CSS grid-line 一致） */
-const computeItemRect = (item: GridItem, innerW: number, innerH: number, cols: number, rows: number, gap: number): GridLayoutRect => {
+const computeItemRect = (
+  item: GridItem,
+  innerW: number,
+  innerH: number,
+  cols: number,
+  rows: number,
+  gap: number,
+  itemHeight: number
+): GridLayoutRect => {
   const colTrack = cols > 0 ? (innerW - (cols - 1) * gap) / cols : 0
-  const rowTrack = rows > 0 ? (innerH - (rows - 1) * gap) / rows : 0
+  const rowTrack = itemHeight > 0 ? itemHeight : rows > 0 ? (innerH - (rows - 1) * gap) / rows : 0
   const colStart = item.x - 1
   const rowStart = item.y - 1
 
@@ -97,12 +143,20 @@ const computeItemRect = (item: GridItem, innerW: number, innerH: number, cols: n
   }
 }
 
+const measureContainer = () => {
+  const container = pr_adaptive_grid_ref.value
+  if (!container) return
+  containerViewportHeight.value = container.clientHeight
+}
+
 const syncLayout = () => {
   const content = pr_adaptive_grid_content_ref.value
   if (!content) return
 
   const { width, height } = content.getBoundingClientRect()
   if (!width || !height) return
+
+  const rowHeight = resolvedRowHeight.value
 
   const spans = content.querySelectorAll<HTMLElement>('.pr-adaptive-grid-item-span')
   const contentRect = content.getBoundingClientRect()
@@ -121,7 +175,7 @@ const syncLayout = () => {
       }
     } else {
       const { gap, cols, rows } = props
-      rect = computeItemRect(item, width, height, cols, rows, gap)
+      rect = computeItemRect(item, width, height, cols, rows, gap, rowHeight)
     }
 
     contentLayoutMap.set(item.id, rect)
@@ -144,8 +198,8 @@ const StyleItem = (id: string): CSSProperties => {
 
   if (!layout) return EMPTY_ITEM_STYLE
 
-  const width = Math.max(layout.w, item?.minW ?? 0)
-  const height = Math.max(layout.h, item?.minH ?? 0)
+  const width = layout.w
+  const height = layout.h
 
   return {
     width: `${width}px`,
@@ -181,7 +235,13 @@ const updateStickyOnScroll = () => {
 let raf = 0
 const scheduleSync = () => {
   cancelAnimationFrame(raf)
-  raf = requestAnimationFrame(syncLayout)
+  raf = requestAnimationFrame(() => {
+    void (async () => {
+      measureContainer()
+      await nextTick()
+      syncLayout()
+    })()
+  })
 }
 
 let scrollRaf = 0
@@ -201,7 +261,7 @@ onMounted(async () => {
 })
 
 watch(
-  () => [props.list, props.cols, props.rows, props.gap, props.padding],
+  () => [props.list, props.cols, props.rows, props.gap, props.padding, props.itemHeight, containerViewportHeight.value],
   async () => {
     await nextTick()
     scheduleSync()
@@ -223,11 +283,14 @@ onBeforeUnmount(() => {
   height: 100%;
   overflow: auto;
   box-sizing: border-box;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.pr-adaptive-grid::-webkit-scrollbar {
+  display: none;
 }
 .pr-adaptive-grid-content {
   position: relative;
-  width: 100%;
-  height: 100%;
   box-sizing: border-box;
 }
 .pr-adaptive-grid-item-span {

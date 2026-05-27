@@ -12,10 +12,6 @@ export interface GridItem {
   w: number
   /** 该元素在当前列的高度占比（权重，同列自动分配剩余空间） */
   h: number
-  /** 最小宽度 px */
-  minW?: number
-  /** 最小高度 px */
-  minH?: number
   /** 滚动时固定在容器可视区域 */
   sticky?: boolean
 }
