@@ -1,10 +1,9 @@
 <template>
   <div ref="pr_adaptive_grid_ref" class="pr-adaptive-grid" :style="ContainerStyle" @scroll="onScroll">
     <div v-for="item in list" :key="`span-${item.id}`" class="pr-adaptive-grid-item-span" :style="[ItemSpanStyle(item)]">{{ item.id }}</div>
-
-    <!-- <div v-for="item in list" :key="`item-${item.id}`" class="pr-adaptive-grid-item" :class="{ 'pr-adaptive-grid-item-sticky': item.sticky }" :style="StyleItem(item.id)">
+    <div v-for="item in list" :key="`item-${item.id}`" class="pr-adaptive-grid-item" :class="{ 'pr-adaptive-grid-item-sticky': item.sticky }" :style="StyleItem(item.id)">
       <slot :item="item" />
-    </div> -->
+    </div>
   </div>
 </template>
 
