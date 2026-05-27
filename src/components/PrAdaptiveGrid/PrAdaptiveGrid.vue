@@ -58,9 +58,9 @@ const ItemSpanStyle = computed(() => {
 
     return {
       'grid-column-start': x,
-      'grid-column-end': `span ${w}`
-      // 'grid-row-start': x,
-      // 'grid-row-end': `span ${x + w}`,
+      'grid-column-end': `span ${w}`,
+      'grid-row-start': y,
+      'grid-row-end': `span ${h}`
     }
   }
 })
