@@ -1,19 +1,16 @@
 <template>
-  <div ref="pr_adaptive_grid_ref" class="pr-adaptive-grid" :style="Style" @scroll="onScroll">
-    <div v-for="item in list" :key="`item-${item.id}`" class="pr-adaptive-grid-item" :class="{ 'pr-adaptive-grid-item-sticky': item.sticky }" :style="StyleItem(item.id)">
+  <div ref="pr_adaptive_grid_ref" class="pr-adaptive-grid" :style="ContainerStyle" @scroll="onScroll">
+    <div v-for="item in list" :key="`span-${item.id}`" class="pr-adaptive-grid-item-span" :style="[ItemSpanStyle(item)]">{{ item.id }}</div>
+
+    <!-- <div v-for="item in list" :key="`item-${item.id}`" class="pr-adaptive-grid-item" :class="{ 'pr-adaptive-grid-item-sticky': item.sticky }" :style="StyleItem(item.id)">
       <slot :item="item" />
-    </div>
-    <div v-for="item in list" :key="`span-${item.id}`" :ref="(el) => setSpanRef(item.id, el)" class="pr-adaptive-grid-item-span" :style="SpanStyle(item)" />
+    </div> -->
   </div>
 </template>
 
 <script lang="ts" setup>
 import { ref, computed, reactive, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import type { GridDirection, GridItem, GridLayoutRect } from '../../types'
-
-const emit = defineEmits<{
-  change: [payload: { layoutMap: Map<string, GridLayoutRect> }]
-}>()
 
 const props = defineProps({
   list: {
@@ -43,86 +40,37 @@ const props = defineProps({
 })
 
 const pr_adaptive_grid_ref = ref<HTMLElement>()
-const spanRefs = new Map<string, HTMLElement>()
 
-const styleMap = reactive(new Map<string, Record<string, string>>())
-/** 内容坐标系下的布局（含滚动区域），sticky 滚动时据此补偿 */
 const contentLayoutMap = reactive(new Map<string, GridLayoutRect>())
 
-const StyleItem = (id: string) => styleMap.get(id)
-
-const Style = computed(() => {
-  const { cols, rows, gap, padding } = props
+const ContainerStyle = computed(() => {
+  const { gap, rows, cols } = props
   return {
-    gridTemplateColumns: `repeat(${cols}, 1fr)`,
-    gridTemplateRows: `repeat(${rows}, 1fr)`,
     gap: `${gap}px`,
-    padding: `${padding}px`
+    'grid-template-columns': `repeat(${cols}, 1fr)`,
+    'grid-template-rows': `repeat(${rows}, 1fr)`
   }
 })
 
-const SpanStyle = (item: GridItem) => ({
-  gridColumn: `${item.x + 1} / span ${item.w}`,
-  gridRow: `${item.y + 1} / span ${item.h}`
-})
+const ItemSpanStyle = computed(() => {
+  return function (item: GridItem) {
+    const { x, y, w, h } = item
 
-const setSpanRef = (id: string, el: unknown) => {
-  if (el instanceof HTMLElement) {
-    spanRefs.set(id, el)
-  } else {
-    spanRefs.delete(id)
+    return {
+      'grid-column-start': x,
+      'grid-column-end': `span ${w}`
+      // 'grid-row-start': x,
+      // 'grid-row-end': `span ${x + w}`,
+    }
   }
-}
-
-const applyItemStyle = (item: GridItem, layout: GridLayoutRect, container: HTMLElement) => {
-  const { scrollLeft, scrollTop } = container
-  const tx = item.sticky ? layout.x - scrollLeft : layout.x
-  const ty = item.sticky ? layout.y - scrollTop : layout.y
-
-  styleMap.set(item.id, {
-    width: `${layout.w}px`,
-    height: `${layout.h}px`,
-    transform: `translate3d(${tx}px, ${ty}px, 0)`,
-    opacity: '1',
-    zIndex: item.sticky ? '2' : '1'
-  })
-}
+})
 
 const syncLayout = () => {
   const container = pr_adaptive_grid_ref.value
   if (!container) return
 
-  const containerRect = container.getBoundingClientRect()
-  const layoutMap = new Map<string, GridLayoutRect>()
-  const activeIds = new Set<string>()
-
-  for (const item of props.list) {
-    const span = spanRefs.get(item.id)
-    if (!span) continue
-
-    activeIds.add(item.id)
-
-    const rect = span.getBoundingClientRect()
-    const layout: GridLayoutRect = {
-      x: rect.left - containerRect.left + container.scrollLeft,
-      y: rect.top - containerRect.top + container.scrollTop,
-      w: rect.width,
-      h: rect.height
-    }
-
-    contentLayoutMap.set(item.id, layout)
-    layoutMap.set(item.id, layout)
-    applyItemStyle(item, layout, container)
-  }
-
-  for (const id of contentLayoutMap.keys()) {
-    if (!activeIds.has(id)) {
-      contentLayoutMap.delete(id)
-      styleMap.delete(id)
-    }
-  }
-
-  emit('change', { layoutMap })
+  const { width, height } = container.getBoundingClientRect()
+  if (!width || !height) return
 }
 
 const updateStickyOnScroll = () => {
@@ -133,7 +81,6 @@ const updateStickyOnScroll = () => {
     if (!item.sticky) continue
     const layout = contentLayoutMap.get(item.id)
     if (!layout) continue
-    applyItemStyle(item, layout, container)
   }
 }
 
@@ -154,9 +101,7 @@ let observer: ResizeObserver
 onMounted(async () => {
   observer = new ResizeObserver(scheduleSync)
   await nextTick()
-  if (pr_adaptive_grid_ref.value) {
-    observer.observe(pr_adaptive_grid_ref.value)
-  }
+  if (pr_adaptive_grid_ref.value) observer.observe(pr_adaptive_grid_ref.value)
   scheduleSync()
 })
 
@@ -182,27 +127,32 @@ onBeforeUnmount(() => {
   width: 100%;
   height: 100%;
   overflow: auto;
-  display: grid;
   box-sizing: border-box;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-auto-rows: auto;
 }
 .pr-adaptive-grid-item-span {
   pointer-events: none;
-  background-color: rgb(65, 65, 65);
+  background-color: rgb(128, 128, 128);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 .pr-adaptive-grid-item {
   position: absolute;
   left: 0;
   top: 0;
   z-index: 1;
+  box-sizing: border-box;
   transition:
     transform 300ms ease-out,
     width 300ms ease-out,
     height 300ms ease-out;
   will-change: transform;
-  box-shadow: 0 0 0 1px #000000 inset;
+  box-shadow: 0 0 0 1px #ff0000 inset;
 }
 .pr-adaptive-grid-item-sticky {
-  /* 滚动时由 JS 高频更新 transform，关闭过渡避免拖影 */
   transition:
     width 300ms ease-out,
     height 300ms ease-out;

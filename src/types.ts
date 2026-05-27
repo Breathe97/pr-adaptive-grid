@@ -1,12 +1,22 @@
-/** 自动排列方向：右(左→右) / 左(右→左) / 下(上→下) / 上(下→上) */
+/** 自动排列方向（预留，自动排布时使用） */
 export type GridDirection = 'right' | 'left' | 'down' | 'up'
 
 export interface GridItem {
+  /** 元素唯一 ID */
   id: string
+  /** 网格开始的水平坐标位置（列索引，0-based） */
   x: number
+  /** 网格开始的垂直坐标位置（行索引，0-based） */
   y: number
+  /** 该元素在当前行的宽度占比（权重，同行自动分配剩余空间） */
   w: number
+  /** 该元素在当前列的高度占比（权重，同列自动分配剩余空间） */
   h: number
+  /** 最小宽度 px */
+  minW?: number
+  /** 最小高度 px */
+  minH?: number
+  /** 滚动时固定在容器可视区域 */
   sticky?: boolean
 }
 
@@ -15,10 +25,10 @@ export interface GridConfig {
   rows: number
   gap: number
   padding?: number
-  /** 自动排列方向，默认 right */
   direction?: GridDirection
 }
 
+/** 像素级布局矩形 */
 export interface GridLayoutRect {
   x: number
   y: number
@@ -34,13 +44,9 @@ export interface GridItemStyle {
 
 export interface GridLayoutResult {
   layoutMap: Map<string, GridLayoutRect>
-  styleMap: Map<string, GridItemStyle & Record<string, string>>
-  /** 最终落位（含自动分配后的 col/row） */
-  placementMap: Map<string, { col: number; row: number; colSpan: number; rowSpan: number }>
+  styleMap: Map<string, GridItemStyle>
   contentW: number
   contentH: number
-  colW: number
-  rowH: number
 }
 
 /** @deprecated 使用 GridItem */
