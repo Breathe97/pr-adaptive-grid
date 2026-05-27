@@ -109,16 +109,12 @@ const scheduleSync = () => {
 
 let observer: ResizeObserver
 
-const observeSpans = () => {
-  if (!observer || !pr_adaptive_grid_ref.value) return
-  observer.observe(pr_adaptive_grid_ref.value)
-  spanRefs.forEach((span) => observer.observe(span))
-}
-
 onMounted(async () => {
   observer = new ResizeObserver(scheduleSync)
   await nextTick()
-  observeSpans()
+  if (pr_adaptive_grid_ref.value) {
+    observer.observe(pr_adaptive_grid_ref.value)
+  }
   scheduleSync()
 })
 
@@ -126,7 +122,6 @@ watch(
   () => [props.list, props.cols, props.rows, props.gap, props.padding],
   async () => {
     await nextTick()
-    observeSpans()
     scheduleSync()
   },
   { deep: true }
@@ -152,6 +147,7 @@ onBeforeUnmount(() => {
   min-height: 0;
   visibility: hidden;
   pointer-events: none;
+  box-shadow: 0 0 0 1px #000000 inset;
 }
 .pr-adaptive-grid-item {
   position: absolute;
@@ -159,7 +155,6 @@ onBeforeUnmount(() => {
   top: 0;
   z-index: 1;
   opacity: 0;
-  box-shadow: 0 0 0 1px #000000 inset;
   transition:
     transform 500ms ease-out,
     width 500ms ease-out,
