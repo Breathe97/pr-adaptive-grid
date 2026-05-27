@@ -16,6 +16,7 @@
 import { ref } from 'vue'
 import { PrAdaptiveGrid } from '../../src/index.ts'
 import type { GridItem } from '../../src/index.ts'
+import { getLayout } from './getLayout'
 
 const cols = ref(1)
 const rows = ref(1)
@@ -39,57 +40,11 @@ const setPin = (item: GridItem) => {
   item.h = 4
 }
 
-/** 在一行内按列数均分，生成等宽子项 */
-const buildRow = (y: number, count: number, gridCols: number, ids: string[], offset: number): GridItem[] => {
-  const w = gridCols / count
-  return Array.from({ length: count }, (_, i) => ({
-    id: ids[offset + i],
-    x: 1 + i * w,
-    y,
-    w,
-    h: 1
-  }))
-}
-
-/** 按每行 item 数量生成完整布局 */
-const buildLayout = (rowCounts: number[], gridCols: number, ids: string[]): GridItem[] => {
-  const items: GridItem[] = []
-  let offset = 0
-  rowCounts.forEach((count, index) => {
-    items.push(...buildRow(index + 1, count, gridCols, ids, offset))
-    offset += count
-  })
-  return items
-}
-
-/** key: ids.length */
-const LAYOUTS: Record<number, { cols: number; rows: number; rowCounts: number[] }> = {
-  1: { cols: 1, rows: 1, rowCounts: [1] },
-  2: { cols: 2, rows: 1, rowCounts: [2] },
-  3: { cols: 3, rows: 1, rowCounts: [3] },
-  4: { cols: 2, rows: 2, rowCounts: [2, 2] },
-  5: { cols: 6, rows: 2, rowCounts: [2, 3] },
-  6: { cols: 6, rows: 2, rowCounts: [3, 3] },
-  7: { cols: 12, rows: 2, rowCounts: [3, 4] },
-  8: { cols: 4, rows: 2, rowCounts: [4, 4] },
-  9: { cols: 3, rows: 3, rowCounts: [3, 3, 3] },
-  10: { cols: 12, rows: 3, rowCounts: [3, 4, 3] },
-  11: { cols: 12, rows: 3, rowCounts: [3, 4, 4] },
-  12: { cols: 4, rows: 3, rowCounts: [4, 4, 4] },
-  13: { cols: 20, rows: 3, rowCounts: [4, 5, 4] },
-  14: { cols: 20, rows: 3, rowCounts: [4, 5, 5] },
-  15: { cols: 5, rows: 3, rowCounts: [5, 5, 5] }
-}
-
 const initLayout = (ids: string[]) => {
-  const layout = LAYOUTS[ids.length]
-  if (!layout) {
-    list.value = []
-    return
-  }
+  const layout = getLayout(ids, '1')
   cols.value = layout.cols
   rows.value = layout.rows
-  list.value = buildLayout(layout.rowCounts, layout.cols, ids)
+  list.value = layout.list
 }
 
 const init = () => {
