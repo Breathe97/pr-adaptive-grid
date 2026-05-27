@@ -67,15 +67,92 @@ const initLayout = (num = 1) => {
       break
     case 5:
       {
-        cols.value = 3
+        cols.value = 6
         rows.value = 2
         _list = [
-          { id: '1', x: 1, y: 1, w: 1, h: 1 },
-          { id: '2', x: 2, y: 1, w: 1, h: 1 },
-          { id: '3', x: 1, y: 2, w: 1, h: 1 },
-          { id: '4', x: 2, y: 2, w: 1, h: 1 },
-          { id: '5', x: 3, y: 2, w: 1, h: 1 }
+          { id: '1', x: 1, y: 1, w: 3, h: 1 },
+          { id: '2', x: 4, y: 1, w: 3, h: 1 },
+          { id: '3', x: 1, y: 2, w: 2, h: 1 },
+          { id: '4', x: 3, y: 2, w: 2, h: 1 },
+          { id: '5', x: 5, y: 2, w: 2, h: 1 }
         ]
+      }
+      break
+    case 6:
+      {
+        cols.value = 6
+        rows.value = 2
+        _list = [
+          { id: '1', x: 1, y: 1, w: 2, h: 1 },
+          { id: '2', x: 3, y: 1, w: 2, h: 1 },
+          { id: '3', x: 5, y: 1, w: 2, h: 1 },
+          { id: '4', x: 1, y: 2, w: 2, h: 1 },
+          { id: '5', x: 3, y: 2, w: 2, h: 1 },
+          { id: '6', x: 5, y: 2, w: 2, h: 1 }
+        ]
+      }
+      break
+    case 7:
+      {
+        cols.value = 6
+        rows.value = 2
+        _list = []
+      }
+      break
+    case 8:
+      {
+        cols.value = 6
+        rows.value = 2
+        _list = []
+      }
+      break
+    case 9:
+      {
+        cols.value = 6
+        rows.value = 2
+        _list = []
+      }
+      break
+    case 10:
+      {
+        cols.value = 6
+        rows.value = 2
+        _list = []
+      }
+      break
+    case 11:
+      {
+        cols.value = 6
+        rows.value = 2
+        _list = []
+      }
+      break
+    case 12:
+      {
+        cols.value = 6
+        rows.value = 2
+        _list = []
+      }
+      break
+    case 13:
+      {
+        cols.value = 6
+        rows.value = 2
+        _list = []
+      }
+      break
+    case 14:
+      {
+        cols.value = 6
+        rows.value = 2
+        _list = []
+      }
+      break
+    case 15:
+      {
+        cols.value = 6
+        rows.value = 2
+        _list = []
       }
       break
 
@@ -85,7 +162,7 @@ const initLayout = (num = 1) => {
   list.value = _list
 }
 
-initLayout(5)
+initLayout(6)
 </script>
 <style scoped>
 #app {
