@@ -3,7 +3,7 @@
     <div class="grid-wrap">
       <PrAdaptiveGrid :list="list" :cols="cols" :rows="rows" :gap="8">
         <template #default="{ item }">
-          <div class="item">
+          <div class="item" @click="() => setPin(item)">
             <span>{{ item.id }}</span>
             <span class="item-meta">w:{{ item.w }} h:{{ item.h }} @({{ item.x }},{{ item.y }})</span>
           </div>
@@ -28,6 +28,15 @@ const initUsers = (num = 1) => {
     users.push(`${index + 1}`)
   }
   return users
+}
+
+const setPin = (item: GridItem) => {
+  cols.value = 6
+  rows.value = 6
+  item.x = 1
+  item.w = 4
+  item.y = 1
+  item.h = 4
 }
 
 /** 在一行内按列数均分，生成等宽子项 */
