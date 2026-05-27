@@ -7,6 +7,7 @@ export interface GridItem {
   y: number
   w: number
   h: number
+  sticky?: boolean
 }
 
 export interface GridConfig {

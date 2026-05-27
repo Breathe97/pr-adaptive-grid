@@ -1,6 +1,6 @@
 <template>
-  <div ref="pr_adaptive_grid_ref" class="pr-adaptive-grid" :style="Style">
-    <div v-for="item in list" :key="`item-${item.id}`" class="pr-adaptive-grid-item" :style="StyleItem(item.id)">
+  <div ref="pr_adaptive_grid_ref" class="pr-adaptive-grid" :style="Style" @scroll="onScroll">
+    <div v-for="item in list" :key="`item-${item.id}`" class="pr-adaptive-grid-item" :class="{ 'pr-adaptive-grid-item-sticky': item.sticky }" :style="StyleItem(item.id)">
       <slot :item="item" />
     </div>
     <div v-for="item in list" :key="`span-${item.id}`" :ref="(el) => setSpanRef(item.id, el)" class="pr-adaptive-grid-item-span" :style="SpanStyle(item)" />
@@ -46,6 +46,8 @@ const pr_adaptive_grid_ref = ref<HTMLElement>()
 const spanRefs = new Map<string, HTMLElement>()
 
 const styleMap = reactive(new Map<string, Record<string, string>>())
+/** 内容坐标系下的布局（含滚动区域），sticky 滚动时据此补偿 */
+const contentLayoutMap = reactive(new Map<string, GridLayoutRect>())
 
 const StyleItem = (id: string) => styleMap.get(id)
 
@@ -72,39 +74,79 @@ const setSpanRef = (id: string, el: unknown) => {
   }
 }
 
+const applyItemStyle = (item: GridItem, layout: GridLayoutRect, container: HTMLElement) => {
+  const { scrollLeft, scrollTop } = container
+  const tx = item.sticky ? layout.x - scrollLeft : layout.x
+  const ty = item.sticky ? layout.y - scrollTop : layout.y
+
+  styleMap.set(item.id, {
+    width: `${layout.w}px`,
+    height: `${layout.h}px`,
+    transform: `translate3d(${tx}px, ${ty}px, 0)`,
+    opacity: '1',
+    zIndex: item.sticky ? '2' : '1'
+  })
+}
+
 const syncLayout = () => {
   const container = pr_adaptive_grid_ref.value
   if (!container) return
 
   const containerRect = container.getBoundingClientRect()
   const layoutMap = new Map<string, GridLayoutRect>()
+  const activeIds = new Set<string>()
 
   for (const item of props.list) {
     const span = spanRefs.get(item.id)
     if (!span) continue
 
-    const rect = span.getBoundingClientRect()
-    const x = rect.left - containerRect.left
-    const y = rect.top - containerRect.top
-    const w = rect.width
-    const h = rect.height
+    activeIds.add(item.id)
 
-    layoutMap.set(item.id, { x, y, w, h })
-    styleMap.set(item.id, {
-      width: `${w}px`,
-      height: `${h}px`,
-      transform: `translate3d(${x}px, ${y}px, 0)`,
-      opacity: '1'
-    })
+    const rect = span.getBoundingClientRect()
+    const layout: GridLayoutRect = {
+      x: rect.left - containerRect.left + container.scrollLeft,
+      y: rect.top - containerRect.top + container.scrollTop,
+      w: rect.width,
+      h: rect.height
+    }
+
+    contentLayoutMap.set(item.id, layout)
+    layoutMap.set(item.id, layout)
+    applyItemStyle(item, layout, container)
+  }
+
+  for (const id of contentLayoutMap.keys()) {
+    if (!activeIds.has(id)) {
+      contentLayoutMap.delete(id)
+      styleMap.delete(id)
+    }
   }
 
   emit('change', { layoutMap })
+}
+
+const updateStickyOnScroll = () => {
+  const container = pr_adaptive_grid_ref.value
+  if (!container) return
+
+  for (const item of props.list) {
+    if (!item.sticky) continue
+    const layout = contentLayoutMap.get(item.id)
+    if (!layout) continue
+    applyItemStyle(item, layout, container)
+  }
 }
 
 let raf = 0
 const scheduleSync = () => {
   cancelAnimationFrame(raf)
   raf = requestAnimationFrame(syncLayout)
+}
+
+let scrollRaf = 0
+const onScroll = () => {
+  cancelAnimationFrame(scrollRaf)
+  scrollRaf = requestAnimationFrame(updateStickyOnScroll)
 }
 
 let observer: ResizeObserver
@@ -129,6 +171,7 @@ watch(
 
 onBeforeUnmount(() => {
   cancelAnimationFrame(raf)
+  cancelAnimationFrame(scrollRaf)
   observer?.disconnect()
 })
 </script>
@@ -157,5 +200,11 @@ onBeforeUnmount(() => {
     height 300ms ease-out;
   will-change: transform;
   box-shadow: 0 0 0 1px #000000 inset;
+}
+.pr-adaptive-grid-item-sticky {
+  /* 滚动时由 JS 高频更新 transform，关闭过渡避免拖影 */
+  transition:
+    width 300ms ease-out,
+    height 300ms ease-out;
 }
 </style>

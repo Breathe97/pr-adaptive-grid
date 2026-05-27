@@ -25,23 +25,26 @@ import { ref } from 'vue'
 import { PrAdaptiveGrid } from '../../src/index.ts'
 import type { GridItem } from '../../src/index.ts'
 
-const COLS = 5
+const COLS = 4
 const ROWS = 3
 
 /** x/y = 网格起始列/行（0-based），w/h = 占据列/行数 */
 const leftColSpan = () => Math.max(1, Math.round((COLS * 2) / 3))
 
-/** 按从左到右、从上到下生成等宽高的网格项 */
-const createGridList = (count: number, cols: number, w = 1, h = 1): GridItem[] =>
-  Array.from({ length: count }, (_, i) => ({
-    id: String(i + 1),
-    x: i % cols,
-    y: Math.floor(i / cols),
-    w,
-    h
-  }))
-
-const list = ref<GridItem[]>(createGridList(15, COLS))
+const list = ref<GridItem[]>([
+  { id: '1', x: 0, y: 0, w: 1, h: 1, sticky: true },
+  { id: '2', x: 1, y: 0, w: 1, h: 1 },
+  { id: '3', x: 2, y: 0, w: 1, h: 1 },
+  { id: '4', x: 3, y: 0, w: 1, h: 1 },
+  { id: '5', x: 0, y: 1, w: 1, h: 1 },
+  { id: '6', x: 1, y: 1, w: 1, h: 1 },
+  { id: '7', x: 2, y: 1, w: 1, h: 1 },
+  { id: '8', x: 3, y: 1, w: 1, h: 1 },
+  { id: '9', x: 0, y: 2, w: 1, h: 1 },
+  { id: '10', x: 1, y: 2, w: 1, h: 1 },
+  { id: '11', x: 2, y: 2, w: 1, h: 1 },
+  { id: '12', x: 3, y: 2, w: 1, h: 1 }
+])
 
 const pinnedId = ref<string | null>(null)
 const snapshotBeforePin = ref<GridItem[] | null>(null)
@@ -51,7 +54,8 @@ const cloneItem = (item: GridItem): GridItem => ({
   x: item.x,
   y: item.y,
   w: item.w,
-  h: item.h
+  h: item.h,
+  sticky: item.sticky
 })
 
 const cloneList = (items: GridItem[]) => items.map(cloneItem)
