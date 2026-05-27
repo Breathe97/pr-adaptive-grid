@@ -31,25 +31,30 @@ const initUsers = (num = 1) => {
   return users
 }
 
-const setPin = (item: GridItem) => {
-  cols.value = 6
-  rows.value = 6
-  item.x = 1
-  item.w = 4
-  item.y = 1
-  item.h = 4
-}
+const currentIds = ref<string[]>([])
+const fullId = ref<string>()
 
-const initLayout = (ids: string[]) => {
-  const layout = getLayout(ids, '1')
+const applyLayout = (ids: string[], mode: '1' | '2' = '1', pinId?: string) => {
+  const layout = getLayout(ids, mode, pinId ? { fullId: pinId } : undefined)
   cols.value = layout.cols
   rows.value = layout.rows
   list.value = layout.list
 }
 
+const setPin = (item: GridItem) => {
+  fullId.value = item.id
+  applyLayout(currentIds.value, '2', item.id)
+}
+
+const initLayout = (ids: string[], mode: '1' | '2' = '1') => {
+  currentIds.value = ids
+  applyLayout(ids, mode, fullId.value)
+}
+
 const init = () => {
-  const ids = initUsers(14)
-  initLayout(ids)
+  const ids = initUsers(9)
+  fullId.value = '1'
+  initLayout(ids, '2')
 }
 
 init()
