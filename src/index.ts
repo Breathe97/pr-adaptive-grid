@@ -1,5 +1,6 @@
 import PrAdaptiveGrid from './components/PrAdaptiveGrid/PrAdaptiveGrid.vue' // 引入封装好的组件
 export * from './types.ts'
+export { computeGridLayout, rectToStyle, mergeItemStyle } from './computeGridLayout.ts'
 
 // 按需引入
 export { PrAdaptiveGrid }
