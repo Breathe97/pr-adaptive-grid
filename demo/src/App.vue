@@ -31,13 +31,17 @@ const ROWS = 3
 /** x/y = 网格起始列/行（0-based），w/h = 占据列/行数 */
 const leftColSpan = () => Math.max(1, Math.round((COLS * 2) / 3))
 
-const list = ref<GridItem[]>([
-  { id: '1', x: 0, y: 0, w: 2, h: 3 },
-  { id: '2', x: 2, y: 0, w: 2, h: 1 },
-  { id: '3', x: 4, y: 0, w: 1, h: 2 },
-  { id: '4', x: 2, y: 1, w: 1, h: 1 },
-  { id: '5', x: 3, y: 1, w: 1, h: 1 }
-])
+/** 按从左到右、从上到下生成等宽高的网格项 */
+const createGridList = (count: number, cols: number, w = 1, h = 1): GridItem[] =>
+  Array.from({ length: count }, (_, i) => ({
+    id: String(i + 1),
+    x: i % cols,
+    y: Math.floor(i / cols),
+    w,
+    h
+  }))
+
+const list = ref<GridItem[]>(createGridList(15, COLS))
 
 const pinnedId = ref<string | null>(null)
 const snapshotBeforePin = ref<GridItem[] | null>(null)

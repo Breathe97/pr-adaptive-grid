@@ -1,7 +1,7 @@
 <template>
   <div ref="pr_adaptive_grid_ref" class="pr-adaptive-grid" :style="Style">
     <div v-for="item in list" :key="`span-${item.id}`" :ref="(el) => setSpanRef(item.id, el)" class="pr-adaptive-grid-item-span" :style="SpanStyle(item)" />
-    <div class="pr-adaptive-grid-item" v-for="item in list" :key="`item-${item.id}`" :style="StyleItem(item.id)">
+    <div v-for="item in list" :key="`item-${item.id}`" class="pr-adaptive-grid-item" :style="StyleItem(item.id)">
       <slot :item="item" />
     </div>
   </div>
@@ -143,11 +143,8 @@ onBeforeUnmount(() => {
   box-sizing: border-box;
 }
 .pr-adaptive-grid-item-span {
-  min-width: 0;
-  min-height: 0;
   visibility: hidden;
   pointer-events: none;
-  box-shadow: 0 0 0 1px #000000 inset;
 }
 .pr-adaptive-grid-item {
   position: absolute;
@@ -160,5 +157,6 @@ onBeforeUnmount(() => {
     width 500ms ease-out,
     height 500ms ease-out;
   will-change: transform;
+  box-shadow: 0 0 0 1px #ff0d0d inset;
 }
 </style>
