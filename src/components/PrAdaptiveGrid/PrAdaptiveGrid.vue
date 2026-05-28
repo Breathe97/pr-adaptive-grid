@@ -92,9 +92,17 @@ const pr_adaptive_grid_content_ref = ref<HTMLElement>()
 
 /** 首屏按最多 4 行均分容器高度（与 mode2 左侧 fullId 占 4 行一致） */
 const FIRST_SCREEN_ROWS = 4
-const LAYOUT_TRANSITION_MS = 850
-const ITEM_FADE_TRANSITION_MS = 1200
-const ITEM_ANIM_STAGGER_MS = 300
+/** 全局动画时长范围 */
+const ANIM_MIN_MS = 300
+const ANIM_MAX_MS = 800
+
+const LAYOUT_TRANSITION_MS = ANIM_MAX_MS
+const LAYOUT_TRANSITION_MIN_MS = ANIM_MIN_MS
+const LAYOUT_TRANSITION_MAX_MS = ANIM_MAX_MS
+/** 重排目标速度（px/ms），duration  clamp 在 ANIM_MIN_MS ~ ANIM_MAX_MS */
+const LAYOUT_TRANSITION_SPEED = 0.7
+const ITEM_FADE_TRANSITION_MS = ANIM_MAX_MS
+const ITEM_ANIM_STAGGER_MS = ANIM_MIN_MS
 
 const delay = (ms: number) =>
   new Promise<void>((resolve) => {
@@ -110,6 +118,7 @@ const previousListLength = ref(0)
 
 const contentLayoutMap = reactive(new Map<string, GridLayoutRect>())
 const stickyOffsetMap = reactive(new Map<string, GridLayoutRect>())
+const layoutAnimDurationMap = reactive(new Map<string, number>())
 
 /** 开发环境布局诊断：仅 start/end 之间采集，结束自动下载 JSON */
 const AG_DEBUG = import.meta.env.DEV
@@ -427,6 +436,12 @@ const syncLayout = (debugReason?: string) => {
   const before = AG_DEBUG ? captureLayoutSnapshot() : null
 
   const rects = measureItemRects()
+
+  if (layoutTransitionActive.value) {
+    const maxDuration = computeLayoutAnimDurations(rects)
+    refreshLayoutTransitionTimer(maxDuration, debugReason ?? 'syncLayout')
+  }
+
   rects.forEach((rect, id) => {
     contentLayoutMap.set(id, rect)
   })
@@ -520,11 +535,19 @@ const StyleItemOuter = (id: string): CSSProperties => {
   const x = layout.x + (dragging?.offsetX ?? 0)
   const y = layout.y + (dragging?.offsetY ?? 0)
 
-  return {
+  const style: CSSProperties = {
     width: `${layout.w}px`,
     height: `${layout.h}px`,
     transform: `translate3d(${x}px, ${y}px, 0)`
   }
+
+  const animMs = layoutAnimDurationMap.get(id)
+  if (layoutTransitionActive.value && animMs != null && !enteringItemIds.has(id)) {
+    style['--ag-duration-position'] = `${animMs}ms`
+    style['--ag-duration-size'] = `${animMs}ms`
+  }
+
+  return style
 }
 
 const getVisualSortIds = (list: GridItem[]): string[] => [...list].sort((a, b) => a.y - b.y || a.x - b.x).map((item) => item.id)
@@ -876,16 +899,49 @@ let raf = 0
 let layoutTransitionTimer = 0
 let scrollTransitionTimer = 0
 
+const computeLayoutAnimDurations = (nextRects: Map<string, GridLayoutRect>): number => {
+  layoutAnimDurationMap.clear()
+  let maxDuration = LAYOUT_TRANSITION_MIN_MS
+
+  for (const item of props.list) {
+    if (enteringItemIds.has(item.id)) continue
+
+    const prev = contentLayoutMap.get(item.id)
+    const next = nextRects.get(item.id)
+    if (!prev || !next) continue
+
+    const distance = Math.hypot(next.x - prev.x, next.y - prev.y)
+    const sizeChange = Math.abs(next.w - prev.w) + Math.abs(next.h - prev.h)
+    const travel = distance + sizeChange * 0.35
+
+    const ms =
+      travel < 0.5
+        ? LAYOUT_TRANSITION_MIN_MS
+        : Math.min(LAYOUT_TRANSITION_MAX_MS, Math.max(LAYOUT_TRANSITION_MIN_MS, Math.round(travel / LAYOUT_TRANSITION_SPEED)))
+
+    layoutAnimDurationMap.set(item.id, ms)
+    maxDuration = Math.max(maxDuration, ms)
+  }
+
+  return maxDuration
+}
+
+const refreshLayoutTransitionTimer = (durationMs: number, reason = 'layout-transition') => {
+  window.clearTimeout(layoutTransitionTimer)
+  layoutTransitionTimer = window.setTimeout(() => {
+    layoutTransitionActive.value = false
+    layoutAnimDurationMap.clear()
+    agLog('layoutTransition:end', { reason, durationMs, ...getDebugFlags() })
+  }, durationMs)
+}
+
 const beginLayoutTransition = (reason = 'unknown') => {
   window.clearTimeout(scrollTransitionTimer)
   scrollTransitionDisabled.value = false
   layoutTransitionActive.value = true
-  window.clearTimeout(layoutTransitionTimer)
-  layoutTransitionTimer = window.setTimeout(() => {
-    layoutTransitionActive.value = false
-    agLog('layoutTransition:end', { reason, ...getDebugFlags() })
-  }, LAYOUT_TRANSITION_MS)
-  agLog('layoutTransition:start', { reason, durationMs: LAYOUT_TRANSITION_MS, ...getDebugFlags() })
+  layoutAnimDurationMap.clear()
+  refreshLayoutTransitionTimer(LAYOUT_TRANSITION_MAX_MS, reason)
+  agLog('layoutTransition:start', { reason, durationMs: LAYOUT_TRANSITION_MAX_MS, ...getDebugFlags() })
 }
 
 const playEnterAnimation = async (newItems: GridItem[]) => {
@@ -1188,6 +1244,7 @@ const settleActiveAnimations = () => {
   cancelAnimationFrame(scrollRaf)
   window.clearTimeout(layoutTransitionTimer)
   layoutTransitionActive.value = false
+  layoutAnimDurationMap.clear()
   clearLeavingItems()
   exitReorderPending = false
   pendingRemoveLayout = null
@@ -1218,10 +1275,10 @@ defineExpose({
   --ag-ease-size: cubic-bezier(0.32, 0.72, 0, 1);
   --ag-ease-fade: cubic-bezier(0.32, 0.72, 0, 1);
   --ag-duration-position: 800ms;
-  --ag-duration-size: 600ms;
-  --ag-duration-enter: 1200ms;
-  --ag-duration-exit: 1200ms;
-  --ag-duration-enter-size: 900ms;
+  --ag-duration-size: 800ms;
+  --ag-duration-enter: 800ms;
+  --ag-duration-exit: 800ms;
+  --ag-duration-enter-size: 800ms;
   position: relative;
   width: 100%;
   height: 100%;
