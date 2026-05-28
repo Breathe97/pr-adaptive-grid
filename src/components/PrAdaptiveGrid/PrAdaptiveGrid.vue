@@ -1,8 +1,18 @@
 <template>
   <div ref="pr_adaptive_grid_ref" class="pr-adaptive-grid" :style="ScrollContainerStyle" @scroll="onScroll">
     <div ref="pr_adaptive_grid_content_ref" class="pr-adaptive-grid-content" :style="ContainerStyle">
-      <div v-for="item in list" :key="`span-${item.id}`" class="pr-adaptive-grid-item-span" :style="ItemSpanStyle(item)" />
-      <div v-for="item in list" :key="`item-${item.id}`" class="pr-adaptive-grid-item" :class="{ 'pr-adaptive-grid-item-sticky': item.sticky }" :style="StyleItem(item.id)">
+      <div v-for="item in list" :key="`span-${item.id}`" class="pr-adaptive-grid-item-span" :data-item-id="item.id" :style="ItemSpanStyle(item)" />
+      <div
+        v-for="item in list"
+        :key="`item-${item.id}`"
+        class="pr-adaptive-grid-item"
+        :class="{
+          'pr-adaptive-grid-item-sticky': item.sticky,
+          'pr-adaptive-grid-item-layout-anim': layoutTransitionActive,
+          'pr-adaptive-grid-item-no-transition': scrollTransitionDisabled
+        }"
+        :style="StyleItem(item.id)"
+      >
         <slot :item="item" />
       </div>
     </div>
@@ -55,8 +65,12 @@ const pr_adaptive_grid_content_ref = ref<HTMLElement>()
 
 /** 首屏按最多 4 行均分容器高度（与 mode2 左侧 fullId 占 4 行一致） */
 const FIRST_SCREEN_ROWS = 4
+const LAYOUT_TRANSITION_MS = 500
 
 const containerViewportHeight = ref(0)
+const layoutTransitionActive = ref(false)
+const scrollTransitionDisabled = ref(false)
+const isInitialLayout = ref(true)
 
 const contentLayoutMap = reactive(new Map<string, GridLayoutRect>())
 const stickyOffsetMap = reactive(new Map<string, GridLayoutRect>())
@@ -160,11 +174,14 @@ const syncLayout = () => {
   const contentRect = content.getBoundingClientRect()
   const canMeasure = spans.length === props.list.length
 
-  props.list.forEach((item, index) => {
+  props.list.forEach((item) => {
     let rect: GridLayoutRect | undefined
 
     if (canMeasure) {
-      const spanRect = spans[index].getBoundingClientRect()
+      const span = content.querySelector<HTMLElement>(`.pr-adaptive-grid-item-span[data-item-id="${item.id}"]`)
+      if (!span) return
+
+      const spanRect = span.getBoundingClientRect()
       rect = {
         x: spanRect.left - contentRect.left,
         y: spanRect.top - contentRect.top,
@@ -232,27 +249,59 @@ const updateStickyOnScroll = () => {
 }
 
 let raf = 0
-const scheduleSync = () => {
+let layoutTransitionTimer = 0
+let scrollTransitionTimer = 0
+
+const beginLayoutTransition = () => {
+  layoutTransitionActive.value = true
+  window.clearTimeout(layoutTransitionTimer)
+  layoutTransitionTimer = window.setTimeout(() => {
+    layoutTransitionActive.value = false
+  }, LAYOUT_TRANSITION_MS)
+}
+
+const scheduleSync = (options?: { animate?: boolean }) => {
   cancelAnimationFrame(raf)
   raf = requestAnimationFrame(() => {
     void (async () => {
       measureContainer()
       await nextTick()
-      syncLayout()
+
+      const runSync = () => {
+        syncLayout()
+      }
+
+      const shouldAnimate = options?.animate && !isInitialLayout.value
+
+      if (shouldAnimate) {
+        beginLayoutTransition()
+        // 再等一帧：先保留旧 transform 绘制，再更新到新位置触发 CSS transition
+        requestAnimationFrame(runSync)
+      } else {
+        runSync()
+        isInitialLayout.value = false
+      }
     })()
   })
 }
 
 let scrollRaf = 0
 const onScroll = () => {
+  scrollTransitionDisabled.value = true
+  window.clearTimeout(scrollTransitionTimer)
+
   cancelAnimationFrame(scrollRaf)
   scrollRaf = requestAnimationFrame(updateStickyOnScroll)
+
+  scrollTransitionTimer = window.setTimeout(() => {
+    scrollTransitionDisabled.value = false
+  }, 80)
 }
 
 let observer: ResizeObserver
 
 onMounted(async () => {
-  observer = new ResizeObserver(scheduleSync)
+  observer = new ResizeObserver(() => scheduleSync())
   await nextTick()
   if (pr_adaptive_grid_ref.value) observer.observe(pr_adaptive_grid_ref.value)
   if (pr_adaptive_grid_content_ref.value) observer.observe(pr_adaptive_grid_content_ref.value)
@@ -260,25 +309,34 @@ onMounted(async () => {
 })
 
 watch(
-  () => [props.list, props.cols, props.rows, props.gap, props.padding, props.itemHeight, props.firstScreenRowSplit, containerViewportHeight.value],
+  () => ({
+    list: props.list,
+    cols: props.cols,
+    rows: props.rows,
+    gap: props.gap,
+    firstScreenRowSplit: props.firstScreenRowSplit,
+    stickyKey: props.list.map((item) => `${item.id}:${item.sticky}`).join(',')
+  }),
   async () => {
     await nextTick()
-    scheduleSync()
+    scheduleSync({ animate: true })
   },
   { deep: true }
 )
 
 watch(
-  () => props.list.map((item) => `${item.id}:${item.sticky}`).join(','),
+  () => [props.padding, props.itemHeight, containerViewportHeight.value],
   async () => {
     await nextTick()
-    scheduleSync()
+    scheduleSync({ animate: false })
   }
 )
 
 onBeforeUnmount(() => {
   cancelAnimationFrame(raf)
   cancelAnimationFrame(scrollRaf)
+  window.clearTimeout(layoutTransitionTimer)
+  window.clearTimeout(scrollTransitionTimer)
   observer?.disconnect()
 })
 </script>
@@ -326,5 +384,16 @@ onBeforeUnmount(() => {
   transition:
     width 300ms ease-out,
     height 300ms ease-out;
+}
+
+.pr-adaptive-grid-item-sticky.pr-adaptive-grid-item-layout-anim {
+  transition:
+    transform 500ms ease-out,
+    width 300ms ease-out,
+    height 300ms ease-out;
+}
+
+.pr-adaptive-grid-item-no-transition {
+  transition: none !important;
 }
 </style>
