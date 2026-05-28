@@ -41,6 +41,11 @@
 import { ref, computed, reactive, onMounted, onBeforeUnmount, watch, nextTick, type CSSProperties } from 'vue'
 import type { GridDirection, GridItem, GridLayoutRect, GridReorderPayload } from '../../types'
 
+type AgItemOuterStyle = CSSProperties & {
+  '--ag-duration-position'?: string
+  '--ag-duration-size'?: string
+}
+
 const props = defineProps({
   list: {
     type: Array<GridItem>,
@@ -535,7 +540,7 @@ const StyleItemOuter = (id: string): CSSProperties => {
   const x = layout.x + (dragging?.offsetX ?? 0)
   const y = layout.y + (dragging?.offsetY ?? 0)
 
-  const style: CSSProperties = {
+  const style: AgItemOuterStyle = {
     width: `${layout.w}px`,
     height: `${layout.h}px`,
     transform: `translate3d(${x}px, ${y}px, 0)`
@@ -1127,7 +1132,7 @@ const onScroll = () => {
 
   scrollTransitionTimer = window.setTimeout(() => {
     scrollTransitionDisabled.value = false
-    agLog('scroll:enable-transition', { scrollTop: pr_adaptive_grid_ref.value?.scrollTop ?? 0, ...getDebugFlags() })
+    agLog('scroll:enable-transition', getDebugFlags())
   }, 80)
 }
 
