@@ -22,6 +22,7 @@
       <button type="button" class="toolbar-btn" :disabled="userCount <= 1" @click="changeUserCount(-1)">−</button>
       <span class="toolbar-count">{{ userCount }}</span>
       <button type="button" class="toolbar-btn" @click="changeUserCount(1)">+</button>
+      <button type="button" class="toolbar-shuffle-btn" :disabled="userCount <= 1" @click="shuffleItems">打乱</button>
     </div>
   </div>
 </template>
@@ -114,6 +115,29 @@ const changeUserCount = (delta: number) => {
   initLayout(ids, layoutMode.value)
 }
 
+const shuffleArray = <T,>(arr: T[]): T[] => {
+  const next = [...arr]
+  for (let i = next.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[next[i], next[j]] = [next[j], next[i]]
+  }
+  return next
+}
+
+const shuffleItems = () => {
+  if (currentIds.value.length <= 1) return
+
+  gridRef.value?.settleActiveAnimations()
+
+  let shuffled = shuffleArray(currentIds.value)
+  if (shuffled.length === 2 && shuffled[0] === currentIds.value[0]) {
+    shuffled = [...currentIds.value].reverse()
+  }
+
+  currentIds.value = shuffled
+  applyLayout(shuffled, layoutMode.value)
+}
+
 const init = () => {
   pinId.value = undefined
   initLayout(initUsers(userCount.value), layoutMode.value)
@@ -185,6 +209,21 @@ init()
   cursor: pointer;
 }
 .toolbar-btn:disabled {
+  background: #d9d9d9;
+  cursor: not-allowed;
+}
+.toolbar-shuffle-btn {
+  height: 40px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 999px;
+  background: #1677ff;
+  color: #fff;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+.toolbar-shuffle-btn:disabled {
   background: #d9d9d9;
   cursor: not-allowed;
 }
