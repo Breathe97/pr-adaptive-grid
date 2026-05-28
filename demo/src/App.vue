@@ -2,6 +2,7 @@
   <div id="app">
     <div class="grid-wrap">
       <PrAdaptiveGrid
+        ref="gridRef"
         :list="list"
         :cols="cols"
         :rows="rows"
@@ -27,8 +28,10 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { PrAdaptiveGrid } from '../../src/index.ts'
-import type { GridItem, GridReorderPayload } from '../../src/index.ts'
+import type { GridItem, GridReorderPayload, PrAdaptiveGridExpose } from '../../src/index.ts'
 import { getLayout } from './getLayout'
+
+const gridRef = ref<PrAdaptiveGridExpose>()
 
 const cols = ref(1)
 const rows = ref(1)
@@ -81,6 +84,7 @@ const applyLayout = (ids: string[], mode: '1' | '2' = '1') => {
 }
 
 const setPin = (item: GridItem) => {
+  gridRef.value?.settleActiveAnimations()
   pinId.value = pinId.value === item.id ? undefined : item.id
   applyLayout(currentIds.value, layoutMode.value)
 }

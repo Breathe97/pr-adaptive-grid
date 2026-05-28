@@ -50,5 +50,11 @@ export interface GridReorderPayload {
   list: GridItem[]
 }
 
+/** PrAdaptiveGrid 对外暴露的方法 */
+export interface PrAdaptiveGridExpose {
+  /** 结束拖动/过渡动画并无动画同步到当前布局，便于 pin 等大幅布局变更 */
+  settleActiveAnimations: () => void
+}
+
 /** @deprecated 使用 GridItem */
 export type ListItem = GridItem

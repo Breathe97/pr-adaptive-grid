@@ -12,6 +12,7 @@
         v-for="item in list"
         :key="`item-${item.id}`"
         class="pr-adaptive-grid-item"
+        :data-item-id="item.id"
         :class="{
           'pr-adaptive-grid-item-sticky': item.sticky,
           'pr-adaptive-grid-item-layout-anim': layoutTransitionActive && !enteringItemIds.has(item.id),
@@ -128,7 +129,7 @@ const dragState = ref<DragState | null>(null)
 const dragReleasingId = ref<string>()
 const dropTargetId = ref<string>()
 let dragStarted = false
-let suppressClickAfterDrag = false
+let suppressClickItemId: string | undefined
 let dragPointerTarget: HTMLElement | null = null
 let liveSwapPartnerId: string | undefined
 let lastPointerClientX = 0
@@ -142,6 +143,7 @@ const cancelDragRelease = () => {
   dragReleaseTimer = 0
   dragReleaseToken++
   dragReleasingId.value = undefined
+  suppressClickItemId = undefined
 }
 
 const EMPTY_ITEM_STYLE: CSSProperties = {
@@ -480,7 +482,7 @@ const finishDrag = () => {
   cleanupDragListeners()
 
   if (dragStarted && state) {
-    suppressClickAfterDrag = true
+    suppressClickItemId = state.id
     syncLayout()
     beginLayoutTransition()
     dragReleasingId.value = state.id
@@ -612,10 +614,15 @@ const onItemPointerDown = (event: PointerEvent, item: GridItem) => {
 }
 
 const onGridClickCapture = (event: MouseEvent) => {
-  if (!suppressClickAfterDrag) return
+  if (!suppressClickItemId) return
+
+  const target = event.target as HTMLElement | null
+  const itemEl = target?.closest<HTMLElement>('.pr-adaptive-grid-item[data-item-id]')
+  if (!itemEl || itemEl.dataset.itemId !== suppressClickItemId) return
+
   event.stopPropagation()
   event.preventDefault()
-  suppressClickAfterDrag = false
+  suppressClickItemId = undefined
 }
 
 const StyleItemInner = (id: string): CSSProperties => {
@@ -814,6 +821,35 @@ onBeforeUnmount(() => {
   window.clearTimeout(scrollTransitionTimer)
   window.clearTimeout(dragReleaseTimer)
   observer?.disconnect()
+})
+
+/** 结束拖动/松手过渡/进行中的布局 sync，并无动画对齐当前 DOM */
+const settleActiveAnimations = () => {
+  cancelDragRelease()
+  cleanupDragListeners()
+  dragPointerTarget = null
+  dragState.value = null
+  dropTargetId.value = undefined
+  liveSwapPartnerId = undefined
+  dragStarted = false
+  suppressClickItemId = undefined
+
+  dragReorderSyncToken++
+  cancelAnimationFrame(raf)
+  cancelAnimationFrame(scrollRaf)
+  window.clearTimeout(layoutTransitionTimer)
+  layoutTransitionActive.value = false
+
+  const restoreTransition = suppressTransition.value
+  suppressTransition.value = true
+  syncLayout()
+  syncKnownItemIds()
+  suppressTransition.value = restoreTransition
+  void pr_adaptive_grid_content_ref.value?.offsetHeight
+}
+
+defineExpose({
+  settleActiveAnimations
 })
 </script>
 
