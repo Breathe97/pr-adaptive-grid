@@ -229,7 +229,18 @@ interface LeavingGhost {
 
 const leavingItems = ref<LeavingGhost[]>([])
 const previousListById = new Map<string, GridItem>()
+const recentlyRemovedIds = reactive(new Set<string>())
 let exitAnimationToken = 0
+let exitReorderPending = false
+
+interface PendingRemoveLayout {
+  cols: number
+  rows: number
+  gap: number
+  items: GridItem[]
+}
+
+let pendingRemoveLayout: PendingRemoveLayout | null = null
 
 const DRAG_THRESHOLD = 6
 
@@ -800,6 +811,42 @@ const clearLeavingItems = () => {
   leavingItemIds.clear()
 }
 
+const applyPendingRemoveBaseline = () => {
+  if (!pendingRemoveLayout) return false
+
+  const content = pr_adaptive_grid_content_ref.value
+  if (!content) return false
+
+  const { width, height } = content.getBoundingClientRect()
+  if (!width || !height) return false
+
+  const rowHeight = resolvedRowHeight.value
+  const { cols, rows, gap, items } = pendingRemoveLayout
+
+  for (const item of items) {
+    if (!props.list.some((entry) => entry.id === item.id)) continue
+    contentLayoutMap.set(item.id, computeItemRect(item, width, height, cols, rows, gap, rowHeight))
+  }
+
+  pendingRemoveLayout = null
+  return true
+}
+
+/** 移除重排未完成时来了新布局：取消 exit 流程，用 1-item 布局作为 FLIP 起点 */
+const interruptPendingExitAnimation = (): boolean => {
+  if (!exitReorderPending && leavingItems.value.length === 0) return false
+
+  clearLeavingItems()
+  dragReorderSyncToken++
+  exitReorderPending = false
+  applyPendingRemoveBaseline()
+  void pr_adaptive_grid_content_ref.value?.offsetHeight
+  return true
+}
+
+const getNewItemsForEnter = () =>
+  props.list.filter((item) => !knownItemIds.has(item.id) || recentlyRemovedIds.has(item.id))
+
 const updateStickyOnScroll = () => {
   const container = pr_adaptive_grid_ref.value
   if (!container) return
@@ -851,6 +898,7 @@ const playEnterAnimation = async (newItems: GridItem[]) => {
   })
 
   newItems.forEach((item) => enteringItemIds.delete(item.id))
+  newItems.forEach((item) => recentlyRemovedIds.delete(item.id))
 }
 
 const triggerExitFade = async (ghosts: LeavingGhost[]) => {
@@ -889,23 +937,36 @@ const runRepositionThenEnter = (newItems: GridItem[], reason: string) => {
 const runExitThenReposition = async (ghosts: LeavingGhost[], reason: string) => {
   if (!ghosts.length) {
     scheduleTransitionSync(() => {
+      exitReorderPending = false
+      pendingRemoveLayout = null
+      recentlyRemovedIds.clear()
       previousListLength.value = props.list.length
       finishInitialLayout()
     }, `${reason}:remove-reorder`)
     return
   }
 
+  exitReorderPending = true
   const token = ++exitAnimationToken
   const fadeStartedAt = performance.now()
   await triggerExitFade(ghosts)
 
-  if (token !== exitAnimationToken) return
+  if (token !== exitAnimationToken) {
+    exitReorderPending = false
+    return
+  }
 
   await delay(ITEM_ANIM_STAGGER_MS)
 
-  if (token !== exitAnimationToken) return
+  if (token !== exitAnimationToken) {
+    exitReorderPending = false
+    return
+  }
 
   scheduleTransitionSync(() => {
+    exitReorderPending = false
+    pendingRemoveLayout = null
+    recentlyRemovedIds.clear()
     previousListLength.value = props.list.length
     finishInitialLayout()
   }, `${reason}:remove-reorder`)
@@ -949,7 +1010,9 @@ const scheduleSync = (options?: { animate?: boolean; reason?: string }) => {
       })
 
       if (shouldAnimate) {
-        const newItems = props.list.filter((item) => !knownItemIds.has(item.id))
+        interruptPendingExitAnimation()
+
+        const newItems = getNewItemsForEnter()
         const removedIds = [...knownItemIds].filter((id) => !props.list.some((item) => item.id === id))
         const hasRemoval = removedIds.length > 0
 
@@ -960,7 +1023,7 @@ const scheduleSync = (options?: { animate?: boolean; reason?: string }) => {
           }
           await nextTick()
 
-          const repositionExisting = knownItemIds.size > 0
+          const repositionExisting = props.list.some((item) => knownItemIds.has(item.id) && !recentlyRemovedIds.has(item.id))
           if (repositionExisting) {
             runRepositionThenEnter(newItems, reason)
           } else {
@@ -969,6 +1032,12 @@ const scheduleSync = (options?: { animate?: boolean; reason?: string }) => {
           }
         } else if (hasRemoval) {
           agLog('scheduleSync:path-remove-reorder', { reason, removedIds, ...getDebugFlags() })
+          pendingRemoveLayout = {
+            cols: props.cols,
+            rows: props.rows,
+            gap: props.gap,
+            items: props.list.map((item) => ({ ...item }))
+          }
           const ghosts = leavingItems.value.filter((ghost) => removedIds.includes(ghost.item.id))
           void runExitThenReposition(ghosts, reason)
         } else {
@@ -1039,6 +1108,7 @@ watch(
         layout: { ...layout }
       })
       leavingItemIds.add(id)
+      recentlyRemovedIds.add(id)
     }
 
     for (const item of props.list) {
@@ -1119,6 +1189,9 @@ const settleActiveAnimations = () => {
   window.clearTimeout(layoutTransitionTimer)
   layoutTransitionActive.value = false
   clearLeavingItems()
+  exitReorderPending = false
+  pendingRemoveLayout = null
+  recentlyRemovedIds.clear()
 
   const restoreTransition = suppressTransition.value
   suppressTransition.value = true

@@ -113,7 +113,8 @@ const changeUserCount = (delta: number) => {
     const removeIndex = Math.floor(Math.random() * ids.length)
     ids.splice(removeIndex, 1)
   } else {
-    ids = initUsers(next)
+    const maxId = currentIds.value.reduce((max, id) => Math.max(max, Number(id) || 0), 0)
+    ids = [...currentIds.value, `${maxId + 1}`]
   }
 
   if (pinId.value && !ids.includes(pinId.value)) {
