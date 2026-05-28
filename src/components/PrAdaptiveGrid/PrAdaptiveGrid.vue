@@ -304,7 +304,7 @@ onBeforeUnmount(() => {
   pointer-events: none;
   min-width: 0;
   min-height: 0;
-  box-shadow: 0 0 1px 0 red inset;
+  /* box-shadow: 0 0 1px 0 red inset; */
   z-index: 2;
 }
 .pr-adaptive-grid-item {
@@ -313,13 +313,12 @@ onBeforeUnmount(() => {
   top: 0;
   z-index: 1;
   box-sizing: border-box;
-  background-color: rgba(0, 95, 158, 0.1);
+  /* background-color: rgba(0, 95, 158, 0.1); */
   transition:
-    transform 300ms ease-out,
+    transform 500ms ease-out,
     width 300ms ease-out,
     height 300ms ease-out;
   will-change: transform;
-  z-index: -1;
 }
 
 .pr-adaptive-grid-item-sticky {

@@ -1,15 +1,14 @@
 <template>
   <div id="app">
     <div class="grid-wrap">
-      <PrAdaptiveGrid
-        :list="list"
-        :cols="cols"
-        :rows="rows"
-        :gap="8"
-        :first-screen-row-split="firstScreenRowSplit"
-      >
+      <PrAdaptiveGrid :list="list" :cols="cols" :rows="rows" :gap="8" :first-screen-row-split="firstScreenRowSplit">
         <template #default="{ item }">
-          <div class="item" :class="{ 'item-pinned': item.sticky }" @click="() => setPin(item)">
+          <div
+            class="item"
+            :class="{ 'item-pinned': item.sticky }"
+            :style="{ backgroundColor: getItemColor(item.id) }"
+            @click="() => setPin(item)"
+          >
             <span>{{ item.id }}</span>
             <span class="item-meta">w:{{ item.w }} h:{{ item.h }} @({{ item.x }},{{ item.y }})</span>
           </div>
@@ -38,6 +37,24 @@ const userCount = ref(1)
 const layoutMode = ref<'1' | '2'>('1')
 const currentIds = ref<string[]>([])
 const pinId = ref<string>()
+const itemColorMap = ref(new Map<string, string>())
+
+const randomItemColor = (): string => {
+  const hue = Math.floor(Math.random() * 360)
+  return `hsl(${hue} 65% 82%)`
+}
+
+const ensureItemColors = (ids: string[]) => {
+  const next = new Map(itemColorMap.value)
+  for (const id of ids) {
+    if (!next.has(id)) {
+      next.set(id, randomItemColor())
+    }
+  }
+  itemColorMap.value = next
+}
+
+const getItemColor = (id: string): string => itemColorMap.value.get(id) ?? '#f5f5f5'
 
 const initUsers = (num = 1) => {
   const users: string[] = []
@@ -48,6 +65,7 @@ const initUsers = (num = 1) => {
 }
 
 const applyLayout = (ids: string[], mode: '1' | '2' = '1') => {
+  ensureItemColors(ids)
   // 开启 pin 时固定走 mode2（左侧 fullId + 右侧列表）
   const effectiveMode: '1' | '2' = pinId.value ? '2' : mode
   const layout = getLayout(ids, effectiveMode, pinId.value ? { fullId: pinId.value } : undefined)
