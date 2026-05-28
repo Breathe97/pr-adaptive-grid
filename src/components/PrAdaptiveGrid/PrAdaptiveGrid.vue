@@ -39,6 +39,11 @@ const props = defineProps({
     type: Number,
     default: undefined
   },
+  /** 首屏等高行数（如 mode2 为 12，则行高 = 视口高/12，12 行铺满一屏） */
+  firstScreenRowSplit: {
+    type: Number,
+    default: undefined
+  },
   direction: {
     type: String as () => GridDirection,
     default: () => 'right' as GridDirection
@@ -69,15 +74,18 @@ const ScrollContainerStyle = computed(() => {
   }
 })
 
-/** 未传 itemHeight 时：首屏高度 / min(rows, 4)，避免总行数增多时挤压单行 */
+/** 未传 itemHeight 时：首屏高度 / firstScreenRowSplit（或 min(rows,4)） */
 const resolvedRowHeight = computed(() => {
   if (props.itemHeight != null && props.itemHeight > 0) {
     return props.itemHeight
   }
   if (containerViewportHeight.value <= 0 || props.rows <= 0) return 0
 
-  const firstScreenRows = Math.min(props.rows, FIRST_SCREEN_ROWS)
-  return containerViewportHeight.value / firstScreenRows
+  const split =
+    props.firstScreenRowSplit != null && props.firstScreenRowSplit > 0
+      ? props.firstScreenRowSplit
+      : Math.min(props.rows, FIRST_SCREEN_ROWS)
+  return containerViewportHeight.value / split
 })
 
 const ContainerStyle = computed(() => {
@@ -121,15 +129,7 @@ const ItemSpanStyle = computed(() => {
 })
 
 /** 根据网格轨道计算像素矩形（x/y 为 1-based，与 CSS grid-line 一致） */
-const computeItemRect = (
-  item: GridItem,
-  innerW: number,
-  innerH: number,
-  cols: number,
-  rows: number,
-  gap: number,
-  itemHeight: number
-): GridLayoutRect => {
+const computeItemRect = (item: GridItem, innerW: number, innerH: number, cols: number, rows: number, gap: number, itemHeight: number): GridLayoutRect => {
   const colTrack = cols > 0 ? (innerW - (cols - 1) * gap) / cols : 0
   const rowTrack = itemHeight > 0 ? itemHeight : rows > 0 ? (innerH - (rows - 1) * gap) / rows : 0
   const colStart = item.x - 1
@@ -212,7 +212,7 @@ const updateStickyOnScroll = () => {
   const container = pr_adaptive_grid_ref.value
   if (!container) return
 
-  const { scrollTop, scrollLeft, clientWidth, clientHeight } = container
+  const { scrollTop, scrollLeft } = container
 
   for (const item of props.list) {
     if (!item.sticky) {
@@ -223,12 +223,13 @@ const updateStickyOnScroll = () => {
     const layout = contentLayoutMap.get(item.id)
     if (!layout) continue
 
-    const maxX = Math.max(scrollLeft, scrollLeft + clientWidth - layout.w)
-    const maxY = Math.max(scrollTop, scrollTop + clientHeight - layout.h)
-    const x = Math.min(Math.max(layout.x, scrollLeft), maxX)
-    const y = Math.min(Math.max(layout.y, scrollTop), maxY)
-
-    stickyOffsetMap.set(item.id, { x, y, w: layout.w, h: layout.h })
+    // 绝对定位在滚动内容内，需加上 scroll 偏移才能在视口中保持原位（首屏 pin 不随滚动移走）
+    stickyOffsetMap.set(item.id, {
+      x: layout.x + scrollLeft,
+      y: layout.y + scrollTop,
+      w: layout.w,
+      h: layout.h
+    })
   }
 }
 
@@ -261,12 +262,20 @@ onMounted(async () => {
 })
 
 watch(
-  () => [props.list, props.cols, props.rows, props.gap, props.padding, props.itemHeight, containerViewportHeight.value],
+  () => [props.list, props.cols, props.rows, props.gap, props.padding, props.itemHeight, props.firstScreenRowSplit, containerViewportHeight.value],
   async () => {
     await nextTick()
     scheduleSync()
   },
   { deep: true }
+)
+
+watch(
+  () => props.list.map((item) => `${item.id}:${item.sticky}`).join(','),
+  async () => {
+    await nextTick()
+    scheduleSync()
+  }
 )
 
 onBeforeUnmount(() => {
@@ -297,7 +306,7 @@ onBeforeUnmount(() => {
   pointer-events: none;
   min-width: 0;
   min-height: 0;
-  background-color: rgba(128, 128, 128, 0.5);
+  box-shadow: 0 0 0 1px rgba(128, 128, 128, 0.5) inset;
 }
 .pr-adaptive-grid-item {
   position: absolute;
@@ -305,7 +314,7 @@ onBeforeUnmount(() => {
   top: 0;
   z-index: 1;
   box-sizing: border-box;
-  box-shadow: 0 0 0 1px red inset;
+  background-color: rgba(0, 43, 16, 0.5);
   transition:
     transform 300ms ease-out,
     width 300ms ease-out,

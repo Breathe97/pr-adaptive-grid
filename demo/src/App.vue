@@ -1,7 +1,13 @@
 <template>
   <div id="app">
     <div class="grid-wrap">
-      <PrAdaptiveGrid :list="list" :cols="cols" :rows="rows" :gap="8">
+      <PrAdaptiveGrid
+        :list="list"
+        :cols="cols"
+        :rows="rows"
+        :gap="8"
+        :first-screen-row-split="firstScreenRowSplit"
+      >
         <template #default="{ item }">
           <div class="item" :class="{ 'item-pinned': item.sticky }" @click="() => setPin(item)">
             <span>{{ item.id }}</span>
@@ -25,6 +31,7 @@ import { getLayout } from './getLayout'
 
 const cols = ref(1)
 const rows = ref(1)
+const firstScreenRowSplit = ref<number>()
 const list = ref<GridItem[]>([])
 
 const userCount = ref(1)
@@ -41,9 +48,12 @@ const initUsers = (num = 1) => {
 }
 
 const applyLayout = (ids: string[], mode: '1' | '2' = '1') => {
-  const layout = getLayout(ids, mode, pinId.value && mode === '2' ? { fullId: pinId.value } : undefined)
+  // 开启 pin 时固定走 mode2（左侧 fullId + 右侧列表）
+  const effectiveMode: '1' | '2' = pinId.value ? '2' : mode
+  const layout = getLayout(ids, effectiveMode, pinId.value ? { fullId: pinId.value } : undefined)
   cols.value = layout.cols
   rows.value = layout.rows
+  firstScreenRowSplit.value = layout.firstScreenRowSplit
   list.value = layout.list.map((item) => ({
     ...item,
     sticky: pinId.value === item.id
@@ -76,7 +86,7 @@ const changeUserCount = (delta: number) => {
 }
 
 const init = () => {
-  pinId.value = '1'
+  pinId.value = undefined
   initLayout(initUsers(userCount.value), layoutMode.value)
 }
 

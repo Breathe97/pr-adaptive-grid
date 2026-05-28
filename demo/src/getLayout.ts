@@ -4,16 +4,22 @@ export interface LayoutResult {
   cols: number
   rows: number
   list: GridItem[]
+  /** mode2 首屏等高分行数（12 行铺满一屏） */
+  firstScreenRowSplit?: number
 }
 
 export type LayoutMode = '1' | '2'
 
-const MODE2_COLS = 7
-/** fullId 固定占满首屏 4 行 */
-const MODE2_FULL_ROWS = 4
-const MODE2_LEFT_COLS = 5
-const MODE2_RIGHT_COL_START = 6
-const MODE2_RIGHT_MAX_PER_ROW = 2
+/** 12 列网格：左侧 8 列（2/3），右侧 4 列（1/3） */
+const MODE2_COLS = 12
+/** 首屏 12 行（3×4），便于 1~4 等分且 n=3 时撑满 */
+const MODE2_FULL_ROWS = 12
+const MODE2_LEFT_COLS = 8
+/** 右侧区域：列 9-12（1/3 宽） */
+const MODE2_RIGHT_COL_START = 9
+const MODE2_RIGHT_COLS = 4
+/** 右侧每个 item 统一占用的行高（网格行数） */
+const MODE2_RIGHT_CELL_ROWS = 4
 
 const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b))
 
@@ -95,17 +101,19 @@ const fillTwosThenTrim = (rowCount: number, total: number): number[] => {
 }
 
 /**
- * mode2 右侧每行个数（列 6-7，每行最多 2 个），行数随 n 自动增长。
- * 1→[1]  2→[1,1]  3→[1,2]  4→[2,2]  5→[1,2,2]  6→[2,2,2]  7→[1,2,2,2] …
+ * 右侧逻辑行分布（非真实网格行号）
+ * 3→[1,2]  4→[2,2]  5→[1,2,2] …
  */
 const getRightRowCounts = (n: number): number[] => {
-  if (n <= 0) return []
-  if (n === 1) return [1]
-  if (n === 2) return [1, 1]
+  if (n <= 2) return []
   if (n === 3) return [1, 2]
   if (n === 4) return [2, 2]
+  if (n === 5) return [1, 2, 2]
+  if (n === 6) return [2, 2, 2]
+  if (n === 7) return [1, 2, 2, 2]
+  if (n === 8) return [2, 2, 2, 2]
 
-  const rowCount = n === 5 ? 3 : 3 + Math.ceil((n - 6) / 2)
+  const rowCount = 3 + Math.ceil((n - 6) / 2)
   const firstOne = n % 4 === 1 || n % 4 === 3
 
   if (firstOne) {
@@ -114,44 +122,76 @@ const getRightRowCounts = (n: number): number[] => {
   return fillTwosThenTrim(rowCount, n)
 }
 
-/** 在列 6-7 放置右侧元素 */
-const buildRightList = (rowCounts: number[], ids: string[]): GridItem[] => {
+/** 将 total 行均分给 n 段，余数从最后一行往前 +1 */
+const distributeRows = (total: number, segments: number): number[] => {
+  const base = Math.floor(total / segments)
+  const remainder = total % segments
+  return Array.from({ length: segments }, (_, i) => base + (i >= segments - remainder ? 1 : 0))
+}
+
+/** n=1~2：右侧 1/3 内纵向均分，占满首屏 12 行 */
+const buildRightSimple = (ids: string[]): GridItem[] => {
+  const bandHeights = distributeRows(MODE2_FULL_ROWS, ids.length)
   const items: GridItem[] = []
+  let y = 1
+
+  bandHeights.forEach((h, i) => {
+    items.push({ id: ids[i], x: MODE2_RIGHT_COL_START, y, w: MODE2_RIGHT_COLS, h })
+    y += h
+  })
+
+  return items
+}
+
+/** n=5~8 首屏 12 行内排布；n>8 按逻辑行规律且每逻辑行 h=4 */
+const buildRightPattern = (ids: string[]): GridItem[] => {
+  const n = ids.length
+  const rowCounts = getRightRowCounts(n)
+  const bandCount = rowCounts.length
+  const bandHeights =
+    n <= 8 ? distributeRows(MODE2_FULL_ROWS, bandCount) : Array(bandCount).fill(MODE2_RIGHT_CELL_ROWS)
+
+  const items: GridItem[] = []
+  let y = 1
   let offset = 0
 
-  rowCounts.forEach((count, rowIndex) => {
-    const y = rowIndex + 1
-
-    if (count === 1) {
-      items.push({
-        id: ids[offset],
-        x: MODE2_RIGHT_COL_START,
-        y,
-        w: MODE2_RIGHT_MAX_PER_ROW,
-        h: 1
-      })
-      offset += 1
-      return
-    }
+  rowCounts.forEach((count, bandIndex) => {
+    const bandH = bandHeights[bandIndex]
+    const itemW = MODE2_RIGHT_COLS / count
 
     for (let i = 0; i < count; i++) {
       items.push({
         id: ids[offset + i],
-        x: MODE2_RIGHT_COL_START + i,
+        x: MODE2_RIGHT_COL_START + i * itemW,
         y,
-        w: 1,
-        h: 1
+        w: itemW,
+        h: bandH
       })
     }
+
+    y += bandH
     offset += count
   })
 
   return items
 }
 
+/** n=1~2：纵向均分 12 行；n≥3：按逻辑行并排 */
+const buildRightLayout = (ids: string[]): GridItem[] => {
+  const n = ids.length
+  if (n === 0) return []
+  if (n <= 2) return buildRightSimple(ids)
+  return buildRightPattern(ids)
+}
+
+const getRightLayoutRows = (items: GridItem[]): number => {
+  if (!items.length) return MODE2_FULL_ROWS
+  return Math.max(...items.map((item) => item.y + item.h - 1))
+}
+
 const getLayoutMode2 = (ids: string[], fullId?: string): LayoutResult => {
   if (!ids.length) {
-    return { cols: MODE2_COLS, rows: MODE2_FULL_ROWS, list: [] }
+    return { cols: MODE2_COLS, rows: MODE2_FULL_ROWS, list: [], firstScreenRowSplit: MODE2_FULL_ROWS }
   }
 
   const list: GridItem[] = []
@@ -168,18 +208,17 @@ const getLayoutMode2 = (ids: string[], fullId?: string): LayoutResult => {
     })
   }
 
-  const rightRowCounts = getRightRowCounts(rightIds.length)
-  if (rightIds.length) {
-    list.push(...buildRightList(rightRowCounts, rightIds))
-  }
+  const rightItems = buildRightLayout(rightIds)
+  list.push(...rightItems)
 
-  const rightRows = rightRowCounts.length
+  const rightRows = getRightLayoutRows(rightItems)
   const rows = hasFull ? Math.max(MODE2_FULL_ROWS, rightRows) : Math.max(1, rightRows)
 
   return {
     cols: MODE2_COLS,
     rows,
-    list
+    list,
+    firstScreenRowSplit: MODE2_FULL_ROWS
   }
 }
 
