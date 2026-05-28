@@ -8,12 +8,19 @@
         class="pr-adaptive-grid-item"
         :class="{
           'pr-adaptive-grid-item-sticky': item.sticky,
-          'pr-adaptive-grid-item-layout-anim': layoutTransitionActive,
-          'pr-adaptive-grid-item-no-transition': scrollTransitionDisabled
+          'pr-adaptive-grid-item-layout-anim': layoutTransitionActive && !enteringItemIds.has(item.id),
+          'pr-adaptive-grid-item-enter-host': enteringItemIds.has(item.id),
+          'pr-adaptive-grid-item-no-transition': scrollTransitionDisabled || (suppressTransition && !enteringItemIds.has(item.id))
         }"
-        :style="StyleItem(item.id)"
+        :style="StyleItemOuter(item.id)"
       >
-        <slot :item="item" />
+        <div
+          class="pr-adaptive-grid-item-inner"
+          :class="{ 'pr-adaptive-grid-item-enter': enteringItemIds.has(item.id) }"
+          :style="StyleItemInner(item.id)"
+        >
+          <slot :item="item" />
+        </div>
       </div>
     </div>
   </div>
@@ -70,10 +77,14 @@ const LAYOUT_TRANSITION_MS = 500
 const containerViewportHeight = ref(0)
 const layoutTransitionActive = ref(false)
 const scrollTransitionDisabled = ref(false)
-const isInitialLayout = ref(true)
+const suppressTransition = ref(true)
+const layoutInitialized = ref(false)
+const previousListLength = ref(0)
 
 const contentLayoutMap = reactive(new Map<string, GridLayoutRect>())
 const stickyOffsetMap = reactive(new Map<string, GridLayoutRect>())
+const knownItemIds = new Set<string>()
+const enteringItemIds = reactive(new Set<string>())
 
 const EMPTY_ITEM_STYLE: CSSProperties = {
   width: '0px',
@@ -161,15 +172,15 @@ const measureContainer = () => {
   containerViewportHeight.value = container.clientHeight
 }
 
-const syncLayout = () => {
+const measureItemRects = (): Map<string, GridLayoutRect> => {
+  const rects = new Map<string, GridLayoutRect>()
   const content = pr_adaptive_grid_content_ref.value
-  if (!content) return
+  if (!content) return rects
 
   const { width, height } = content.getBoundingClientRect()
-  if (!width || !height) return
+  if (!width || !height) return rects
 
   const rowHeight = resolvedRowHeight.value
-
   const spans = content.querySelectorAll<HTMLElement>('.pr-adaptive-grid-item-span')
   const contentRect = content.getBoundingClientRect()
   const canMeasure = spans.length === props.list.length
@@ -193,7 +204,34 @@ const syncLayout = () => {
       rect = computeItemRect(item, width, height, cols, rows, gap, rowHeight)
     }
 
-    contentLayoutMap.set(item.id, rect)
+    if (rect) rects.set(item.id, rect)
+  })
+
+  return rects
+}
+
+const finishInitialLayout = () => {
+  if (layoutInitialized.value || containerViewportHeight.value <= 0) return
+
+  layoutInitialized.value = true
+  requestAnimationFrame(() => {
+    suppressTransition.value = false
+  })
+}
+
+const syncKnownItemIds = () => {
+  props.list.forEach((item) => knownItemIds.add(item.id))
+  for (const id of [...knownItemIds]) {
+    if (!props.list.some((item) => item.id === id)) {
+      knownItemIds.delete(id)
+    }
+  }
+}
+
+const syncLayout = () => {
+  const rects = measureItemRects()
+  rects.forEach((rect, id) => {
+    contentLayoutMap.set(id, rect)
   })
 
   // 清理已移除项
@@ -201,25 +239,65 @@ const syncLayout = () => {
     if (!props.list.some((item) => item.id === id)) {
       contentLayoutMap.delete(id)
       stickyOffsetMap.delete(id)
+      enteringItemIds.delete(id)
     }
   }
 
   updateStickyOnScroll()
 }
 
-const StyleItem = (id: string): CSSProperties => {
+const getItemLayout = (id: string): GridLayoutRect | undefined => {
   const item = props.list.find((entry) => entry.id === id)
-  const layout = item?.sticky ? (stickyOffsetMap.get(id) ?? contentLayoutMap.get(id)) : contentLayoutMap.get(id)
+  if (!item) return undefined
 
+  if (item.sticky) {
+    const sticky = stickyOffsetMap.get(id)
+    if (sticky) return sticky
+  }
+
+  const cached = contentLayoutMap.get(id)
+  if (cached) return cached
+
+  const content = pr_adaptive_grid_content_ref.value
+  if (!content) return undefined
+
+  const { width, height } = content.getBoundingClientRect()
+  if (!width || !height) return undefined
+
+  const span = content.querySelector<HTMLElement>(`.pr-adaptive-grid-item-span[data-item-id="${id}"]`)
+  if (span) {
+    const contentRect = content.getBoundingClientRect()
+    const spanRect = span.getBoundingClientRect()
+    return {
+      x: spanRect.left - contentRect.left,
+      y: spanRect.top - contentRect.top,
+      w: spanRect.width,
+      h: spanRect.height
+    }
+  }
+
+  return computeItemRect(item, width, height, props.cols, props.rows, props.gap, resolvedRowHeight.value)
+}
+
+const StyleItemOuter = (id: string): CSSProperties => {
+  const layout = getItemLayout(id)
   if (!layout) return EMPTY_ITEM_STYLE
 
-  const width = layout.w
-  const height = layout.h
+  return {
+    width: `${layout.w}px`,
+    height: `${layout.h}px`,
+    transform: `translate3d(${layout.x}px, ${layout.y}px, 0)`
+  }
+}
+
+const StyleItemInner = (id: string): CSSProperties => {
+  const isEntering = enteringItemIds.has(id)
 
   return {
-    width: `${width}px`,
-    height: `${height}px`,
-    transform: `translate3d(${layout.x}px, ${layout.y}px, 0)`
+    width: '100%',
+    height: '100%',
+    opacity: isEntering ? 0 : 1,
+    transform: isEntering ? 'scale(0.5)' : 'scale(1)'
   }
 }
 
@@ -260,6 +338,20 @@ const beginLayoutTransition = () => {
   }, LAYOUT_TRANSITION_MS)
 }
 
+const playEnterAnimation = async (newItems: GridItem[]) => {
+  if (!newItems.length) return
+
+  // 先绘制 entering 初始态（opacity:0 scale:0.5）
+  await nextTick()
+  void pr_adaptive_grid_content_ref.value?.offsetHeight
+  await new Promise<void>((resolve) => {
+    requestAnimationFrame(() => resolve())
+  })
+
+  // 再切换到最终态，触发 inner 的 opacity/transform 过渡
+  newItems.forEach((item) => enteringItemIds.delete(item.id))
+}
+
 const scheduleSync = (options?: { animate?: boolean }) => {
   cancelAnimationFrame(raf)
   raf = requestAnimationFrame(() => {
@@ -269,17 +361,45 @@ const scheduleSync = (options?: { animate?: boolean }) => {
 
       const runSync = () => {
         syncLayout()
+        syncKnownItemIds()
+        previousListLength.value = props.list.length
+        finishInitialLayout()
       }
 
-      const shouldAnimate = options?.animate && !isInitialLayout.value
+      const isIntroSingleItem = props.list.length === 1 && previousListLength.value === 0
+      const shouldAnimate = Boolean(options?.animate && layoutInitialized.value && !isIntroSingleItem)
 
       if (shouldAnimate) {
-        beginLayoutTransition()
-        // 再等一帧：先保留旧 transform 绘制，再更新到新位置触发 CSS transition
-        requestAnimationFrame(runSync)
+        const newItems = props.list.filter((item) => !knownItemIds.has(item.id))
+
+        if (newItems.length > 0) {
+          for (const item of newItems) {
+            enteringItemIds.add(item.id)
+          }
+          await nextTick()
+
+          const repositionExisting = knownItemIds.size > 0
+          if (repositionExisting) {
+            beginLayoutTransition()
+            requestAnimationFrame(() => {
+              void (async () => {
+                syncLayout()
+                syncKnownItemIds()
+                previousListLength.value = props.list.length
+                finishInitialLayout()
+                await playEnterAnimation(newItems)
+              })()
+            })
+          } else {
+            runSync()
+            void playEnterAnimation(newItems)
+          }
+        } else {
+          beginLayoutTransition()
+          requestAnimationFrame(runSync)
+        }
       } else {
         runSync()
-        isInitialLayout.value = false
       }
     })()
   })
@@ -307,6 +427,20 @@ onMounted(async () => {
   if (pr_adaptive_grid_content_ref.value) observer.observe(pr_adaptive_grid_content_ref.value)
   scheduleSync()
 })
+
+watch(
+  () => props.list.map((item) => item.id).join(','),
+  () => {
+    if (!layoutInitialized.value) return
+
+    for (const item of props.list) {
+      if (!knownItemIds.has(item.id)) {
+        enteringItemIds.add(item.id)
+      }
+    }
+  },
+  { flush: 'pre' }
+)
 
 watch(
   () => ({
@@ -371,12 +505,33 @@ onBeforeUnmount(() => {
   top: 0;
   z-index: 1;
   box-sizing: border-box;
-  /* background-color: rgba(0, 95, 158, 0.1); */
   transition:
     transform 500ms ease-out,
     width 300ms ease-out,
     height 300ms ease-out;
   will-change: transform;
+}
+
+.pr-adaptive-grid-item-inner {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  transform-origin: center center;
+  transition:
+    transform 500ms ease-out,
+    opacity 500ms ease-out;
+}
+
+.pr-adaptive-grid-item-enter-host {
+  transition:
+    width 300ms ease-out,
+    height 300ms ease-out;
+}
+
+.pr-adaptive-grid-item-enter-host .pr-adaptive-grid-item-inner {
+  transition:
+    transform 500ms ease-out,
+    opacity 500ms ease-out;
 }
 
 .pr-adaptive-grid-item-sticky {
