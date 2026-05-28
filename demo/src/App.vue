@@ -106,7 +106,15 @@ const changeUserCount = (delta: number) => {
   if (next === userCount.value) return
 
   userCount.value = next
-  const ids = initUsers(next)
+
+  let ids: string[]
+  if (delta < 0) {
+    ids = [...currentIds.value]
+    const removeIndex = Math.floor(Math.random() * ids.length)
+    ids.splice(removeIndex, 1)
+  } else {
+    ids = initUsers(next)
+  }
 
   if (pinId.value && !ids.includes(pinId.value)) {
     pinId.value = undefined
