@@ -117,6 +117,11 @@ interface DragState {
   grabOffsetY: number
   offsetX: number
   offsetY: number
+  /** 按下时的尺寸，拖动浮层期间保持不变 */
+  frozenW: number
+  frozenH: number
+  /** 松手过渡阶段：true 时过渡到目标格尺寸 */
+  useSlotSize?: boolean
 }
 
 const dragState = ref<DragState | null>(null)
@@ -130,6 +135,14 @@ let lastPointerClientX = 0
 let lastPointerClientY = 0
 let dragReorderSyncToken = 0
 let dragReleaseTimer = 0
+let dragReleaseToken = 0
+
+const cancelDragRelease = () => {
+  window.clearTimeout(dragReleaseTimer)
+  dragReleaseTimer = 0
+  dragReleaseToken++
+  dragReleasingId.value = undefined
+}
 
 const EMPTY_ITEM_STYLE: CSSProperties = {
   width: '0px',
@@ -336,7 +349,25 @@ const StyleItemOuter = (id: string): CSSProperties => {
   const layout = getItemLayout(id)
   if (!layout) return EMPTY_ITEM_STYLE
 
-  const dragging = dragState.value?.id === id ? dragState.value : null
+  const state = dragState.value
+  const isActiveDrag = state?.id === id && dragReleasingId.value !== id
+  const isRelease = dragReleasingId.value === id && state?.id === id
+
+  if (isActiveDrag || isRelease) {
+    const useSlotSize = Boolean(isRelease && state.useSlotSize)
+    const w = useSlotSize ? layout.w : state.frozenW
+    const h = useSlotSize ? layout.h : state.frozenH
+    const offsetX = useSlotSize ? 0 : state.offsetX
+    const offsetY = useSlotSize ? 0 : state.offsetY
+
+    return {
+      width: `${w}px`,
+      height: `${h}px`,
+      transform: `translate3d(${layout.x + offsetX}px, ${layout.y + offsetY}px, 0)`
+    }
+  }
+
+  const dragging = state?.id === id ? state : null
   const x = layout.x + (dragging?.offsetX ?? 0)
   const y = layout.y + (dragging?.offsetY ?? 0)
 
@@ -450,12 +481,23 @@ const finishDrag = () => {
 
   if (dragStarted && state) {
     suppressClickAfterDrag = true
+    syncLayout()
     beginLayoutTransition()
     dragReleasingId.value = state.id
-    dragState.value = { ...state, offsetX: 0, offsetY: 0 }
+
+    const releaseToken = dragReleaseToken
+    const releasingId = state.id
+
+    requestAnimationFrame(() => {
+      if (dragReleaseToken !== releaseToken) return
+      if (dragState.value?.id !== releasingId) return
+      dragState.value = { ...state, offsetX: 0, offsetY: 0, useSlotSize: true }
+    })
 
     window.clearTimeout(dragReleaseTimer)
     dragReleaseTimer = window.setTimeout(() => {
+      if (dragReleaseToken !== releaseToken) return
+      if (dragState.value?.id !== releasingId) return
       dragReleasingId.value = undefined
       dragState.value = null
       dropTargetId.value = undefined
@@ -536,6 +578,9 @@ const onDocumentPointerUp = (event: PointerEvent) => {
 const onItemPointerDown = (event: PointerEvent, item: GridItem) => {
   if (!props.sortable || item.sticky || event.button !== 0) return
 
+  cancelDragRelease()
+  cleanupDragListeners()
+
   const content = pr_adaptive_grid_content_ref.value
   const layout = getItemLayout(item.id)
   if (!content || !layout) return
@@ -552,7 +597,9 @@ const onItemPointerDown = (event: PointerEvent, item: GridItem) => {
     grabOffsetX: pointerX - layout.x,
     grabOffsetY: pointerY - layout.y,
     offsetX: 0,
-    offsetY: 0
+    offsetY: 0,
+    frozenW: layout.w,
+    frozenH: layout.h
   }
   dropTargetId.value = undefined
   liveSwapPartnerId = undefined
@@ -759,6 +806,7 @@ watch(
 )
 
 onBeforeUnmount(() => {
+  cancelDragRelease()
   finishDrag()
   cancelAnimationFrame(raf)
   cancelAnimationFrame(scrollRaf)
@@ -861,17 +909,16 @@ onBeforeUnmount(() => {
   transition: none !important;
 }
 
-.pr-adaptive-grid-item-dragging {
+.pr-adaptive-grid-item-dragging,
+.pr-adaptive-grid-item-dragging.pr-adaptive-grid-item-layout-anim {
   z-index: 20;
   cursor: grabbing;
-  will-change: transform, width, height;
-  transition:
-    transform 0s linear,
-    width var(--ag-duration-size) var(--ag-ease-size),
-    height var(--ag-duration-size) var(--ag-ease-size);
+  will-change: transform;
+  transition: transform 0s linear, width 0s linear, height 0s linear;
 }
 
-.pr-adaptive-grid-item-dragging-release {
+.pr-adaptive-grid-item-dragging-release,
+.pr-adaptive-grid-item-dragging-release.pr-adaptive-grid-item-layout-anim {
   z-index: 20;
   cursor: grabbing;
   will-change: transform, width, height;
