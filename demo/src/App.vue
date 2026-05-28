@@ -27,7 +27,7 @@
   </div>
 </template>
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { PrAdaptiveGrid } from '../../src/index.ts'
 import type { GridItem, GridReorderPayload, PrAdaptiveGridExpose } from '../../src/index.ts'
 import { getLayout } from './getLayout'
@@ -127,6 +127,11 @@ const shuffleArray = <T,>(arr: T[]): T[] => {
 const shuffleItems = () => {
   if (currentIds.value.length <= 1) return
 
+  gridRef.value?.recordDebug('demo:shuffle:click', {
+    scrollTop: document.querySelector('.pr-adaptive-grid')?.scrollTop ?? 0,
+    beforeIds: [...currentIds.value]
+  })
+
   gridRef.value?.settleActiveAnimations()
 
   let shuffled = shuffleArray(currentIds.value)
@@ -134,9 +139,22 @@ const shuffleItems = () => {
     shuffled = [...currentIds.value].reverse()
   }
 
+  gridRef.value?.recordDebug('demo:shuffle:applyLayout', { afterIds: shuffled })
+
   currentIds.value = shuffled
   applyLayout(shuffled, layoutMode.value)
 }
+
+onMounted(() => {
+  if (!import.meta.env.DEV) return
+
+  ;(window as Window & { __agDebug?: { start: () => void; end: () => string } }).__agDebug = {
+    start: () => {
+      gridRef.value?.startDebugCapture()
+    },
+    end: () => gridRef.value?.endDebugCapture() ?? '{"error":"grid not ready"}'
+  }
+})
 
 const init = () => {
   pinId.value = undefined

@@ -54,6 +54,29 @@ export interface GridReorderPayload {
 export interface PrAdaptiveGridExpose {
   /** 结束拖动/过渡动画并无动画同步到当前布局，便于 pin 等大幅布局变更 */
   settleActiveAnimations: () => void
+  /** 开始采集布局诊断日志（开发环境） */
+  startDebugCapture: () => void
+  /** 结束采集、下载 JSON 文件并返回 JSON 字符串 */
+  endDebugCapture: () => string
+  /** 写入一条外部诊断日志（如 demo shuffle） */
+  recordDebug: (event: string, data?: Record<string, unknown>) => void
+}
+
+/** 布局诊断日志条目 */
+export interface AgDebugEntry {
+  seq: number
+  t: number
+  event: string
+  data: Record<string, unknown>
+}
+
+/** 布局诊断完整报告 */
+export interface AgDebugReport {
+  startedAt: number
+  endedAt: number
+  durationMs: number
+  entryCount: number
+  entries: AgDebugEntry[]
 }
 
 /** @deprecated 使用 GridItem */

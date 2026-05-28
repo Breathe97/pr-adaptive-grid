@@ -1,11 +1,5 @@
 <template>
-  <div
-    ref="pr_adaptive_grid_ref"
-    class="pr-adaptive-grid"
-    :style="ScrollContainerStyle"
-    @scroll="onScroll"
-    @click.capture="onGridClickCapture"
-  >
+  <div ref="pr_adaptive_grid_ref" class="pr-adaptive-grid" :style="ScrollContainerStyle" @scroll="onScroll" @click.capture="onGridClickCapture">
     <div ref="pr_adaptive_grid_content_ref" class="pr-adaptive-grid-content" :style="ContainerStyle">
       <div v-for="item in list" :key="`span-${item.id}`" class="pr-adaptive-grid-item-span" :data-item-id="item.id" :style="ItemSpanStyle(item)" />
       <div
@@ -17,21 +11,26 @@
           'pr-adaptive-grid-item-sticky': item.sticky,
           'pr-adaptive-grid-item-layout-anim': layoutTransitionActive && !enteringItemIds.has(item.id),
           'pr-adaptive-grid-item-enter-host': enteringItemIds.has(item.id),
-          'pr-adaptive-grid-item-no-transition':
-            scrollTransitionDisabled || (suppressTransition && !enteringItemIds.has(item.id)),
+          'pr-adaptive-grid-item-no-transition': (scrollTransitionDisabled && !layoutTransitionActive) || (suppressTransition && !enteringItemIds.has(item.id)),
           'pr-adaptive-grid-item-dragging': dragState?.id === item.id && dragReleasingId !== item.id,
           'pr-adaptive-grid-item-dragging-release': dragReleasingId === item.id,
           'pr-adaptive-grid-item-drop-target': dropTargetId === item.id
         }"
         :style="StyleItemOuter(item.id)"
       >
-        <div
-          class="pr-adaptive-grid-item-inner"
-          :class="{ 'pr-adaptive-grid-item-enter': enteringItemIds.has(item.id) }"
-          :style="StyleItemInner(item.id)"
-          @pointerdown="(event) => onItemPointerDown(event, item)"
-        >
+        <div class="pr-adaptive-grid-item-inner" :class="{ 'pr-adaptive-grid-item-enter': enteringItemIds.has(item.id) }" :style="StyleItemInner(item.id)" @pointerdown="(event) => onItemPointerDown(event, item)">
           <slot :item="item" />
+        </div>
+      </div>
+      <div
+        v-for="ghost in leavingItems"
+        :key="`leaving-${ghost.item.id}`"
+        class="pr-adaptive-grid-item pr-adaptive-grid-item-leaving"
+        :data-item-id="ghost.item.id"
+        :style="StyleLeavingItemOuter(ghost)"
+      >
+        <div class="pr-adaptive-grid-item-inner" :style="StyleLeavingItemInner(ghost.item.id)">
+          <slot :item="ghost.item" />
         </div>
       </div>
     </div>
@@ -94,6 +93,13 @@ const pr_adaptive_grid_content_ref = ref<HTMLElement>()
 /** 首屏按最多 4 行均分容器高度（与 mode2 左侧 fullId 占 4 行一致） */
 const FIRST_SCREEN_ROWS = 4
 const LAYOUT_TRANSITION_MS = 850
+const ITEM_FADE_TRANSITION_MS = 1200
+const ITEM_ANIM_STAGGER_MS = 300
+
+const delay = (ms: number) =>
+  new Promise<void>((resolve) => {
+    window.setTimeout(resolve, ms)
+  })
 
 const containerViewportHeight = ref(0)
 const layoutTransitionActive = ref(false)
@@ -104,8 +110,126 @@ const previousListLength = ref(0)
 
 const contentLayoutMap = reactive(new Map<string, GridLayoutRect>())
 const stickyOffsetMap = reactive(new Map<string, GridLayoutRect>())
+
+/** 开发环境布局诊断：仅 start/end 之间采集，结束自动下载 JSON */
+const AG_DEBUG = import.meta.env.DEV
+let agDebugSeq = 0
+let agDebugCapturing = false
+let agDebugStartedAt = 0
+const agDebugBuffer: Array<{ seq: number; t: number; event: string; data: Record<string, unknown> }> = []
+
+const agLog = (event: string, data?: Record<string, unknown>) => {
+  if (!AG_DEBUG || !agDebugCapturing) return
+  agDebugSeq += 1
+  agDebugBuffer.push({
+    seq: agDebugSeq,
+    t: Math.round(performance.now()),
+    event,
+    data: data ?? {}
+  })
+}
+
+const recordDebug = (event: string, data?: Record<string, unknown>) => {
+  agLog(event, data)
+}
+
+const downloadDebugJson = (json: string) => {
+  const filename = `pr-adaptive-grid-debug-${new Date().toISOString().replace(/[:.]/g, '-')}.json`
+  const blob = new Blob([json], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  anchor.click()
+  URL.revokeObjectURL(url)
+  return filename
+}
+
+const startDebugCapture = () => {
+  if (!AG_DEBUG) return
+  agDebugCapturing = true
+  agDebugBuffer.length = 0
+  agDebugSeq = 0
+  agDebugStartedAt = performance.now()
+  agLog('debugCapture:start', { startedAt: Math.round(agDebugStartedAt) })
+}
+
+const endDebugCapture = (): string => {
+  if (!AG_DEBUG) return '{}'
+
+  agLog('debugCapture:end', getDebugFlags())
+  agDebugCapturing = false
+
+  const endedAt = performance.now()
+  const report = {
+    startedAt: Math.round(agDebugStartedAt),
+    endedAt: Math.round(endedAt),
+    durationMs: Math.round(endedAt - agDebugStartedAt),
+    entryCount: agDebugBuffer.length,
+    entries: [...agDebugBuffer]
+  }
+  const json = JSON.stringify(report, null, 2)
+  downloadDebugJson(json)
+  return json
+}
+
+const getDebugFlags = () => ({
+  layoutInitialized: layoutInitialized.value,
+  layoutTransitionActive: layoutTransitionActive.value,
+  scrollTransitionDisabled: scrollTransitionDisabled.value,
+  suppressTransition: suppressTransition.value,
+  dragStarted,
+  dragReleasingId: dragReleasingId.value,
+  dragReorderSyncToken,
+  listIds: props.list.map((item) => item.id).join(','),
+  scrollTop: pr_adaptive_grid_ref.value?.scrollTop ?? 0
+})
+
+const captureLayoutSnapshot = () => {
+  const snapshot = new Map<string, { x: number; y: number; grid: string }>()
+  for (const item of props.list) {
+    const cached = contentLayoutMap.get(item.id)
+    snapshot.set(item.id, {
+      x: cached ? Math.round(cached.x) : NaN,
+      y: cached ? Math.round(cached.y) : NaN,
+      grid: `${item.x},${item.y}`
+    })
+  }
+  return snapshot
+}
+
+const diffLayoutSnapshot = (before: Map<string, { x: number; y: number; grid: string }>, after: Map<string, { x: number; y: number; grid: string }>) => {
+  const moved: Array<{ id: string; from: string; to: string; dx: number; dy: number; grid: string }> = []
+  for (const [id, next] of after) {
+    const prev = before.get(id)
+    if (!prev) continue
+    const dx = next.x - prev.x
+    const dy = next.y - prev.y
+    if (Math.abs(dx) > 1 || Math.abs(dy) > 1 || prev.grid !== next.grid) {
+      moved.push({
+        id,
+        from: `${prev.x},${prev.y}`,
+        to: `${next.x},${next.y}`,
+        dx,
+        dy,
+        grid: next.grid
+      })
+    }
+  }
+  return moved
+}
 const knownItemIds = new Set<string>()
 const enteringItemIds = reactive(new Set<string>())
+const leavingItemIds = reactive(new Set<string>())
+
+interface LeavingGhost {
+  item: GridItem
+  layout: GridLayoutRect
+}
+
+const leavingItems = ref<LeavingGhost[]>([])
+const previousListById = new Map<string, GridItem>()
+let exitAnimationToken = 0
 
 const DRAG_THRESHOLD = 6
 
@@ -288,7 +412,9 @@ const syncKnownItemIds = () => {
   }
 }
 
-const syncLayout = () => {
+const syncLayout = (debugReason?: string) => {
+  const before = AG_DEBUG ? captureLayoutSnapshot() : null
+
   const rects = measureItemRects()
   rects.forEach((rect, id) => {
     contentLayoutMap.set(id, rect)
@@ -311,6 +437,16 @@ const syncLayout = () => {
     if (synced) {
       dragState.value = synced
     }
+  }
+
+  if (AG_DEBUG && before) {
+    const after = captureLayoutSnapshot()
+    agLog('syncLayout', {
+      reason: debugReason,
+      moved: diffLayoutSnapshot(before, after),
+      canMeasure: rects.size === props.list.length,
+      ...getDebugFlags()
+    })
   }
 }
 
@@ -380,10 +516,7 @@ const StyleItemOuter = (id: string): CSSProperties => {
   }
 }
 
-const getVisualSortIds = (list: GridItem[]): string[] =>
-  [...list]
-    .sort((a, b) => a.y - b.y || a.x - b.x)
-    .map((item) => item.id)
+const getVisualSortIds = (list: GridItem[]): string[] => [...list].sort((a, b) => a.y - b.y || a.x - b.x).map((item) => item.id)
 
 const swapItemsLayout = (fromId: string, toId: string): GridItem[] => {
   const from = props.list.find((item) => item.id === fromId)
@@ -448,17 +581,29 @@ const performLiveSwap = (fromId: string, toId: string) => {
   })
 }
 
-const scheduleDragReorderSync = () => {
+const scheduleTransitionSync = (onComplete?: () => void, reason = 'transition-sync') => {
   const token = ++dragReorderSyncToken
-  beginLayoutTransition()
+  agLog('scheduleTransitionSync:start', { reason, token, ...getDebugFlags() })
+  beginLayoutTransition('scheduleTransitionSync')
 
   requestAnimationFrame(() => {
+    agLog('scheduleTransitionSync:raf1', { reason, token })
     requestAnimationFrame(() => {
-      if (token !== dragReorderSyncToken) return
-      syncLayout()
+      if (token !== dragReorderSyncToken) {
+        agLog('scheduleTransitionSync:cancelled', { reason, token, currentToken: dragReorderSyncToken })
+        return
+      }
+      agLog('scheduleTransitionSync:raf2-run', { reason, token, ...getDebugFlags() })
+      syncLayout(reason)
       syncKnownItemIds()
+      onComplete?.()
+      agLog('scheduleTransitionSync:done', { reason, token, ...getDebugFlags() })
     })
   })
+}
+
+const scheduleDragReorderSync = () => {
+  scheduleTransitionSync(undefined, 'drag-reorder')
 }
 
 const cleanupDragListeners = () => {
@@ -636,6 +781,25 @@ const StyleItemInner = (id: string): CSSProperties => {
   }
 }
 
+const StyleLeavingItemOuter = (ghost: LeavingGhost): CSSProperties => ({
+  width: `${ghost.layout.w}px`,
+  height: `${ghost.layout.h}px`,
+  transform: `translate3d(${ghost.layout.x}px, ${ghost.layout.y}px, 0)`
+})
+
+const StyleLeavingItemInner = (id: string): CSSProperties => ({
+  width: '100%',
+  height: '100%',
+  opacity: leavingItemIds.has(id) ? 1 : 0,
+  transform: leavingItemIds.has(id) ? 'scale(1)' : 'scale(0.5)'
+})
+
+const clearLeavingItems = () => {
+  exitAnimationToken++
+  leavingItems.value = []
+  leavingItemIds.clear()
+}
+
 const updateStickyOnScroll = () => {
   const container = pr_adaptive_grid_ref.value
   if (!container) return
@@ -665,33 +829,100 @@ let raf = 0
 let layoutTransitionTimer = 0
 let scrollTransitionTimer = 0
 
-const beginLayoutTransition = () => {
+const beginLayoutTransition = (reason = 'unknown') => {
+  window.clearTimeout(scrollTransitionTimer)
+  scrollTransitionDisabled.value = false
   layoutTransitionActive.value = true
   window.clearTimeout(layoutTransitionTimer)
   layoutTransitionTimer = window.setTimeout(() => {
     layoutTransitionActive.value = false
+    agLog('layoutTransition:end', { reason, ...getDebugFlags() })
   }, LAYOUT_TRANSITION_MS)
+  agLog('layoutTransition:start', { reason, durationMs: LAYOUT_TRANSITION_MS, ...getDebugFlags() })
 }
 
 const playEnterAnimation = async (newItems: GridItem[]) => {
   if (!newItems.length) return
 
-  // 先绘制 entering 初始态（opacity:0 scale:0.5）
   await nextTick()
   void pr_adaptive_grid_content_ref.value?.offsetHeight
   await new Promise<void>((resolve) => {
     requestAnimationFrame(() => resolve())
   })
 
-  // 再切换到最终态，触发 inner 的 opacity/transform 过渡
   newItems.forEach((item) => enteringItemIds.delete(item.id))
 }
 
-const scheduleSync = (options?: { animate?: boolean }) => {
+const triggerExitFade = async (ghosts: LeavingGhost[]) => {
+  if (!ghosts.length) return
+
+  await nextTick()
+  void pr_adaptive_grid_content_ref.value?.offsetHeight
+  await new Promise<void>((resolve) => {
+    requestAnimationFrame(() => resolve())
+  })
+
+  ghosts.forEach(({ item }) => leavingItemIds.delete(item.id))
+}
+
+const cleanupExitGhosts = async (ghosts: LeavingGhost[], token: number, fadeStartedAt: number) => {
+  const remaining = Math.max(0, ITEM_FADE_TRANSITION_MS - (performance.now() - fadeStartedAt))
+  await delay(remaining)
+
+  if (token !== exitAnimationToken) return
+
+  const removeIds = new Set(ghosts.map(({ item }) => item.id))
+  leavingItems.value = leavingItems.value.filter((ghost) => !removeIds.has(ghost.item.id))
+}
+
+const runRepositionThenEnter = (newItems: GridItem[], reason: string) => {
+  scheduleTransitionSync(() => {
+    previousListLength.value = props.list.length
+    finishInitialLayout()
+    void (async () => {
+      await delay(ITEM_ANIM_STAGGER_MS)
+      await playEnterAnimation(newItems)
+    })()
+  }, `${reason}:add-reposition`)
+}
+
+const runExitThenReposition = async (ghosts: LeavingGhost[], reason: string) => {
+  if (!ghosts.length) {
+    scheduleTransitionSync(() => {
+      previousListLength.value = props.list.length
+      finishInitialLayout()
+    }, `${reason}:remove-reorder`)
+    return
+  }
+
+  const token = ++exitAnimationToken
+  const fadeStartedAt = performance.now()
+  await triggerExitFade(ghosts)
+
+  if (token !== exitAnimationToken) return
+
+  await delay(ITEM_ANIM_STAGGER_MS)
+
+  if (token !== exitAnimationToken) return
+
+  scheduleTransitionSync(() => {
+    previousListLength.value = props.list.length
+    finishInitialLayout()
+  }, `${reason}:remove-reorder`)
+
+  void cleanupExitGhosts(ghosts, token, fadeStartedAt)
+}
+
+const scheduleSync = (options?: { animate?: boolean; reason?: string }) => {
+  const reason = options?.reason ?? 'unspecified'
+
   if (dragStarted && dragState.value) {
+    agLog('scheduleSync:redirect-drag', { reason, ...getDebugFlags() })
     scheduleDragReorderSync()
     return
   }
+
+  agLog('scheduleSync:queued', { reason, animate: options?.animate, ...getDebugFlags() })
 
   cancelAnimationFrame(raf)
   raf = requestAnimationFrame(() => {
@@ -699,8 +930,8 @@ const scheduleSync = (options?: { animate?: boolean }) => {
       measureContainer()
       await nextTick()
 
-      const runSync = () => {
-        syncLayout()
+      const runSync = (syncReason: string) => {
+        syncLayout(syncReason)
         syncKnownItemIds()
         previousListLength.value = props.list.length
         finishInitialLayout()
@@ -709,10 +940,21 @@ const scheduleSync = (options?: { animate?: boolean }) => {
       const isIntroSingleItem = props.list.length === 1 && previousListLength.value === 0
       const shouldAnimate = Boolean(options?.animate && layoutInitialized.value && !isIntroSingleItem)
 
+      agLog('scheduleSync:run', {
+        reason,
+        shouldAnimate,
+        isIntroSingleItem,
+        newItemCount: props.list.filter((item) => !knownItemIds.has(item.id)).length,
+        ...getDebugFlags()
+      })
+
       if (shouldAnimate) {
         const newItems = props.list.filter((item) => !knownItemIds.has(item.id))
+        const removedIds = [...knownItemIds].filter((id) => !props.list.some((item) => item.id === id))
+        const hasRemoval = removedIds.length > 0
 
         if (newItems.length > 0) {
+          agLog('scheduleSync:path-add-items', { reason, newIds: newItems.map((item) => item.id) })
           for (const item of newItems) {
             enteringItemIds.add(item.id)
           }
@@ -720,26 +962,25 @@ const scheduleSync = (options?: { animate?: boolean }) => {
 
           const repositionExisting = knownItemIds.size > 0
           if (repositionExisting) {
-            beginLayoutTransition()
-            requestAnimationFrame(() => {
-              void (async () => {
-                syncLayout()
-                syncKnownItemIds()
-                previousListLength.value = props.list.length
-                finishInitialLayout()
-                await playEnterAnimation(newItems)
-              })()
-            })
+            runRepositionThenEnter(newItems, reason)
           } else {
-            runSync()
+            runSync(`${reason}:add-only`)
             void playEnterAnimation(newItems)
           }
+        } else if (hasRemoval) {
+          agLog('scheduleSync:path-remove-reorder', { reason, removedIds, ...getDebugFlags() })
+          const ghosts = leavingItems.value.filter((ghost) => removedIds.includes(ghost.item.id))
+          void runExitThenReposition(ghosts, reason)
         } else {
-          beginLayoutTransition()
-          requestAnimationFrame(runSync)
+          agLog('scheduleSync:path-pure-reorder', { reason, ...getDebugFlags() })
+          scheduleTransitionSync(() => {
+            previousListLength.value = props.list.length
+            finishInitialLayout()
+          }, `${reason}:pure-reorder`)
         }
       } else {
-        runSync()
+        agLog('scheduleSync:path-no-animate', { reason, ...getDebugFlags() })
+        runSync(`${reason}:no-animate`)
       }
     })()
   })
@@ -752,28 +993,53 @@ const onScroll = () => {
 
   if (dragStarted) return
 
+  if (!scrollTransitionDisabled.value) {
+    agLog('scroll:disable-transition', { scrollTop: pr_adaptive_grid_ref.value?.scrollTop ?? 0 })
+  }
+
   scrollTransitionDisabled.value = true
   window.clearTimeout(scrollTransitionTimer)
 
   scrollTransitionTimer = window.setTimeout(() => {
     scrollTransitionDisabled.value = false
+    agLog('scroll:enable-transition', { scrollTop: pr_adaptive_grid_ref.value?.scrollTop ?? 0, ...getDebugFlags() })
   }, 80)
 }
 
 let observer: ResizeObserver
 
 onMounted(async () => {
-  observer = new ResizeObserver(() => scheduleSync())
+  observer = new ResizeObserver(() => scheduleSync({ reason: 'resize-observer' }))
   await nextTick()
   if (pr_adaptive_grid_ref.value) observer.observe(pr_adaptive_grid_ref.value)
   if (pr_adaptive_grid_content_ref.value) observer.observe(pr_adaptive_grid_content_ref.value)
-  scheduleSync()
+  scheduleSync({ reason: 'mount' })
 })
 
 watch(
   () => props.list.map((item) => item.id).join(','),
-  () => {
+  (next, prev) => {
     if (!layoutInitialized.value) return
+
+    agLog('watch:ids-pre', { prev, next })
+
+    const nextIds = next ? next.split(',').filter(Boolean) : []
+    const prevIds = prev ? prev.split(',').filter(Boolean) : []
+    const nextSet = new Set(nextIds)
+
+    for (const id of prevIds) {
+      if (nextSet.has(id)) continue
+
+      const item = previousListById.get(id)
+      const layout = contentLayoutMap.get(id)
+      if (!item || !layout) continue
+
+      leavingItems.value.push({
+        item: { ...item },
+        layout: { ...layout }
+      })
+      leavingItemIds.add(id)
+    }
 
     for (const item of props.list) {
       if (!knownItemIds.has(item.id)) {
@@ -782,6 +1048,17 @@ watch(
     }
   },
   { flush: 'pre' }
+)
+
+watch(
+  () => props.list,
+  (list) => {
+    previousListById.clear()
+    for (const item of list) {
+      previousListById.set(item.id, { ...item })
+    }
+  },
+  { deep: true, flush: 'post' }
 )
 
 watch(
@@ -799,7 +1076,7 @@ watch(
       scheduleDragReorderSync()
       return
     }
-    scheduleSync({ animate: true })
+    scheduleSync({ animate: true, reason: 'props-watch' })
   },
   { deep: true }
 )
@@ -808,7 +1085,7 @@ watch(
   () => [props.padding, props.itemHeight, containerViewportHeight.value],
   async () => {
     await nextTick()
-    scheduleSync({ animate: false })
+    scheduleSync({ animate: false, reason: 'dimension-watch' })
   }
 )
 
@@ -825,6 +1102,8 @@ onBeforeUnmount(() => {
 
 /** 结束拖动/松手过渡/进行中的布局 sync，并无动画对齐当前 DOM */
 const settleActiveAnimations = () => {
+  agLog('settleActiveAnimations:start', getDebugFlags())
+
   cancelDragRelease()
   cleanupDragListeners()
   dragPointerTarget = null
@@ -839,17 +1118,23 @@ const settleActiveAnimations = () => {
   cancelAnimationFrame(scrollRaf)
   window.clearTimeout(layoutTransitionTimer)
   layoutTransitionActive.value = false
+  clearLeavingItems()
 
   const restoreTransition = suppressTransition.value
   suppressTransition.value = true
-  syncLayout()
+  syncLayout('settleActiveAnimations')
   syncKnownItemIds()
   suppressTransition.value = restoreTransition
   void pr_adaptive_grid_content_ref.value?.offsetHeight
+
+  agLog('settleActiveAnimations:done', getDebugFlags())
 }
 
 defineExpose({
-  settleActiveAnimations
+  settleActiveAnimations,
+  startDebugCapture,
+  endDebugCapture,
+  recordDebug
 })
 </script>
 
@@ -861,6 +1146,9 @@ defineExpose({
   --ag-ease-fade: cubic-bezier(0.32, 0.72, 0, 1);
   --ag-duration-position: 800ms;
   --ag-duration-size: 600ms;
+  --ag-duration-enter: 1200ms;
+  --ag-duration-exit: 1200ms;
+  --ag-duration-enter-size: 900ms;
   position: relative;
   width: 100%;
   height: 100%;
@@ -910,14 +1198,26 @@ defineExpose({
 
 .pr-adaptive-grid-item-enter-host {
   transition:
-    width var(--ag-duration-size) var(--ag-ease-size),
-    height var(--ag-duration-size) var(--ag-ease-size);
+    width var(--ag-duration-enter-size) var(--ag-ease-size),
+    height var(--ag-duration-enter-size) var(--ag-ease-size);
 }
 
 .pr-adaptive-grid-item-enter-host .pr-adaptive-grid-item-inner {
   transition:
-    transform var(--ag-duration-position) var(--ag-ease-fade),
-    opacity var(--ag-duration-position) var(--ag-ease-fade);
+    transform var(--ag-duration-enter) var(--ag-ease-fade),
+    opacity var(--ag-duration-enter) var(--ag-ease-fade);
+}
+
+.pr-adaptive-grid-item-leaving {
+  z-index: 15;
+  pointer-events: none;
+  transition: none;
+}
+
+.pr-adaptive-grid-item-leaving .pr-adaptive-grid-item-inner {
+  transition:
+    transform var(--ag-duration-exit) var(--ag-ease-fade),
+    opacity var(--ag-duration-exit) var(--ag-ease-fade);
 }
 
 .pr-adaptive-grid-item-layout-anim {
@@ -950,7 +1250,10 @@ defineExpose({
   z-index: 20;
   cursor: grabbing;
   will-change: transform;
-  transition: transform 0s linear, width 0s linear, height 0s linear;
+  transition:
+    transform 0s linear,
+    width 0s linear,
+    height 0s linear;
 }
 
 .pr-adaptive-grid-item-dragging-release,
