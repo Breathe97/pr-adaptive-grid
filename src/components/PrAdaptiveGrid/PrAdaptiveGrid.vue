@@ -39,7 +39,7 @@ const props = defineProps({
     type: Number,
     default: undefined
   },
-  /** 首屏等高行数（如 mode2 为 12，则行高 = 视口高/12，12 行铺满一屏） */
+  /** 首屏等高行数（如 mode2 为 12，行高 = (视口高 - gap) / 12） */
   firstScreenRowSplit: {
     type: Number,
     default: undefined
@@ -74,18 +74,16 @@ const ScrollContainerStyle = computed(() => {
   }
 })
 
-/** 未传 itemHeight 时：首屏高度 / firstScreenRowSplit（或 min(rows,4)） */
+/** 未传 itemHeight 时：(视口高度 - 行间距) / 首屏行数 */
 const resolvedRowHeight = computed(() => {
   if (props.itemHeight != null && props.itemHeight > 0) {
     return props.itemHeight
   }
   if (containerViewportHeight.value <= 0 || props.rows <= 0) return 0
 
-  const split =
-    props.firstScreenRowSplit != null && props.firstScreenRowSplit > 0
-      ? props.firstScreenRowSplit
-      : Math.min(props.rows, FIRST_SCREEN_ROWS)
-  return containerViewportHeight.value / split
+  const split = props.firstScreenRowSplit != null && props.firstScreenRowSplit > 0 ? props.firstScreenRowSplit : Math.min(props.rows, FIRST_SCREEN_ROWS)
+  const totalGap = Math.max(0, split - 1) * props.gap
+  return (containerViewportHeight.value - totalGap) / split
 })
 
 const ContainerStyle = computed(() => {
@@ -306,7 +304,8 @@ onBeforeUnmount(() => {
   pointer-events: none;
   min-width: 0;
   min-height: 0;
-  box-shadow: 0 0 0 1px rgba(128, 128, 128, 0.5) inset;
+  box-shadow: 0 0 1px 0 red inset;
+  z-index: 2;
 }
 .pr-adaptive-grid-item {
   position: absolute;
@@ -314,13 +313,15 @@ onBeforeUnmount(() => {
   top: 0;
   z-index: 1;
   box-sizing: border-box;
-  background-color: rgba(0, 43, 16, 0.5);
+  background-color: rgba(0, 95, 158, 0.1);
   transition:
     transform 300ms ease-out,
     width 300ms ease-out,
     height 300ms ease-out;
   will-change: transform;
+  z-index: -1;
 }
+
 .pr-adaptive-grid-item-sticky {
   z-index: 2;
   transition:

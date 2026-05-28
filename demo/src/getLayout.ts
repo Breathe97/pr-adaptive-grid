@@ -4,11 +4,15 @@ export interface LayoutResult {
   cols: number
   rows: number
   list: GridItem[]
-  /** mode2 首屏等高分行数（12 行铺满一屏） */
+  /** 首屏等高行数（mode1 最多 3 行，mode2 为 12） */
   firstScreenRowSplit?: number
 }
 
 export type LayoutMode = '1' | '2'
+
+/** mode1 首屏最多 3 行、5 列 */
+const MODE1_MAX_COLS = 5
+const MODE1_FIRST_SCREEN_ROWS = 3
 
 /** 12 列网格：左侧 8 列（2/3），右侧 4 列（1/3） */
 const MODE2_COLS = 12
@@ -26,14 +30,19 @@ const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b))
 const lcm = (a: number, b: number): number => (a * b) / gcd(a, b)
 
 /**
- * mode 1 行数：N≤3 为 1 行；否则 r=⌊√N⌋，
+ * mode1 行数：N≤3 为 1 行；否则 r=⌊√N⌋，
  * 若 r≥4 且 N>r(r+1) 则 r+1 行，否则 max(2,r) 行。
+ * 每行最多 MODE1_MAX_COLS 个（rows ≥ ceil(n/5)）。
  */
 const getRowsMode1 = (n: number): number => {
+  if (n <= 0) return 1
   if (n <= 3) return 1
+
   const r = Math.floor(Math.sqrt(n))
-  if (r >= 4 && n > r * (r + 1)) return r + 1
-  return Math.max(2, r)
+  let rows = r >= 4 && n > r * (r + 1) ? r + 1 : Math.max(2, r)
+  rows = Math.max(rows, Math.ceil(n / MODE1_MAX_COLS))
+
+  return rows
 }
 
 /**
@@ -49,12 +58,13 @@ const getRowCountsMode1 = (n: number): number[] => {
   return Array.from({ length: rowCount }, (_, i) => base + (i >= rowCount - remainder ? 1 : 0))
 }
 
-const getGridCols = (rowCounts: number[]): number => {
+/** 各行 item 数的最小公倍数，保证同行等分 */
+const getGridColsMode1 = (rowCounts: number[]): number => {
   if (!rowCounts.length) return 1
   return rowCounts.reduce((a, b) => lcm(a, b))
 }
 
-const buildRow = (y: number, count: number, gridCols: number, ids: string[], offset: number): GridItem[] => {
+const buildRowMode1 = (y: number, count: number, gridCols: number, ids: string[], offset: number): GridItem[] => {
   const w = gridCols / count
   return Array.from({ length: count }, (_, i) => ({
     id: ids[offset + i],
@@ -65,11 +75,11 @@ const buildRow = (y: number, count: number, gridCols: number, ids: string[], off
   }))
 }
 
-const buildList = (rowCounts: number[], gridCols: number, ids: string[]): GridItem[] => {
+const buildListMode1 = (rowCounts: number[], gridCols: number, ids: string[]): GridItem[] => {
   const items: GridItem[] = []
   let offset = 0
   rowCounts.forEach((count, index) => {
-    items.push(...buildRow(index + 1, count, gridCols, ids, offset))
+    items.push(...buildRowMode1(index + 1, count, gridCols, ids, offset))
     offset += count
   })
   return items
@@ -82,11 +92,16 @@ const getLayoutMode1 = (ids: string[]): LayoutResult => {
   }
 
   const rowCounts = getRowCountsMode1(n)
-  const cols = getGridCols(rowCounts)
+  const cols = getGridColsMode1(rowCounts)
   const rows = rowCounts.length
-  const list = buildList(rowCounts, cols, ids)
+  const list = buildListMode1(rowCounts, cols, ids)
 
-  return { cols, rows, list }
+  return {
+    cols,
+    rows,
+    list,
+    firstScreenRowSplit: Math.min(rows, MODE1_FIRST_SCREEN_ROWS)
+  }
 }
 
 const fillTwosThenTrim = (rowCount: number, total: number): number[] => {
