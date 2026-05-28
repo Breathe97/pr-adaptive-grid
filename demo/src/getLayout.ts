@@ -158,17 +158,25 @@ const buildRightSimple = (ids: string[]): GridItem[] => {
   return items
 }
 
-/** n=5~8 首屏 12 行内排布；n>8 按逻辑行规律且每逻辑行 h=4 */
-const buildRightPattern = (ids: string[]): GridItem[] => {
-  const n = ids.length
-  const rowCounts = getRightRowCounts(n)
-  const bandCount = rowCounts.length
-  const bandHeights =
-    n <= 8 ? distributeRows(MODE2_FULL_ROWS, bandCount) : Array(bandCount).fill(MODE2_RIGHT_CELL_ROWS)
+/** pin 场景：首屏右侧固定 4 排（12 行均分）；R≥9 时首屏 7/8 交替；溢出排与首屏同行高 */
+const MODE2_PIN_FIRST_SCREEN_BANDS = 4
+const MODE2_PIN_OVERFLOW_THRESHOLD = 9
 
-  const items: GridItem[] = []
-  let y = 1
-  let offset = 0
+/** R 为奇数 → 首屏 7 个，R 为偶数 → 首屏 8 个（R≥9） */
+const getPinFirstScreenCount = (rightCount: number): number => {
+  return rightCount % 2 === 1 ? 7 : 8
+}
+
+const appendRightBands = (
+  items: GridItem[],
+  ids: string[],
+  rowCounts: number[],
+  bandHeights: number[],
+  startOffset: number,
+  startY: number
+): number => {
+  let y = startY
+  let offset = startOffset
 
   rowCounts.forEach((count, bandIndex) => {
     const bandH = bandHeights[bandIndex]
@@ -188,13 +196,57 @@ const buildRightPattern = (ids: string[]): GridItem[] => {
     offset += count
   })
 
+  return y
+}
+
+/**
+ * pin + 右侧 R≥9：首屏 4 排 7/8 交替，第 5 排起每排最多 2 个，行高与首屏一致
+ * 例 R=9 → 7+2；R=10 → 8+2；R=11 → 7+2+2；R=12 → 8+2+2
+ */
+const buildRightLayoutWithPin = (ids: string[]): GridItem[] => {
+  const R = ids.length
+  const items: GridItem[] = []
+
+  const firstScreenCount = getPinFirstScreenCount(R)
+  const firstRowCounts = getRightRowCounts(firstScreenCount)
+  const firstBandHeights = distributeRows(MODE2_FULL_ROWS, MODE2_PIN_FIRST_SCREEN_BANDS)
+  const overflowBandHeight = firstBandHeights[0]
+
+  let y = appendRightBands(items, ids, firstRowCounts, firstBandHeights, 0, 1)
+
+  let offset = firstScreenCount
+  let remaining = R - firstScreenCount
+
+  while (remaining > 0) {
+    const rowCount = Math.min(2, remaining)
+    y = appendRightBands(items, ids, [rowCount], [overflowBandHeight], offset, y)
+    offset += rowCount
+    remaining -= rowCount
+  }
+
+  return items
+}
+
+/** n=5~8 首屏 12 行内排布；n>8 按逻辑行规律且每逻辑行 h=4 */
+const buildRightPattern = (ids: string[]): GridItem[] => {
+  const n = ids.length
+  const rowCounts = getRightRowCounts(n)
+  const bandCount = rowCounts.length
+  const bandHeights =
+    n <= 8 ? distributeRows(MODE2_FULL_ROWS, bandCount) : Array(bandCount).fill(MODE2_RIGHT_CELL_ROWS)
+
+  const items: GridItem[] = []
+  appendRightBands(items, ids, rowCounts, bandHeights, 0, 1)
   return items
 }
 
 /** n=1~2：纵向均分 12 行；n≥3：按逻辑行并排 */
-const buildRightLayout = (ids: string[]): GridItem[] => {
+const buildRightLayout = (ids: string[], withPin = false): GridItem[] => {
   const n = ids.length
   if (n === 0) return []
+  if (withPin && n >= MODE2_PIN_OVERFLOW_THRESHOLD) {
+    return buildRightLayoutWithPin(ids)
+  }
   if (n <= 2) return buildRightSimple(ids)
   return buildRightPattern(ids)
 }
@@ -223,7 +275,7 @@ const getLayoutMode2 = (ids: string[], fullId?: string): LayoutResult => {
     })
   }
 
-  const rightItems = buildRightLayout(rightIds)
+  const rightItems = buildRightLayout(rightIds, hasFull)
   list.push(...rightItems)
 
   const rightRows = getRightLayoutRows(rightItems)
