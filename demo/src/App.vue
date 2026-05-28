@@ -66,7 +66,6 @@ const applyLayout = (ids: string[], mode: '1' | '2' = '1') => {
   // 开启 pin 时固定走 mode2（左侧 fullId + 右侧列表）
   const effectiveMode: '1' | '2' = pinId.value ? '2' : mode
   const layout = getLayout(ids, effectiveMode, pinId.value ? { fullId: pinId.value } : undefined)
-  console.log('\x1b[38;2;0;151;255m%c%s\x1b[0m', 'color:#0097ff;', `------->Breathe: layout`, layout)
   cols.value = layout.cols
   rows.value = layout.rows
   firstScreenRowSplit.value = layout.firstScreenRowSplit
