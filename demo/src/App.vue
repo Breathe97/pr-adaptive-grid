@@ -3,12 +3,7 @@
     <div class="grid-wrap">
       <PrAdaptiveGrid :list="list" :cols="cols" :rows="rows" :gap="8" :first-screen-row-split="firstScreenRowSplit">
         <template #default="{ item }">
-          <div
-            class="item"
-            :class="{ 'item-pinned': item.sticky }"
-            :style="{ backgroundColor: getItemColor(item.id) }"
-            @click="() => setPin(item)"
-          >
+          <div class="item" :class="{ 'item-pinned': item.sticky }" :style="{ backgroundColor: getItemColor(item.id) }" @click="() => setPin(item)">
             <span>{{ item.id }}</span>
             <span class="item-meta">w:{{ item.w }} h:{{ item.h }} @({{ item.x }},{{ item.y }})</span>
           </div>
@@ -134,6 +129,7 @@ init()
   gap: 8px;
   color: red;
   cursor: pointer;
+  border-radius: 12px;
 }
 .item-pinned {
   color: #1677ff;

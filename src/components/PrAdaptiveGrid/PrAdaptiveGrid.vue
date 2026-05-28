@@ -72,7 +72,7 @@ const pr_adaptive_grid_content_ref = ref<HTMLElement>()
 
 /** 首屏按最多 4 行均分容器高度（与 mode2 左侧 fullId 占 4 行一致） */
 const FIRST_SCREEN_ROWS = 4
-const LAYOUT_TRANSITION_MS = 500
+const LAYOUT_TRANSITION_MS = 850
 
 const containerViewportHeight = ref(0)
 const layoutTransitionActive = ref(false)
@@ -476,7 +476,13 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+/* iOS 风格缓动：位移快速启动、末端平滑减速 */
 .pr-adaptive-grid {
+  --ag-ease-position: cubic-bezier(0.22, 1, 0.36, 1);
+  --ag-ease-size: cubic-bezier(0.32, 0.72, 0, 1);
+  --ag-ease-fade: cubic-bezier(0.32, 0.72, 0, 1);
+  --ag-duration-position: 800ms;
+  --ag-duration-size: 600ms;
   position: relative;
   width: 100%;
   height: 100%;
@@ -506,9 +512,9 @@ onBeforeUnmount(() => {
   z-index: 1;
   box-sizing: border-box;
   transition:
-    transform 500ms ease-out,
-    width 300ms ease-out,
-    height 300ms ease-out;
+    transform var(--ag-duration-position) var(--ag-ease-position),
+    width var(--ag-duration-size) var(--ag-ease-size),
+    height var(--ag-duration-size) var(--ag-ease-size);
   will-change: transform;
 }
 
@@ -518,34 +524,34 @@ onBeforeUnmount(() => {
   box-sizing: border-box;
   transform-origin: center center;
   transition:
-    transform 500ms ease-out,
-    opacity 500ms ease-out;
+    transform var(--ag-duration-position) var(--ag-ease-fade),
+    opacity var(--ag-duration-position) var(--ag-ease-fade);
 }
 
 .pr-adaptive-grid-item-enter-host {
   transition:
-    width 300ms ease-out,
-    height 300ms ease-out;
+    width var(--ag-duration-size) var(--ag-ease-size),
+    height var(--ag-duration-size) var(--ag-ease-size);
 }
 
 .pr-adaptive-grid-item-enter-host .pr-adaptive-grid-item-inner {
   transition:
-    transform 500ms ease-out,
-    opacity 500ms ease-out;
+    transform var(--ag-duration-position) var(--ag-ease-fade),
+    opacity var(--ag-duration-position) var(--ag-ease-fade);
 }
 
 .pr-adaptive-grid-item-sticky {
   z-index: 2;
   transition:
-    width 300ms ease-out,
-    height 300ms ease-out;
+    width var(--ag-duration-size) var(--ag-ease-size),
+    height var(--ag-duration-size) var(--ag-ease-size);
 }
 
 .pr-adaptive-grid-item-sticky.pr-adaptive-grid-item-layout-anim {
   transition:
-    transform 500ms ease-out,
-    width 300ms ease-out,
-    height 300ms ease-out;
+    transform var(--ag-duration-position) var(--ag-ease-position),
+    width var(--ag-duration-size) var(--ag-ease-size),
+    height var(--ag-duration-size) var(--ag-ease-size);
 }
 
 .pr-adaptive-grid-item-no-transition {
