@@ -1,4 +1,4 @@
-import type { GridItem } from '../../src/types'
+import type { GridItem } from './types'
 
 export interface LayoutResult {
   cols: number
@@ -167,14 +167,7 @@ const getPinFirstScreenCount = (rightCount: number): number => {
   return rightCount % 2 === 1 ? 7 : 8
 }
 
-const appendRightBands = (
-  items: GridItem[],
-  ids: string[],
-  rowCounts: number[],
-  bandHeights: number[],
-  startOffset: number,
-  startY: number
-): number => {
+const appendRightBands = (items: GridItem[], ids: string[], rowCounts: number[], bandHeights: number[], startOffset: number, startY: number): number => {
   let y = startY
   let offset = startOffset
 
@@ -232,8 +225,7 @@ const buildRightPattern = (ids: string[]): GridItem[] => {
   const n = ids.length
   const rowCounts = getRightRowCounts(n)
   const bandCount = rowCounts.length
-  const bandHeights =
-    n <= 8 ? distributeRows(MODE2_FULL_ROWS, bandCount) : Array(bandCount).fill(MODE2_RIGHT_CELL_ROWS)
+  const bandHeights = n <= 8 ? distributeRows(MODE2_FULL_ROWS, bandCount) : Array(bandCount).fill(MODE2_RIGHT_CELL_ROWS)
 
   const items: GridItem[] = []
   appendRightBands(items, ids, rowCounts, bandHeights, 0, 1)

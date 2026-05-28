@@ -1,15 +1,7 @@
 <template>
   <div id="app">
     <div class="grid-wrap">
-      <PrAdaptiveGrid
-        ref="gridRef"
-        :list="list"
-        :cols="cols"
-        :rows="rows"
-        :gap="8"
-        :first-screen-row-split="firstScreenRowSplit"
-        @reorder="onReorder"
-      >
+      <PrAdaptiveGrid ref="gridRef" :list="list" :cols="cols" :rows="rows" :gap="8" :first-screen-row-split="firstScreenRowSplit" @reorder="onReorder">
         <template #default="{ item }">
           <div class="item" :class="{ 'item-pinned': item.sticky }" :style="{ backgroundColor: getItemColor(item.id) }" @click="() => setPin(item)">
             <span>{{ item.id }}</span>
@@ -28,9 +20,8 @@
 </template>
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { PrAdaptiveGrid } from '../../src/index.ts'
+import { PrAdaptiveGrid, getLayout } from '../../src/index.ts'
 import type { GridItem, GridReorderPayload, PrAdaptiveGridExpose } from '../../src/index.ts'
-import { getLayout } from './getLayout'
 
 const gridRef = ref<PrAdaptiveGridExpose>()
 
@@ -75,6 +66,7 @@ const applyLayout = (ids: string[], mode: '1' | '2' = '1') => {
   // 开启 pin 时固定走 mode2（左侧 fullId + 右侧列表）
   const effectiveMode: '1' | '2' = pinId.value ? '2' : mode
   const layout = getLayout(ids, effectiveMode, pinId.value ? { fullId: pinId.value } : undefined)
+  console.log('\x1b[38;2;0;151;255m%c%s\x1b[0m', 'color:#0097ff;', `------->Breathe: layout`, layout)
   cols.value = layout.cols
   rows.value = layout.rows
   firstScreenRowSplit.value = layout.firstScreenRowSplit
@@ -156,7 +148,6 @@ const shuffleItems = () => {
 
 onMounted(() => {
   if (!import.meta.env.DEV) return
-
   ;(window as Window & { __agDebug?: { start: () => void; end: () => string } }).__agDebug = {
     start: () => {
       gridRef.value?.startDebugCapture()
