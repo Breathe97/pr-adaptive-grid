@@ -1,7 +1,14 @@
 <template>
   <div id="app">
     <div class="grid-wrap">
-      <PrAdaptiveGrid :list="list" :cols="cols" :rows="rows" :gap="8" :first-screen-row-split="firstScreenRowSplit">
+      <PrAdaptiveGrid
+        :list="list"
+        :cols="cols"
+        :rows="rows"
+        :gap="8"
+        :first-screen-row-split="firstScreenRowSplit"
+        @reorder="onReorder"
+      >
         <template #default="{ item }">
           <div class="item" :class="{ 'item-pinned': item.sticky }" :style="{ backgroundColor: getItemColor(item.id) }" @click="() => setPin(item)">
             <span>{{ item.id }}</span>
@@ -20,7 +27,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { PrAdaptiveGrid } from '../../src/index.ts'
-import type { GridItem } from '../../src/index.ts'
+import type { GridItem, GridReorderPayload } from '../../src/index.ts'
 import { getLayout } from './getLayout'
 
 const cols = ref(1)
@@ -76,6 +83,11 @@ const applyLayout = (ids: string[], mode: '1' | '2' = '1') => {
 const setPin = (item: GridItem) => {
   pinId.value = pinId.value === item.id ? undefined : item.id
   applyLayout(currentIds.value, layoutMode.value)
+}
+
+const onReorder = ({ ids }: GridReorderPayload) => {
+  currentIds.value = ids
+  applyLayout(ids, layoutMode.value)
 }
 
 const initLayout = (ids: string[], mode: '1' | '2' = '1') => {

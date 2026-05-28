@@ -45,5 +45,10 @@ export interface GridLayoutResult {
   contentH: number
 }
 
+export interface GridReorderPayload {
+  ids: string[]
+  list: GridItem[]
+}
+
 /** @deprecated 使用 GridItem */
 export type ListItem = GridItem

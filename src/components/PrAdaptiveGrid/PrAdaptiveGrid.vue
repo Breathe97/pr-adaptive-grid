@@ -1,5 +1,11 @@
 <template>
-  <div ref="pr_adaptive_grid_ref" class="pr-adaptive-grid" :style="ScrollContainerStyle" @scroll="onScroll">
+  <div
+    ref="pr_adaptive_grid_ref"
+    class="pr-adaptive-grid"
+    :style="ScrollContainerStyle"
+    @scroll="onScroll"
+    @click.capture="onGridClickCapture"
+  >
     <div ref="pr_adaptive_grid_content_ref" class="pr-adaptive-grid-content" :style="ContainerStyle">
       <div v-for="item in list" :key="`span-${item.id}`" class="pr-adaptive-grid-item-span" :data-item-id="item.id" :style="ItemSpanStyle(item)" />
       <div
@@ -10,7 +16,11 @@
           'pr-adaptive-grid-item-sticky': item.sticky,
           'pr-adaptive-grid-item-layout-anim': layoutTransitionActive && !enteringItemIds.has(item.id),
           'pr-adaptive-grid-item-enter-host': enteringItemIds.has(item.id),
-          'pr-adaptive-grid-item-no-transition': scrollTransitionDisabled || (suppressTransition && !enteringItemIds.has(item.id))
+          'pr-adaptive-grid-item-no-transition':
+            scrollTransitionDisabled || (suppressTransition && !enteringItemIds.has(item.id)),
+          'pr-adaptive-grid-item-dragging': dragState?.id === item.id && dragReleasingId !== item.id,
+          'pr-adaptive-grid-item-dragging-release': dragReleasingId === item.id,
+          'pr-adaptive-grid-item-drop-target': dropTargetId === item.id
         }"
         :style="StyleItemOuter(item.id)"
       >
@@ -18,6 +28,7 @@
           class="pr-adaptive-grid-item-inner"
           :class="{ 'pr-adaptive-grid-item-enter': enteringItemIds.has(item.id) }"
           :style="StyleItemInner(item.id)"
+          @pointerdown="(event) => onItemPointerDown(event, item)"
         >
           <slot :item="item" />
         </div>
@@ -28,7 +39,7 @@
 
 <script lang="ts" setup>
 import { ref, computed, reactive, onMounted, onBeforeUnmount, watch, nextTick, type CSSProperties } from 'vue'
-import type { GridDirection, GridItem, GridLayoutRect } from '../../types'
+import type { GridDirection, GridItem, GridLayoutRect, GridReorderPayload } from '../../types'
 
 const props = defineProps({
   list: {
@@ -64,8 +75,17 @@ const props = defineProps({
   direction: {
     type: String as () => GridDirection,
     default: () => 'right' as GridDirection
+  },
+  /** 是否允许拖动交换格子排序 */
+  sortable: {
+    type: Boolean,
+    default: true
   }
 })
+
+const emit = defineEmits<{
+  reorder: [payload: GridReorderPayload]
+}>()
 
 const pr_adaptive_grid_ref = ref<HTMLElement>()
 const pr_adaptive_grid_content_ref = ref<HTMLElement>()
@@ -85,6 +105,31 @@ const contentLayoutMap = reactive(new Map<string, GridLayoutRect>())
 const stickyOffsetMap = reactive(new Map<string, GridLayoutRect>())
 const knownItemIds = new Set<string>()
 const enteringItemIds = reactive(new Set<string>())
+
+const DRAG_THRESHOLD = 6
+
+interface DragState {
+  id: string
+  pointerId: number
+  startClientX: number
+  startClientY: number
+  grabOffsetX: number
+  grabOffsetY: number
+  offsetX: number
+  offsetY: number
+}
+
+const dragState = ref<DragState | null>(null)
+const dragReleasingId = ref<string>()
+const dropTargetId = ref<string>()
+let dragStarted = false
+let suppressClickAfterDrag = false
+let dragPointerTarget: HTMLElement | null = null
+let liveSwapPartnerId: string | undefined
+let lastPointerClientX = 0
+let lastPointerClientY = 0
+let dragReorderSyncToken = 0
+let dragReleaseTimer = 0
 
 const EMPTY_ITEM_STYLE: CSSProperties = {
   width: '0px',
@@ -244,6 +289,14 @@ const syncLayout = () => {
   }
 
   updateStickyOnScroll()
+
+  const state = dragState.value
+  if (state && dragStarted) {
+    const synced = updateDragOffset(state, lastPointerClientX, lastPointerClientY)
+    if (synced) {
+      dragState.value = synced
+    }
+  }
 }
 
 const getItemLayout = (id: string): GridLayoutRect | undefined => {
@@ -283,11 +336,239 @@ const StyleItemOuter = (id: string): CSSProperties => {
   const layout = getItemLayout(id)
   if (!layout) return EMPTY_ITEM_STYLE
 
+  const dragging = dragState.value?.id === id ? dragState.value : null
+  const x = layout.x + (dragging?.offsetX ?? 0)
+  const y = layout.y + (dragging?.offsetY ?? 0)
+
   return {
     width: `${layout.w}px`,
     height: `${layout.h}px`,
-    transform: `translate3d(${layout.x}px, ${layout.y}px, 0)`
+    transform: `translate3d(${x}px, ${y}px, 0)`
   }
+}
+
+const getVisualSortIds = (list: GridItem[]): string[] =>
+  [...list]
+    .sort((a, b) => a.y - b.y || a.x - b.x)
+    .map((item) => item.id)
+
+const swapItemsLayout = (fromId: string, toId: string): GridItem[] => {
+  const from = props.list.find((item) => item.id === fromId)
+  const to = props.list.find((item) => item.id === toId)
+  if (!from || !to) return props.list.map((item) => ({ ...item }))
+
+  const fromLayout = { x: from.x, y: from.y, w: from.w, h: from.h }
+  const toLayout = { x: to.x, y: to.y, w: to.w, h: to.h }
+
+  return props.list.map((item) => {
+    if (item.id === fromId) return { ...item, ...toLayout }
+    if (item.id === toId) return { ...item, ...fromLayout }
+    return { ...item }
+  })
+}
+
+const getHitTestLayout = (item: GridItem): GridLayoutRect | undefined => {
+  if (dragStarted) {
+    const content = pr_adaptive_grid_content_ref.value
+    if (!content) return contentLayoutMap.get(item.id)
+
+    const { width, height } = content.getBoundingClientRect()
+    if (!width || !height) return contentLayoutMap.get(item.id)
+
+    return computeItemRect(item, width, height, props.cols, props.rows, props.gap, resolvedRowHeight.value)
+  }
+
+  return contentLayoutMap.get(item.id) ?? getItemLayout(item.id)
+}
+
+const findDropTargetAt = (clientX: number, clientY: number): string | undefined => {
+  const content = pr_adaptive_grid_content_ref.value
+  const draggingId = dragState.value?.id
+  if (!content || !draggingId) return undefined
+
+  const contentRect = content.getBoundingClientRect()
+  const x = clientX - contentRect.left
+  const y = clientY - contentRect.top
+
+  for (const item of props.list) {
+    if (item.id === draggingId || item.sticky) continue
+
+    const layout = getHitTestLayout(item)
+    if (!layout) continue
+
+    if (x >= layout.x && x <= layout.x + layout.w && y >= layout.y && y <= layout.y + layout.h) {
+      return item.id
+    }
+  }
+
+  return undefined
+}
+
+const performLiveSwap = (fromId: string, toId: string) => {
+  const newList = swapItemsLayout(fromId, toId)
+
+  liveSwapPartnerId = toId
+
+  emit('reorder', {
+    ids: getVisualSortIds(newList),
+    list: newList
+  })
+}
+
+const scheduleDragReorderSync = () => {
+  const token = ++dragReorderSyncToken
+  beginLayoutTransition()
+
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      if (token !== dragReorderSyncToken) return
+      syncLayout()
+      syncKnownItemIds()
+    })
+  })
+}
+
+const cleanupDragListeners = () => {
+  document.removeEventListener('pointermove', onDocumentPointerMove)
+  document.removeEventListener('pointerup', onDocumentPointerUp)
+  document.removeEventListener('pointercancel', onDocumentPointerUp)
+}
+
+const finishDrag = () => {
+  const state = dragState.value
+
+  if (dragPointerTarget && state) {
+    try {
+      dragPointerTarget.releasePointerCapture(state.pointerId)
+    } catch {
+      // ignore
+    }
+  }
+
+  dragPointerTarget = null
+  cleanupDragListeners()
+
+  if (dragStarted && state) {
+    suppressClickAfterDrag = true
+    beginLayoutTransition()
+    dragReleasingId.value = state.id
+    dragState.value = { ...state, offsetX: 0, offsetY: 0 }
+
+    window.clearTimeout(dragReleaseTimer)
+    dragReleaseTimer = window.setTimeout(() => {
+      dragReleasingId.value = undefined
+      dragState.value = null
+      dropTargetId.value = undefined
+      liveSwapPartnerId = undefined
+      dragStarted = false
+    }, LAYOUT_TRANSITION_MS)
+    return
+  }
+
+  dragState.value = null
+  dragReleasingId.value = undefined
+  dropTargetId.value = undefined
+  liveSwapPartnerId = undefined
+  dragStarted = false
+}
+
+const updateDragOffset = (state: DragState, clientX: number, clientY: number): DragState | null => {
+  const content = pr_adaptive_grid_content_ref.value
+  if (!content) return null
+
+  const layout = getItemLayout(state.id)
+  if (!layout) return null
+
+  const contentRect = content.getBoundingClientRect()
+  const px = clientX - contentRect.left
+  const py = clientY - contentRect.top
+
+  return {
+    ...state,
+    offsetX: px - layout.x - state.grabOffsetX,
+    offsetY: py - layout.y - state.grabOffsetY
+  }
+}
+
+const onDocumentPointerMove = (event: PointerEvent) => {
+  const state = dragState.value
+  if (!state || event.pointerId !== state.pointerId) return
+
+  const dx = event.clientX - state.startClientX
+  const dy = event.clientY - state.startClientY
+
+  if (!dragStarted) {
+    if (Math.hypot(dx, dy) < DRAG_THRESHOLD) return
+    dragStarted = true
+    try {
+      dragPointerTarget?.setPointerCapture(event.pointerId)
+    } catch {
+      // ignore
+    }
+  }
+
+  event.preventDefault()
+  lastPointerClientX = event.clientX
+  lastPointerClientY = event.clientY
+
+  const nextState = updateDragOffset(state, event.clientX, event.clientY)
+  if (!nextState) return
+
+  dragState.value = nextState
+
+  const targetId = findDropTargetAt(event.clientX, event.clientY)
+  dropTargetId.value = targetId
+
+  if (!targetId || targetId === nextState.id) {
+    liveSwapPartnerId = undefined
+  } else if (targetId !== liveSwapPartnerId) {
+    performLiveSwap(nextState.id, targetId)
+  }
+}
+
+const onDocumentPointerUp = (event: PointerEvent) => {
+  const state = dragState.value
+  if (!state || event.pointerId !== state.pointerId) return
+
+  finishDrag()
+}
+
+const onItemPointerDown = (event: PointerEvent, item: GridItem) => {
+  if (!props.sortable || item.sticky || event.button !== 0) return
+
+  const content = pr_adaptive_grid_content_ref.value
+  const layout = getItemLayout(item.id)
+  if (!content || !layout) return
+
+  const contentRect = content.getBoundingClientRect()
+  const pointerX = event.clientX - contentRect.left
+  const pointerY = event.clientY - contentRect.top
+
+  dragState.value = {
+    id: item.id,
+    pointerId: event.pointerId,
+    startClientX: event.clientX,
+    startClientY: event.clientY,
+    grabOffsetX: pointerX - layout.x,
+    grabOffsetY: pointerY - layout.y,
+    offsetX: 0,
+    offsetY: 0
+  }
+  dropTargetId.value = undefined
+  liveSwapPartnerId = undefined
+  dragStarted = false
+  dragPointerTarget = event.currentTarget as HTMLElement
+
+  document.addEventListener('pointermove', onDocumentPointerMove)
+  document.addEventListener('pointerup', onDocumentPointerUp)
+  document.addEventListener('pointercancel', onDocumentPointerUp)
+}
+
+const onGridClickCapture = (event: MouseEvent) => {
+  if (!suppressClickAfterDrag) return
+  event.stopPropagation()
+  event.preventDefault()
+  suppressClickAfterDrag = false
 }
 
 const StyleItemInner = (id: string): CSSProperties => {
@@ -353,6 +634,11 @@ const playEnterAnimation = async (newItems: GridItem[]) => {
 }
 
 const scheduleSync = (options?: { animate?: boolean }) => {
+  if (dragStarted && dragState.value) {
+    scheduleDragReorderSync()
+    return
+  }
+
   cancelAnimationFrame(raf)
   raf = requestAnimationFrame(() => {
     void (async () => {
@@ -407,11 +693,13 @@ const scheduleSync = (options?: { animate?: boolean }) => {
 
 let scrollRaf = 0
 const onScroll = () => {
-  scrollTransitionDisabled.value = true
-  window.clearTimeout(scrollTransitionTimer)
-
   cancelAnimationFrame(scrollRaf)
   scrollRaf = requestAnimationFrame(updateStickyOnScroll)
+
+  if (dragStarted) return
+
+  scrollTransitionDisabled.value = true
+  window.clearTimeout(scrollTransitionTimer)
 
   scrollTransitionTimer = window.setTimeout(() => {
     scrollTransitionDisabled.value = false
@@ -453,6 +741,10 @@ watch(
   }),
   async () => {
     await nextTick()
+    if (dragStarted && dragState.value) {
+      scheduleDragReorderSync()
+      return
+    }
     scheduleSync({ animate: true })
   },
   { deep: true }
@@ -467,10 +759,12 @@ watch(
 )
 
 onBeforeUnmount(() => {
+  finishDrag()
   cancelAnimationFrame(raf)
   cancelAnimationFrame(scrollRaf)
   window.clearTimeout(layoutTransitionTimer)
   window.clearTimeout(scrollTransitionTimer)
+  window.clearTimeout(dragReleaseTimer)
   observer?.disconnect()
 })
 </script>
@@ -523,6 +817,8 @@ onBeforeUnmount(() => {
   height: 100%;
   box-sizing: border-box;
   transform-origin: center center;
+  cursor: grab;
+  touch-action: none;
   transition:
     transform var(--ag-duration-position) var(--ag-ease-fade),
     opacity var(--ag-duration-position) var(--ag-ease-fade);
@@ -538,6 +834,13 @@ onBeforeUnmount(() => {
   transition:
     transform var(--ag-duration-position) var(--ag-ease-fade),
     opacity var(--ag-duration-position) var(--ag-ease-fade);
+}
+
+.pr-adaptive-grid-item-layout-anim {
+  transition:
+    transform var(--ag-duration-position) var(--ag-ease-position),
+    width var(--ag-duration-size) var(--ag-ease-size),
+    height var(--ag-duration-size) var(--ag-ease-size);
 }
 
 .pr-adaptive-grid-item-sticky {
@@ -556,5 +859,34 @@ onBeforeUnmount(() => {
 
 .pr-adaptive-grid-item-no-transition {
   transition: none !important;
+}
+
+.pr-adaptive-grid-item-dragging {
+  z-index: 20;
+  cursor: grabbing;
+  will-change: transform, width, height;
+  transition:
+    transform 0s linear,
+    width var(--ag-duration-size) var(--ag-ease-size),
+    height var(--ag-duration-size) var(--ag-ease-size);
+}
+
+.pr-adaptive-grid-item-dragging-release {
+  z-index: 20;
+  cursor: grabbing;
+  will-change: transform, width, height;
+  transition:
+    transform var(--ag-duration-position) var(--ag-ease-position),
+    width var(--ag-duration-size) var(--ag-ease-size),
+    height var(--ag-duration-size) var(--ag-ease-size);
+}
+
+.pr-adaptive-grid-item-sticky .pr-adaptive-grid-item-inner {
+  cursor: default;
+  touch-action: auto;
+}
+
+.pr-adaptive-grid-item-drop-target .pr-adaptive-grid-item-inner {
+  box-shadow: inset 0 0 0 2px rgba(22, 119, 255, 0.85);
 }
 </style>
