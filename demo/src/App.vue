@@ -187,26 +187,30 @@ onMounted(() => {
   gap: 6px;
   padding: 10px;
   border-radius: 10px;
-  border: 2px solid transparent;
   color: #1a1a1a;
-  transition: box-shadow 0.2s ease, outline 0.2s ease;
+  transition: box-shadow 0.2s ease;
 }
 
-/* Pin：蓝色实线外框 */
+/* Pin：蓝色内阴影 */
 .is-pinned {
-  box-shadow: 0 0 0 3px #2563eb;
+  box-shadow:
+    inset 0 0 0 3px #2563eb,
+    inset 0 0 20px rgba(37, 99, 235, 0.35);
 }
 
-/* Fixed：橙色虚线内框 */
+/* Fixed：橙色内阴影 */
 .is-fixed {
-  outline: 3px dashed #d97706;
-  outline-offset: -5px;
+  box-shadow:
+    inset 0 0 0 3px #d97706,
+    inset 0 0 20px rgba(217, 119, 6, 0.35);
 }
 
 .is-pinned.is-fixed {
-  box-shadow: 0 0 0 3px #2563eb;
-  outline: 3px dashed #d97706;
-  outline-offset: -5px;
+  box-shadow:
+    inset 0 0 0 3px #2563eb,
+    inset 0 0 0 6px #d97706,
+    inset 0 0 24px rgba(37, 99, 235, 0.28),
+    inset 0 0 24px rgba(217, 119, 6, 0.22);
 }
 
 .tile-badges {
