@@ -1,49 +1,52 @@
 <template>
   <div class="demo">
-    <div class="aurora" aria-hidden="true">
-      <div class="blob blob-a" />
-      <div class="blob blob-b" />
-      <div class="blob blob-c" />
+    <div class="grid-wrap">
+      <PrAdaptiveGrid ref="gridRef" :gap="8">
+        <template #default="{ item }">
+          <div
+            class="tile"
+            :class="{ 'is-pinned': item.sticky, 'is-fixed': item.fixed }"
+            :style="{ backgroundColor: getTileColor(item.id) }"
+          >
+            <div v-if="item.sticky || item.fixed" class="tile-badges">
+              <span v-if="item.sticky" class="badge badge-pin">Pin</span>
+              <span v-if="item.fixed" class="badge badge-fixed">Fixed</span>
+            </div>
+            <span class="tile-id">{{ item.id }}</span>
+            <span class="tile-meta">{{ item.w }}×{{ item.h }}</span>
+            <div class="tile-ops">
+              <button
+                type="button"
+                class="op"
+                :class="{ active: item.sticky }"
+                @pointerdown.stop
+                @click.stop="setPin(item)"
+              >
+                Pin
+              </button>
+              <span class="op-dot" />
+              <button
+                type="button"
+                class="op"
+                :class="{ active: item.fixed }"
+                @pointerdown.stop
+                @click.stop="setFixed(item)"
+              >
+                Fixed
+              </button>
+            </div>
+          </div>
+        </template>
+      </PrAdaptiveGrid>
     </div>
 
-    <header class="hero">
-      <p class="hero-tag">PrAdaptiveGrid</p>
-      <h1 class="hero-title">Adaptive<br />Grid</h1>
-      <p class="hero-hint">拖拽排序 · 双击空白添加</p>
-    </header>
-
-    <main class="stage">
-      <div class="grid-shell">
-        <PrAdaptiveGrid ref="gridRef" :gap="10">
-          <template #default="{ item }">
-            <div class="tile" :class="{ 'tile-pinned': item.sticky, 'tile-fixed': item.fixed }" :style="{ '--accent': getTileAccent(item.id) }">
-              <div class="tile-glow" aria-hidden="true" />
-              <span class="tile-id">{{ item.id }}</span>
-              <span class="tile-meta">{{ item.w }}×{{ item.h }} · {{ item.x }},{{ item.y }}</span>
-              <div class="tile-toggles">
-                <button type="button" class="toggle" :class="{ on: item.sticky }" data-type="pin" @pointerdown.stop @click.stop="setPin(item)">Pin</button>
-                <button type="button" class="toggle" :class="{ on: item.fixed }" data-type="fix" @pointerdown.stop @click.stop="setFixed(item)">Fix</button>
-              </div>
-            </div>
-          </template>
-        </PrAdaptiveGrid>
-      </div>
-    </main>
-
-    <div class="dock">
-      <div class="dock-glass">
-        <div class="dock-group">
-          <span class="dock-label">Items</span>
-          <div class="counter">
-            <button type="button" class="counter-btn" :disabled="userCount <= 1" @click="changeUserCount(-1)">−</button>
-            <span class="counter-val">{{ userCount }}</span>
-            <button type="button" class="counter-btn" @click="changeUserCount(1)">+</button>
-          </div>
-        </div>
-        <span class="dock-divider" />
-        <button type="button" class="dock-action" :disabled="userCount <= 1" @click="shuffleItems">Shuffle</button>
-        <button type="button" class="dock-action dock-action-primary" @click="syncGrid">Sync</button>
-      </div>
+    <div class="float-bar">
+      <button type="button" class="bar-btn" :disabled="userCount <= 1" @click="changeUserCount(-1)">−</button>
+      <span class="bar-count">{{ userCount }}</span>
+      <button type="button" class="bar-btn" @click="changeUserCount(1)">+</button>
+      <span class="bar-sep" />
+      <button type="button" class="bar-text" :disabled="userCount <= 1" @click="shuffleItems">打乱</button>
+      <button type="button" class="bar-text" @click="syncGrid">同步</button>
     </div>
   </div>
 </template>
@@ -55,22 +58,23 @@ import type { GridItem, PrAdaptiveGridExpose } from '../../src/index.ts'
 
 const DEFAULT_USER_COUNT = 8
 
-const ACCENTS = ['#a78bfa', '#34d399', '#60a5fa', '#f472b6', '#fb923c', '#2dd4bf', '#e879f9', '#facc15']
-
 const gridRef = ref<PrAdaptiveGridExpose>()
 const userCount = ref(DEFAULT_USER_COUNT)
-const tileAccentMap = ref(new Map<string, string>())
+const tileColorMap = ref(new Map<string, string>())
 
-const pickAccent = (): string => ACCENTS[Math.floor(Math.random() * ACCENTS.length)]
-
-const ensureTileAccent = (id: string) => {
-  if (tileAccentMap.value.has(id)) return
-  const next = new Map(tileAccentMap.value)
-  next.set(id, pickAccent())
-  tileAccentMap.value = next
+const randomTileColor = (): string => {
+  const hue = Math.floor(Math.random() * 360)
+  return `hsl(${hue} 48% 74%)`
 }
 
-const getTileAccent = (id: string): string => tileAccentMap.value.get(id) ?? '#a78bfa'
+const ensureTileColor = (id: string) => {
+  if (tileColorMap.value.has(id)) return
+  const next = new Map(tileColorMap.value)
+  next.set(id, randomTileColor())
+  tileColorMap.value = next
+}
+
+const getTileColor = (id: string): string => tileColorMap.value.get(id) ?? 'hsl(220 48% 74%)'
 
 const createUserIds = (count: number) => Array.from({ length: count }, (_, i) => `${i + 1}`)
 
@@ -103,7 +107,7 @@ const changeUserCount = (delta: number) => {
 
   const maxId = items.reduce((max, item) => Math.max(max, Number(item.id) || 0), 0)
   const newId = `${maxId + 1}`
-  ensureTileAccent(newId)
+  ensureTileColor(newId)
   gridRef.value?.setItem(newId, { index: 0 })
 }
 
@@ -126,7 +130,7 @@ const shuffleItems = () => {
 
 const initGrid = () => {
   const ids = getDefaultIds()
-  ids.forEach((id) => ensureTileAccent(id))
+  ids.forEach((id) => ensureTileColor(id))
   gridRef.value?.setItems(
     ids.map((id, index) => {
       if (index === 0) return { id, options: { sticky: true } }
@@ -140,7 +144,7 @@ const syncGrid = () => {
   gridRef.value?.settleActiveAnimations()
   userCount.value = DEFAULT_USER_COUNT
   const ids = getDefaultIds()
-  ids.forEach((id) => ensureTileAccent(id))
+  ids.forEach((id) => ensureTileColor(id))
   gridRef.value?.setItems(ids.map((id) => ({ id })))
 }
 
@@ -158,125 +162,21 @@ onMounted(() => {
 <style scoped>
 .demo {
   position: relative;
-  display: grid;
-  grid-template-columns: minmax(140px, 22%) 1fr;
-  grid-template-rows: 1fr auto;
   width: 100vw;
   height: 100vh;
   height: 100dvh;
+  background: var(--bg);
   overflow: hidden;
 }
 
-/* ── Aurora background ── */
-.aurora {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  overflow: hidden;
-  pointer-events: none;
-}
-
-.blob {
+.grid-wrap {
   position: absolute;
-  border-radius: 50%;
-  filter: blur(80px);
-  opacity: 0.45;
-  animation: aurora-drift 18s ease-in-out infinite;
+  inset: 0;
+  padding: 6px 6px 0;
 }
 
-.blob-a {
-  width: 55vw;
-  height: 55vw;
-  top: -15%;
-  left: -10%;
-  background: #6366f1;
-}
-
-.blob-b {
-  width: 45vw;
-  height: 45vw;
-  bottom: -10%;
-  right: -5%;
-  background: #ec4899;
-  animation-delay: -6s;
-}
-
-.blob-c {
-  width: 35vw;
-  height: 35vw;
-  top: 40%;
-  left: 35%;
-  background: #14b8a6;
-  animation-delay: -12s;
-  opacity: 0.3;
-}
-
-/* ── Hero sidebar ── */
-.hero {
-  position: relative;
-  z-index: 1;
-  grid-row: 1 / 3;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  padding: max(24px, env(safe-area-inset-top)) 28px max(100px, calc(24px + env(safe-area-inset-bottom)));
-  border-right: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.hero-tag {
-  margin: 0 0 auto;
-  font-family: var(--font-mono);
-  font-size: 0.6875rem;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-
-.hero-title {
-  margin: 0;
-  font-size: clamp(2.5rem, 5vw, 3.75rem);
-  font-weight: 800;
-  line-height: 0.92;
-  letter-spacing: -0.03em;
-  background: linear-gradient(135deg, #fff 0%, rgba(255, 255, 255, 0.65) 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-
-.hero-hint {
-  margin: 16px 0 0;
-  font-size: 0.8125rem;
-  font-weight: 500;
-  color: var(--muted);
-  line-height: 1.5;
-}
-
-/* ── Grid stage ── */
-.stage {
-  position: relative;
-  z-index: 1;
-  min-width: 0;
-  min-height: 0;
-  padding: 20px 20px 12px 12px;
-}
-
-.grid-shell {
-  height: 100%;
-  padding: 14px;
-  border-radius: 24px;
-  background: var(--glass);
-  border: 1px solid var(--glass-border);
-  backdrop-filter: blur(24px) saturate(1.4);
-  -webkit-backdrop-filter: blur(24px) saturate(1.4);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 24px 48px rgba(0, 0, 0, 0.35);
-}
-
-/* ── Tiles ── */
+/* ── Tile ── */
 .tile {
-  --accent: #a78bfa;
   position: relative;
   width: 100%;
   height: 100%;
@@ -284,260 +184,216 @@ onMounted(() => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  padding: 12px;
-  border-radius: 18px;
-  background: rgba(9, 9, 15, 0.55);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  overflow: hidden;
-  transition:
-    border-color 0.25s ease,
-    box-shadow 0.25s ease;
+  gap: 6px;
+  padding: 10px;
+  border-radius: 10px;
+  border: 2px solid transparent;
+  color: #1a1a1a;
+  transition: box-shadow 0.2s ease, outline 0.2s ease;
 }
 
-.tile-glow {
+/* Pin：蓝色实线外框 */
+.is-pinned {
+  box-shadow: 0 0 0 3px #2563eb;
+}
+
+/* Fixed：橙色虚线内框 */
+.is-fixed {
+  outline: 3px dashed #d97706;
+  outline-offset: -5px;
+}
+
+.is-pinned.is-fixed {
+  box-shadow: 0 0 0 3px #2563eb;
+  outline: 3px dashed #d97706;
+  outline-offset: -5px;
+}
+
+.tile-badges {
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 3px;
-  background: var(--accent);
-  box-shadow: 0 0 20px color-mix(in srgb, var(--accent) 60%, transparent);
+  top: 6px;
+  right: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
 }
 
-.tile-pinned {
-  border-color: color-mix(in srgb, var(--pin) 50%, transparent);
-  box-shadow: 0 0 24px color-mix(in srgb, var(--pin) 15%, transparent);
+.badge {
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1.3;
 }
 
-.tile-fixed {
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--fixed) 45%, transparent);
+.badge-pin {
+  background: #2563eb;
+  color: #fff;
+}
+
+.badge-fixed {
+  background: #d97706;
+  color: #fff;
 }
 
 .tile-id {
-  font-size: clamp(2rem, 5vw, 2.75rem);
-  font-weight: 800;
-  letter-spacing: -0.04em;
+  font-size: clamp(1.75rem, 4.5vw, 2.5rem);
+  font-weight: 500;
+  letter-spacing: -0.03em;
   line-height: 1;
-  color: var(--text);
 }
 
 .tile-meta {
-  font-family: var(--font-mono);
   font-size: 0.6875rem;
-  color: var(--muted);
+  color: rgba(0, 0, 0, 0.5);
   font-variant-numeric: tabular-nums;
 }
 
-.tile-toggles {
-  display: flex;
-  gap: 6px;
-  margin-top: 4px;
-}
-
-.toggle {
-  padding: 6px 14px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--muted);
-  font-family: var(--font-mono);
-  font-size: 0.625rem;
-  font-weight: 500;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  cursor: pointer;
-  transition:
-    background 0.2s ease,
-    color 0.2s ease,
-    border-color 0.2s ease;
-}
-
-.toggle:hover {
-  border-color: rgba(255, 255, 255, 0.2);
-  color: var(--text);
-}
-
-.toggle.on[data-type='pin'] {
-  color: var(--pin);
-  border-color: color-mix(in srgb, var(--pin) 45%, transparent);
-  background: color-mix(in srgb, var(--pin) 12%, transparent);
-}
-
-.toggle.on[data-type='fix'] {
-  color: var(--fixed);
-  border-color: color-mix(in srgb, var(--fixed) 45%, transparent);
-  background: color-mix(in srgb, var(--fixed) 12%, transparent);
-}
-
-/* ── Floating dock ── */
-.dock {
-  position: relative;
-  z-index: 2;
-  grid-column: 2;
-  display: flex;
-  justify-content: center;
-  padding: 0 20px calc(16px + env(safe-area-inset-bottom));
-}
-
-.dock-glass {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 16px;
-  border-radius: 999px;
-  background: rgba(15, 15, 22, 0.72);
-  border: 1px solid var(--glass-border);
-  backdrop-filter: blur(20px) saturate(1.5);
-  -webkit-backdrop-filter: blur(20px) saturate(1.5);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-}
-
-.dock-group {
+.tile-ops {
   display: flex;
   align-items: center;
   gap: 10px;
+  margin-top: 6px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
 }
 
-.dock-label {
-  font-family: var(--font-mono);
-  font-size: 0.625rem;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--muted);
+.op {
+  min-height: 32px;
+  padding: 6px 12px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: rgba(0, 0, 0, 0.45);
+  font-family: inherit;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease;
 }
 
-.counter {
+.op:hover {
+  background: rgba(255, 255, 255, 0.4);
+}
+
+.op.active {
+  color: #2563eb;
+  font-weight: 600;
+}
+
+.op:last-of-type.active {
+  color: #d97706;
+}
+
+.op-dot {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+/* ── 底部悬浮毛玻璃工具栏 ── */
+.float-bar {
+  position: fixed;
+  left: 50%;
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 30;
   display: flex;
   align-items: center;
-  height: 40px;
-  padding: 0 4px;
+  gap: 8px;
+  padding: 10px 18px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(28, 28, 30, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(20px) saturate(1.5);
+  -webkit-backdrop-filter: blur(20px) saturate(1.5);
 }
 
-.counter-btn {
-  width: 36px;
-  height: 36px;
+.bar-btn {
+  width: 48px;
+  height: 48px;
   border: none;
   border-radius: 50%;
-  background: transparent;
+  background: rgba(255, 255, 255, 0.1);
   color: var(--text);
-  font-size: 1.25rem;
+  font-size: 1.375rem;
   line-height: 1;
   cursor: pointer;
   transition: background 0.15s ease;
 }
 
-.counter-btn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.08);
+.bar-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.18);
 }
 
-.counter-btn:disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
-}
-
-.counter-val {
-  min-width: 32px;
-  text-align: center;
-  font-size: 1rem;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-}
-
-.dock-divider {
-  width: 1px;
-  height: 28px;
-  background: rgba(255, 255, 255, 0.1);
-}
-
-.dock-action {
-  height: 40px;
-  padding: 0 18px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--text);
-  font-family: var(--font-display);
-  font-size: 0.875rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition:
-    background 0.15s ease,
-    border-color 0.15s ease;
-}
-
-.dock-action:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.2);
-}
-
-.dock-action:disabled {
+.bar-btn:disabled {
   opacity: 0.35;
   cursor: not-allowed;
 }
 
-.dock-action-primary {
+.bar-count {
+  min-width: 32px;
+  text-align: center;
+  font-size: 1.0625rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.bar-sep {
+  width: 1px;
+  height: 28px;
+  margin: 0 4px;
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.bar-text {
+  height: 48px;
+  padding: 0 20px;
   border: none;
-  background: linear-gradient(135deg, #6366f1 0%, #a855f7 50%, #ec4899 100%);
-  color: #fff;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease;
 }
 
-.dock-action-primary:hover:not(:disabled) {
-  opacity: 0.9;
-  background: linear-gradient(135deg, #6366f1 0%, #a855f7 50%, #ec4899 100%);
+.bar-text:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.18);
 }
 
-@media (max-width: 768px) {
-  .demo {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto 1fr auto;
-  }
+.bar-text:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
 
-  .hero {
-    grid-row: auto;
-    flex-direction: row;
-    align-items: center;
-    gap: 16px;
-    padding: max(16px, env(safe-area-inset-top)) 20px 12px;
-    border-right: none;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  }
-
-  .hero-tag {
-    margin: 0;
-  }
-
-  .hero-title {
-    font-size: 1.75rem;
-  }
-
-  .hero-title br {
-    display: none;
-  }
-
-  .hero-hint {
-    display: none;
-  }
-
-  .stage {
-    padding: 12px;
-  }
-
-  .dock {
-    grid-column: 1;
-  }
-
-  .dock-glass {
+@media (max-width: 480px) {
+  .float-bar {
+    width: calc(100% - 24px);
     flex-wrap: wrap;
     justify-content: center;
-    border-radius: 20px;
-    width: 100%;
+    border-radius: 16px;
   }
 
-  .dock-divider {
+  .bar-sep {
     display: none;
+  }
+
+  .bar-text {
+    flex: 1;
+    min-width: 80px;
   }
 }
 </style>
