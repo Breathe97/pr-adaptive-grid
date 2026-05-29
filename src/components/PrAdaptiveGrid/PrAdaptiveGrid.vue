@@ -1071,11 +1071,14 @@ const scheduleSync = (options?: { animate?: boolean; reason?: string }) => {
       })
 
       if (shouldAnimate) {
-        interruptPendingExitAnimation()
-
         const newItems = getNewItemsForEnter()
         const removedIds = [...knownItemIds].filter((id) => !props.list.some((item) => item.id === id))
         const hasRemoval = removedIds.length > 0
+
+        // 首次移除时 pre watch 已写入 leaving ghost，此时不能打断，否则 ghosts 为空会直接走重排
+        if (!hasRemoval || exitReorderPending) {
+          interruptPendingExitAnimation()
+        }
 
         if (newItems.length > 0) {
           agLog('scheduleSync:path-add-items', { reason, newIds: newItems.map((item) => item.id) })
