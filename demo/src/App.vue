@@ -410,7 +410,7 @@ onMounted(() => {
 .help-wrap:focus-within .help-panel {
   visibility: visible;
   pointer-events: auto;
-  animation: help-rise 5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation: help-rise 500ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 @keyframes help-rise {
