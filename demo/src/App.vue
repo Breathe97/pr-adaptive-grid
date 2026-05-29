@@ -410,18 +410,18 @@ onMounted(() => {
 .help-wrap:focus-within .help-panel {
   visibility: visible;
   pointer-events: auto;
-  animation: help-rise 0.32s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation: help-rise 5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 @keyframes help-rise {
   0% {
     opacity: 0;
-    transform: translateX(-50%) translateY(20px) scale(0.5);
+    transform: translateX(-50%) translateY(10px) scale(0.5);
     clip-path: inset(100% 0 0 0 round 16px);
   }
   100% {
     opacity: 1;
-    transform: translateX(-50%) translateY(0) scale(1);
+    transform: translateX(-50%) translateY(-10px) scale(1);
     clip-path: inset(0 0 0 0 round 16px);
   }
 }
