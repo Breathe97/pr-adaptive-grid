@@ -380,7 +380,7 @@ onMounted(() => {
 .help-panel {
   position: absolute;
   left: 50%;
-  bottom: calc(100% + 18px);
+  bottom: calc(100% + 8px);
   width: min(300px, calc(100vw - 48px));
   padding: 14px 16px 16px;
   border-radius: 16px;
@@ -416,12 +416,12 @@ onMounted(() => {
 @keyframes help-rise {
   0% {
     opacity: 0;
-    transform: translateX(-50%) translateY(10px) scale(0.5);
+    transform: translateX(-50%) translateY(20px) scaleX(0.2);
     clip-path: inset(100% 0 0 0 round 16px);
   }
   100% {
     opacity: 1;
-    transform: translateX(-50%) translateY(-10px) scale(1);
+    transform: translateX(-50%) translateY(-10px) scaleX(1);
     clip-path: inset(0 0 0 0 round 16px);
   }
 }
