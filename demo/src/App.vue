@@ -22,6 +22,8 @@
 import { ref, onMounted } from 'vue'
 import { PrAdaptiveGrid, getLayout } from '../../src/index.ts'
 import type { GridItem, GridReorderPayload, PrAdaptiveGridExpose } from '../../src/index.ts'
+// import { PrAdaptiveGrid, getLayout } from 'pr-adaptive-grid'
+// import type { GridItem, GridReorderPayload, PrAdaptiveGridExpose } from 'pr-adaptive-grid'
 
 const gridRef = ref<PrAdaptiveGridExpose>()
 
