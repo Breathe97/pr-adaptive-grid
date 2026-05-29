@@ -48,14 +48,35 @@ export interface GridLayoutResult {
 }
 
 export interface GridReorderPayload {
-  ids: string[]
   list: GridItem[]
   /** 与普通 item 交换 pin 位置时，新的 pin id */
   nextPinId?: string
 }
 
+/** setItem 可选参数（不含 id 与布局坐标，坐标由组件内部 getLayout 计算） */
+export type GridSetItemOptions = Partial<Pick<GridItem, 'sticky' | 'fixed'>> & {
+  /** 新 item 插入 ids 的索引，默认追加到末尾 */
+  index?: number
+}
+
+/** setItem / setItems 单条入参 */
+export interface GridSetItemEntry {
+  id: string
+  options?: GridSetItemOptions
+}
+
 /** PrAdaptiveGrid 对外暴露的方法 */
 export interface PrAdaptiveGridExpose {
+  /** 新增或更新 item；id 已存在时按 options 合并更新属性 */
+  setItem: (id: string, options?: GridSetItemOptions) => void
+  /** 批量新增或更新 item，数组顺序即 ids 顺序 */
+  setItems: (entries: GridSetItemEntry[]) => void
+  /** 按 id 移除一个或多个 item */
+  removeItem: (ids: string | string[]) => void
+  /** 获取当前 item 列表（只读快照） */
+  getItems: () => GridItem[]
+  /** 打乱可移动 item 顺序，fixed item 保持 ids 槽位 */
+  shuffleItems: () => void
   /** 结束拖动/过渡动画并无动画同步到当前布局，便于 pin 等大幅布局变更 */
   settleActiveAnimations: () => void
   /** 开始采集布局诊断日志（开发环境） */

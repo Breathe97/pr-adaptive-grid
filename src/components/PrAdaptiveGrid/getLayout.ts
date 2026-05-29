@@ -1,14 +1,12 @@
-import type { GridItem } from './types'
+import type { GridItem } from '../../types'
 
-export interface LayoutResult {
+interface LayoutResult {
   cols: number
   rows: number
   list: GridItem[]
   /** 首屏等高行数（mode1 最多 3 行，mode2 为 12） */
   firstScreenRowSplit?: number
 }
-
-export type LayoutMode = '1' | '2'
 
 /** mode1 首屏最多 3 行、5 列 */
 const MODE1_MAX_COLS = 5
@@ -281,13 +279,10 @@ const getLayoutMode2 = (ids: string[], fullId?: string): LayoutResult => {
   }
 }
 
-export const getLayout = (ids: string[], mode: LayoutMode = '1', ext?: { fullId?: string }): LayoutResult => {
-  switch (mode) {
-    case '1':
-      return getLayoutMode1(ids)
-    case '2':
-      return getLayoutMode2(ids, ext?.fullId)
-    default:
-      return { cols: 1, rows: 1, list: [] }
+/** 有 sticky item 时使用 mode2（pin 布局），否则使用 mode1 */
+export const resolveGridLayout = (ids: string[], stickyId?: string): LayoutResult => {
+  if (stickyId) {
+    return getLayoutMode2(ids, stickyId)
   }
+  return getLayoutMode1(ids)
 }

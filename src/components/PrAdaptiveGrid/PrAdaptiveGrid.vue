@@ -40,7 +40,9 @@
 
 <script lang="ts" setup>
 import { ref, computed, reactive, onMounted, onBeforeUnmount, watch, nextTick, type CSSProperties } from 'vue'
-import type { GridDirection, GridItem, GridLayoutRect, GridReorderPayload } from '../../types'
+import type { GridDirection, GridItem, GridLayoutRect, GridReorderPayload, GridSetItemEntry, GridSetItemOptions } from '../../types'
+import { resolveGridLayout } from './getLayout'
+import { mergeIdsPreservingFixed } from './mergeIdsPreservingFixed'
 
 type AgItemOuterStyle = CSSProperties & {
   '--ag-duration-position'?: string
@@ -48,18 +50,6 @@ type AgItemOuterStyle = CSSProperties & {
 }
 
 const props = defineProps({
-  list: {
-    type: Array<GridItem>,
-    required: true
-  },
-  cols: {
-    type: Number,
-    required: true
-  },
-  rows: {
-    type: Number,
-    required: true
-  },
   gap: {
     type: Number,
     default: () => 0
@@ -70,11 +60,6 @@ const props = defineProps({
   },
   /** 单行轨道高度（px）；不传则按容器首屏可视高度自动计算 */
   itemHeight: {
-    type: Number,
-    default: undefined
-  },
-  /** 首屏等高行数（如 mode2 为 12，行高 = (视口高 - gap) / 12） */
-  firstScreenRowSplit: {
     type: Number,
     default: undefined
   },
@@ -96,6 +81,14 @@ const emit = defineEmits<{
 const pr_adaptive_grid_ref = ref<HTMLElement>()
 const pr_adaptive_grid_content_ref = ref<HTMLElement>()
 
+/** 内部 ids 顺序（不对外暴露） */
+const itemIds = ref<string[]>([])
+const itemMetaMap = reactive(new Map<string, { sticky?: boolean; fixed?: boolean }>())
+const list = ref<GridItem[]>([])
+const gridCols = ref(1)
+const gridRows = ref(1)
+const gridFirstScreenRowSplit = ref<number>()
+
 /** 首屏按最多 4 行均分容器高度（与 mode2 左侧 fullId 占 4 行一致） */
 const FIRST_SCREEN_ROWS = 4
 /** 全局动画时长范围 */
@@ -114,6 +107,151 @@ const delay = (ms: number) =>
   new Promise<void>((resolve) => {
     window.setTimeout(resolve, ms)
   })
+
+const getFixedIdSet = () => new Set(itemIds.value.filter((id) => itemMetaMap.get(id)?.fixed))
+
+const getPinId = () => itemIds.value.find((id) => itemMetaMap.get(id)?.sticky)
+
+const rebuildLayout = () => {
+  const ids = itemIds.value
+  const pin = getPinId()
+  const layout = resolveGridLayout(ids, pin)
+  gridCols.value = layout.cols
+  gridRows.value = layout.rows
+  gridFirstScreenRowSplit.value = layout.firstScreenRowSplit
+  list.value = layout.list.map((item) => {
+    const meta = itemMetaMap.get(item.id)
+    return {
+      ...item,
+      sticky: meta?.sticky ?? false,
+      fixed: meta?.fixed ?? false
+    }
+  })
+}
+
+const notifyItemsChanged = async (reason: string) => {
+  await nextTick()
+  if (dragStarted && dragState.value) {
+    scheduleDragReorderSync()
+    return
+  }
+  scheduleSync({ animate: true, reason })
+}
+
+const setItem = (id: string, options: GridSetItemOptions = {}) => {
+  const { index, ...metaPatch } = options
+  const previousIds = [...itemIds.value]
+  const exists = previousIds.includes(id)
+
+  if (!exists) {
+    const insertAt = index ?? previousIds.length
+    const candidateIds = [...previousIds]
+    candidateIds.splice(Math.min(insertAt, candidateIds.length), 0, id)
+    itemIds.value = mergeIdsPreservingFixed(previousIds, candidateIds, getFixedIdSet())
+    itemMetaMap.set(id, {})
+  }
+
+  if (metaPatch.sticky === true) {
+    for (const otherId of itemIds.value) {
+      if (otherId === id) continue
+      const otherMeta = itemMetaMap.get(otherId)
+      if (otherMeta?.sticky) {
+        itemMetaMap.set(otherId, { ...otherMeta, sticky: false })
+      }
+    }
+  }
+
+  const prevMeta = itemMetaMap.get(id) ?? {}
+  itemMetaMap.set(id, { ...prevMeta, ...metaPatch })
+  rebuildLayout()
+  void notifyItemsChanged(exists ? 'setItem:update' : 'setItem:add')
+}
+
+const setItems = (entries: GridSetItemEntry[]) => {
+  if (!entries.length) return
+
+  const previousIds = [...itemIds.value]
+  const entryIdOrder = entries.map((entry) => entry.id)
+  const entryIdSet = new Set(entryIdOrder)
+  const unlistedIds = previousIds.filter((id) => !entryIdSet.has(id))
+  const candidateIds = [...entryIdOrder, ...unlistedIds]
+
+  itemIds.value = mergeIdsPreservingFixed(previousIds, candidateIds, getFixedIdSet())
+
+  for (const { id, options = {} } of entries) {
+    if (!itemMetaMap.has(id)) {
+      itemMetaMap.set(id, {})
+    }
+    const { index: _index, ...metaPatch } = options
+    const prevMeta = itemMetaMap.get(id) ?? {}
+    itemMetaMap.set(id, { ...prevMeta, ...metaPatch })
+  }
+
+  const stickyId = entries.find(({ options }) => options?.sticky === true)?.id
+  if (stickyId) {
+    for (const id of itemIds.value) {
+      if (id === stickyId) continue
+      const meta = itemMetaMap.get(id)
+      if (meta?.sticky) {
+        itemMetaMap.set(id, { ...meta, sticky: false })
+      }
+    }
+  }
+
+  rebuildLayout()
+  void notifyItemsChanged('setItems')
+}
+
+const removeItem = (ids: string | string[]) => {
+  const toRemove = new Set(Array.isArray(ids) ? ids : [ids])
+  const previousIds = [...itemIds.value]
+  const candidateIds = previousIds.filter((id) => !toRemove.has(id))
+  itemIds.value = mergeIdsPreservingFixed(previousIds, candidateIds, getFixedIdSet())
+  for (const id of toRemove) {
+    itemMetaMap.delete(id)
+  }
+  rebuildLayout()
+  void notifyItemsChanged('removeItem')
+}
+
+const getItems = (): GridItem[] => list.value.map((item) => ({ ...item }))
+
+const shuffleArray = <T,>(arr: T[]): T[] => {
+  const next = [...arr]
+  for (let i = next.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[next[i], next[j]] = [next[j], next[i]]
+  }
+  return next
+}
+
+const shuffleItems = () => {
+  const ids = itemIds.value
+  if (ids.length <= 1) return
+
+  const fixedSet = getFixedIdSet()
+  let nextIds = ids
+  if (fixedSet.size === 0) {
+    nextIds = shuffleArray(ids)
+    if (nextIds.length === 2 && nextIds[0] === ids[0]) {
+      nextIds = [...ids].reverse()
+    }
+  } else {
+    const shuffledMovable = shuffleArray(ids.filter((id) => !fixedSet.has(id)))
+    const candidateIds = [...ids]
+    let movableCursor = 0
+    for (let i = 0; i < ids.length; i++) {
+      if (!fixedSet.has(ids[i])) {
+        candidateIds[i] = shuffledMovable[movableCursor++]
+      }
+    }
+    nextIds = mergeIdsPreservingFixed(ids, candidateIds, fixedSet)
+  }
+
+  itemIds.value = nextIds
+  rebuildLayout()
+  void notifyItemsChanged('shuffleItems')
+}
 
 const containerViewportHeight = ref(0)
 const layoutTransitionActive = ref(false)
@@ -196,13 +334,13 @@ const getDebugFlags = () => ({
   dragStarted,
   dragReleasingId: dragReleasingId.value,
   dragReorderSyncToken,
-  listIds: props.list.map((item) => item.id).join(','),
+  listIds: list.value.map((item) => item.id).join(','),
   scrollTop: pr_adaptive_grid_ref.value?.scrollTop ?? 0
 })
 
 const captureLayoutSnapshot = () => {
   const snapshot = new Map<string, { x: number; y: number; grid: string }>()
-  for (const item of props.list) {
+  for (const item of list.value) {
     const cached = contentLayoutMap.get(item.id)
     snapshot.set(item.id, {
       x: cached ? Math.round(cached.x) : NaN,
@@ -314,15 +452,17 @@ const resolvedRowHeight = computed(() => {
   if (props.itemHeight != null && props.itemHeight > 0) {
     return props.itemHeight
   }
-  if (containerViewportHeight.value <= 0 || props.rows <= 0) return 0
+  if (containerViewportHeight.value <= 0 || gridRows.value <= 0) return 0
 
-  const split = props.firstScreenRowSplit != null && props.firstScreenRowSplit > 0 ? props.firstScreenRowSplit : Math.min(props.rows, FIRST_SCREEN_ROWS)
+  const split = gridFirstScreenRowSplit.value != null && gridFirstScreenRowSplit.value > 0 ? gridFirstScreenRowSplit.value : Math.min(gridRows.value, FIRST_SCREEN_ROWS)
   const totalGap = Math.max(0, split - 1) * props.gap
   return (containerViewportHeight.value - totalGap) / split
 })
 
 const ContainerStyle = computed(() => {
-  const { gap, rows, cols } = props
+  const gap = props.gap
+  const rows = gridRows.value
+  const cols = gridCols.value
   const rowHeight = resolvedRowHeight.value
 
   if (!rowHeight) {
@@ -393,9 +533,9 @@ const measureItemRects = (): Map<string, GridLayoutRect> => {
   const rowHeight = resolvedRowHeight.value
   const spans = content.querySelectorAll<HTMLElement>('.pr-adaptive-grid-item-span')
   const contentRect = content.getBoundingClientRect()
-  const canMeasure = spans.length === props.list.length
+  const canMeasure = spans.length === list.value.length
 
-  props.list.forEach((item) => {
+  list.value.forEach((item) => {
     let rect: GridLayoutRect | undefined
 
     if (canMeasure) {
@@ -410,8 +550,7 @@ const measureItemRects = (): Map<string, GridLayoutRect> => {
         h: spanRect.height
       }
     } else {
-      const { gap, cols, rows } = props
-      rect = computeItemRect(item, width, height, cols, rows, gap, rowHeight)
+      rect = computeItemRect(item, width, height, gridCols.value, gridRows.value, props.gap, rowHeight)
     }
 
     if (rect) rects.set(item.id, rect)
@@ -430,9 +569,9 @@ const finishInitialLayout = () => {
 }
 
 const syncKnownItemIds = () => {
-  props.list.forEach((item) => knownItemIds.add(item.id))
+  list.value.forEach((item) => knownItemIds.add(item.id))
   for (const id of [...knownItemIds]) {
-    if (!props.list.some((item) => item.id === id)) {
+    if (!list.value.some((item) => item.id === id)) {
       knownItemIds.delete(id)
     }
   }
@@ -454,7 +593,7 @@ const syncLayout = (debugReason?: string) => {
 
   // 清理已移除项
   for (const id of [...contentLayoutMap.keys()]) {
-    if (!props.list.some((item) => item.id === id)) {
+    if (!list.value.some((item) => item.id === id)) {
       contentLayoutMap.delete(id)
       stickyOffsetMap.delete(id)
       enteringItemIds.delete(id)
@@ -476,14 +615,14 @@ const syncLayout = (debugReason?: string) => {
     agLog('syncLayout', {
       reason: debugReason,
       moved: diffLayoutSnapshot(before, after),
-      canMeasure: rects.size === props.list.length,
+      canMeasure: rects.size === list.value.length,
       ...getDebugFlags()
     })
   }
 }
 
 const getItemLayout = (id: string): GridLayoutRect | undefined => {
-  const item = props.list.find((entry) => entry.id === id)
+  const item = list.value.find((entry) => entry.id === id)
   if (!item) return undefined
 
   if (item.sticky) {
@@ -512,7 +651,7 @@ const getItemLayout = (id: string): GridLayoutRect | undefined => {
     }
   }
 
-  return computeItemRect(item, width, height, props.cols, props.rows, props.gap, resolvedRowHeight.value)
+  return computeItemRect(item, width, height, gridCols.value, gridRows.value, props.gap, resolvedRowHeight.value)
 }
 
 const StyleItemOuter = (id: string): CSSProperties => {
@@ -562,13 +701,13 @@ const isItemFixed = (item: GridItem | undefined): boolean => Boolean(item?.fixed
 
 /** 固定 item 保持当前 ids 槽位，其余 item 按视觉顺序填入剩余位置 */
 const applyFixedPositions = (sortedIds: string[]): string[] => {
-  const n = props.list.length
+  const n = list.value.length
   if (!n) return []
 
-  const fixedIds = new Set(props.list.filter(isItemFixed).map((item) => item.id))
+  const fixedIds = new Set(list.value.filter(isItemFixed).map((item) => item.id))
   if (fixedIds.size === 0) return sortedIds
 
-  const previousIds = getVisualSortIds(props.list)
+  const previousIds = itemIds.value
   const result: string[] = new Array(n)
 
   for (let i = 0; i < n; i++) {
@@ -589,14 +728,14 @@ const applyFixedPositions = (sortedIds: string[]): string[] => {
 }
 
 const swapItemsLayout = (fromId: string, toId: string): GridItem[] => {
-  const from = props.list.find((item) => item.id === fromId)
-  const to = props.list.find((item) => item.id === toId)
-  if (!from || !to) return props.list.map((item) => ({ ...item }))
+  const from = list.value.find((item) => item.id === fromId)
+  const to = list.value.find((item) => item.id === toId)
+  if (!from || !to) return list.value.map((item) => ({ ...item }))
 
   const fromLayout = { x: from.x, y: from.y, w: from.w, h: from.h }
   const toLayout = { x: to.x, y: to.y, w: to.w, h: to.h }
 
-  return props.list.map((item) => {
+  return list.value.map((item) => {
     if (item.id === fromId) return { ...item, ...toLayout }
     if (item.id === toId) return { ...item, ...fromLayout }
     return { ...item }
@@ -615,7 +754,7 @@ const getHitTestLayout = (item: GridItem): GridLayoutRect | undefined => {
     const { width, height } = content.getBoundingClientRect()
     if (!width || !height) return contentLayoutMap.get(item.id)
 
-    return computeItemRect(item, width, height, props.cols, props.rows, props.gap, resolvedRowHeight.value)
+    return computeItemRect(item, width, height, gridCols.value, gridRows.value, props.gap, resolvedRowHeight.value)
   }
 
   return contentLayoutMap.get(item.id) ?? getItemLayout(item.id)
@@ -630,7 +769,7 @@ const findDropTargetAt = (clientX: number, clientY: number): string | undefined 
   const x = clientX - contentRect.left
   const y = clientY - contentRect.top
 
-  for (const item of props.list) {
+  for (const item of list.value) {
     if (item.id === draggingId || isItemFixed(item)) continue
 
     const layout = getHitTestLayout(item)
@@ -645,8 +784,8 @@ const findDropTargetAt = (clientX: number, clientY: number): string | undefined 
 }
 
 const performLiveSwap = (fromId: string, toId: string) => {
-  const from = props.list.find((item) => item.id === fromId)
-  const to = props.list.find((item) => item.id === toId)
+  const from = list.value.find((item) => item.id === fromId)
+  const to = list.value.find((item) => item.id === toId)
   if (isItemFixed(from) || isItemFixed(to)) return
 
   const newList = swapItemsLayout(fromId, toId)
@@ -657,11 +796,24 @@ const performLiveSwap = (fromId: string, toId: string) => {
   const nextPinId = pinSwap ? (from?.sticky ? toId : fromId) : undefined
   const visualIds = getVisualSortIds(newList)
 
+  const nextIds = applyFixedPositions(visualIds)
+  itemIds.value = nextIds
+
+  if (nextPinId != null) {
+    for (const id of itemIds.value) {
+      const meta = itemMetaMap.get(id) ?? {}
+      itemMetaMap.set(id, { ...meta, sticky: id === nextPinId })
+    }
+  }
+
+  rebuildLayout()
+
   emit('reorder', {
-    ids: applyFixedPositions(visualIds),
-    list: newList,
+    list: list.value,
     ...(nextPinId != null ? { nextPinId } : {})
   })
+
+  scheduleDragReorderSync()
 }
 
 const scheduleTransitionSync = (onComplete?: () => void, reason = 'transition-sync') => {
@@ -896,7 +1048,7 @@ const applyPendingRemoveBaseline = () => {
   const { cols, rows, gap, items } = pendingRemoveLayout
 
   for (const item of items) {
-    if (!props.list.some((entry) => entry.id === item.id)) continue
+    if (!list.value.some((entry) => entry.id === item.id)) continue
     contentLayoutMap.set(item.id, computeItemRect(item, width, height, cols, rows, gap, rowHeight))
   }
 
@@ -917,7 +1069,7 @@ const interruptPendingExitAnimation = (): boolean => {
 }
 
 const getNewItemsForEnter = () =>
-  props.list.filter((item) => !knownItemIds.has(item.id) || recentlyRemovedIds.has(item.id))
+  list.value.filter((item) => !knownItemIds.has(item.id) || recentlyRemovedIds.has(item.id))
 
 const updateStickyOnScroll = () => {
   const container = pr_adaptive_grid_ref.value
@@ -925,7 +1077,7 @@ const updateStickyOnScroll = () => {
 
   const { scrollTop, scrollLeft } = container
 
-  for (const item of props.list) {
+  for (const item of list.value) {
     if (!item.sticky) {
       stickyOffsetMap.delete(item.id)
       continue
@@ -952,7 +1104,7 @@ const computeLayoutAnimDurations = (nextRects: Map<string, GridLayoutRect>): num
   layoutAnimDurationMap.clear()
   let maxDuration = LAYOUT_TRANSITION_MIN_MS
 
-  for (const item of props.list) {
+  for (const item of list.value) {
     if (enteringItemIds.has(item.id)) continue
 
     const prev = contentLayoutMap.get(item.id)
@@ -1030,7 +1182,7 @@ const cleanupExitGhosts = async (ghosts: LeavingGhost[], token: number, fadeStar
 
 const runRepositionThenEnter = (newItems: GridItem[], reason: string) => {
   scheduleTransitionSync(() => {
-    previousListLength.value = props.list.length
+    previousListLength.value = list.value.length
     finishInitialLayout()
     void (async () => {
       await delay(ITEM_ANIM_STAGGER_MS)
@@ -1045,7 +1197,7 @@ const runExitThenReposition = async (ghosts: LeavingGhost[], reason: string) => 
       exitReorderPending = false
       pendingRemoveLayout = null
       recentlyRemovedIds.clear()
-      previousListLength.value = props.list.length
+      previousListLength.value = list.value.length
       finishInitialLayout()
     }, `${reason}:remove-reorder`)
     return
@@ -1072,7 +1224,7 @@ const runExitThenReposition = async (ghosts: LeavingGhost[], reason: string) => 
     exitReorderPending = false
     pendingRemoveLayout = null
     recentlyRemovedIds.clear()
-    previousListLength.value = props.list.length
+    previousListLength.value = list.value.length
     finishInitialLayout()
   }, `${reason}:remove-reorder`)
 
@@ -1099,24 +1251,24 @@ const scheduleSync = (options?: { animate?: boolean; reason?: string }) => {
       const runSync = (syncReason: string) => {
         syncLayout(syncReason)
         syncKnownItemIds()
-        previousListLength.value = props.list.length
+        previousListLength.value = list.value.length
         finishInitialLayout()
       }
 
-      const isIntroSingleItem = props.list.length === 1 && previousListLength.value === 0
+      const isIntroSingleItem = list.value.length === 1 && previousListLength.value === 0
       const shouldAnimate = Boolean(options?.animate && layoutInitialized.value && !isIntroSingleItem)
 
       agLog('scheduleSync:run', {
         reason,
         shouldAnimate,
         isIntroSingleItem,
-        newItemCount: props.list.filter((item) => !knownItemIds.has(item.id)).length,
+        newItemCount: list.value.filter((item) => !knownItemIds.has(item.id)).length,
         ...getDebugFlags()
       })
 
       if (shouldAnimate) {
         const newItems = getNewItemsForEnter()
-        const removedIds = [...knownItemIds].filter((id) => !props.list.some((item) => item.id === id))
+        const removedIds = [...knownItemIds].filter((id) => !list.value.some((item) => item.id === id))
         const hasRemoval = removedIds.length > 0
 
         // 首次移除时 pre watch 已写入 leaving ghost，此时不能打断，否则 ghosts 为空会直接走重排
@@ -1131,7 +1283,7 @@ const scheduleSync = (options?: { animate?: boolean; reason?: string }) => {
           }
           await nextTick()
 
-          const repositionExisting = props.list.some((item) => knownItemIds.has(item.id) && !recentlyRemovedIds.has(item.id))
+          const repositionExisting = list.value.some((item) => knownItemIds.has(item.id) && !recentlyRemovedIds.has(item.id))
           if (repositionExisting) {
             runRepositionThenEnter(newItems, reason)
           } else {
@@ -1141,17 +1293,17 @@ const scheduleSync = (options?: { animate?: boolean; reason?: string }) => {
         } else if (hasRemoval) {
           agLog('scheduleSync:path-remove-reorder', { reason, removedIds, ...getDebugFlags() })
           pendingRemoveLayout = {
-            cols: props.cols,
-            rows: props.rows,
+            cols: gridCols.value,
+            rows: gridRows.value,
             gap: props.gap,
-            items: props.list.map((item) => ({ ...item }))
+            items: list.value.map((item) => ({ ...item }))
           }
           const ghosts = leavingItems.value.filter((ghost) => removedIds.includes(ghost.item.id))
           void runExitThenReposition(ghosts, reason)
         } else {
           agLog('scheduleSync:path-pure-reorder', { reason, ...getDebugFlags() })
           scheduleTransitionSync(() => {
-            previousListLength.value = props.list.length
+            previousListLength.value = list.value.length
             finishInitialLayout()
           }, `${reason}:pure-reorder`)
         }
@@ -1194,7 +1346,7 @@ onMounted(async () => {
 })
 
 watch(
-  () => props.list.map((item) => item.id).join(','),
+  () => itemIds.value.join(','),
   (next, prev) => {
     if (!layoutInitialized.value) return
 
@@ -1219,7 +1371,7 @@ watch(
       recentlyRemovedIds.add(id)
     }
 
-    for (const item of props.list) {
+    for (const item of list.value) {
       if (!knownItemIds.has(item.id)) {
         enteringItemIds.add(item.id)
       }
@@ -1229,7 +1381,7 @@ watch(
 )
 
 watch(
-  () => props.list,
+  () => list.value,
   (list) => {
     previousListById.clear()
     for (const item of list) {
@@ -1241,12 +1393,12 @@ watch(
 
 watch(
   () => ({
-    list: props.list,
-    cols: props.cols,
-    rows: props.rows,
+    list: list.value,
+    cols: gridCols.value,
+    rows: gridRows.value,
     gap: props.gap,
-    firstScreenRowSplit: props.firstScreenRowSplit,
-    stickyKey: props.list.map((item) => `${item.id}:${item.sticky}`).join(',')
+    firstScreenRowSplit: gridFirstScreenRowSplit.value,
+    stickyKey: list.value.map((item) => `${item.id}:${item.sticky}`).join(',')
   }),
   async () => {
     await nextTick()
@@ -1313,6 +1465,11 @@ const settleActiveAnimations = () => {
 }
 
 defineExpose({
+  setItem,
+  setItems,
+  removeItem,
+  getItems,
+  shuffleItems,
   settleActiveAnimations,
   startDebugCapture,
   endDebugCapture,
