@@ -9,8 +9,8 @@
             :style="{ backgroundColor: getTileColor(item.id) }"
           >
             <div v-if="item.sticky || item.fixed" class="tile-badges">
-              <span v-if="item.sticky" class="badge badge-pin">Pin</span>
-              <span v-if="item.fixed" class="badge badge-fixed">Fixed</span>
+              <span v-if="item.sticky" class="badge badge-pin">📌 Pin</span>
+              <span v-if="item.fixed" class="badge badge-fixed">🔒 Fixed</span>
             </div>
             <span class="tile-id">{{ item.id }}</span>
             <span class="tile-meta">{{ item.w }}×{{ item.h }}</span>
@@ -62,19 +62,22 @@ const gridRef = ref<PrAdaptiveGridExpose>()
 const userCount = ref(DEFAULT_USER_COUNT)
 const tileColorMap = ref(new Map<string, string>())
 
-const randomTileColor = (): string => {
+/** 高饱和度随机色，亮度偏高以对比黑色背景 */
+const pickContrastColor = (): string => {
   const hue = Math.floor(Math.random() * 360)
-  return `hsl(${hue} 48% 74%)`
+  const sat = 88 + Math.floor(Math.random() * 13)
+  const light = 65 + Math.floor(Math.random() * 14)
+  return `hsl(${hue} ${sat}% ${light}%)`
 }
 
 const ensureTileColor = (id: string) => {
   if (tileColorMap.value.has(id)) return
   const next = new Map(tileColorMap.value)
-  next.set(id, randomTileColor())
+  next.set(id, pickContrastColor())
   tileColorMap.value = next
 }
 
-const getTileColor = (id: string): string => tileColorMap.value.get(id) ?? 'hsl(220 48% 74%)'
+const getTileColor = (id: string): string => tileColorMap.value.get(id) ?? 'hsl(210 95% 72%)'
 
 const createUserIds = (count: number) => Array.from({ length: count }, (_, i) => `${i + 1}`)
 
@@ -129,10 +132,9 @@ const shuffleItems = () => {
 }
 
 const initGrid = () => {
-  const ids = getDefaultIds()
-  ids.forEach((id) => ensureTileColor(id))
+  getDefaultIds().forEach((id) => ensureTileColor(id))
   gridRef.value?.setItems(
-    ids.map((id, index) => {
+    getDefaultIds().map((id, index) => {
       if (index === 0) return { id, options: { sticky: true } }
       if (index === 1) return { id, options: { fixed: true } }
       return { id }
@@ -143,9 +145,8 @@ const initGrid = () => {
 const syncGrid = () => {
   gridRef.value?.settleActiveAnimations()
   userCount.value = DEFAULT_USER_COUNT
-  const ids = getDefaultIds()
-  ids.forEach((id) => ensureTileColor(id))
-  gridRef.value?.setItems(ids.map((id) => ({ id })))
+  getDefaultIds().forEach((id) => ensureTileColor(id))
+  gridRef.value?.setItems(getDefaultIds().map((id) => ({ id })))
 }
 
 onMounted(() => {
@@ -188,48 +189,68 @@ onMounted(() => {
   padding: 10px;
   border-radius: 10px;
   color: #1a1a1a;
-  transition: box-shadow 0.2s ease;
+  overflow: hidden;
+  isolation: isolate;
 }
 
-/* Pin：蓝色内阴影 */
-.is-pinned {
-  box-shadow:
-    inset 0 0 0 3px #2563eb,
-    inset 0 0 20px rgba(37, 99, 235, 0.35);
+/* Pin / Fixed 内阴影层（::before = Pin，::after = Fixed） */
+.tile::before,
+.tile::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease;
 }
 
-/* Fixed：橙色内阴影 */
-.is-fixed {
-  box-shadow:
-    inset 0 0 0 3px #d97706,
-    inset 0 0 20px rgba(217, 119, 6, 0.35);
+.is-pinned::before {
+  opacity: 1;
+  box-shadow: inset 0 0 40px 8px rgba(37, 99, 235, 0.28);
 }
 
-.is-pinned.is-fixed {
-  box-shadow:
-    inset 0 0 0 3px #2563eb,
-    inset 0 0 0 6px #d97706,
-    inset 0 0 24px rgba(37, 99, 235, 0.28),
-    inset 0 0 24px rgba(217, 119, 6, 0.22);
+.is-fixed::after {
+  opacity: 1;
+  box-shadow: inset 0 0 40px 8px rgba(217, 119, 6, 0.28);
+}
+
+.is-pinned.is-fixed::before {
+  box-shadow: inset 0 0 36px 6px rgba(37, 99, 235, 0.22);
+}
+
+.is-pinned.is-fixed::after {
+  box-shadow: inset 0 0 36px 6px rgba(217, 119, 6, 0.22);
+}
+
+.tile-id,
+.tile-meta,
+.tile-ops,
+.tile-badges {
+  position: relative;
+  z-index: 2;
 }
 
 .tile-badges {
   position: absolute;
-  top: 6px;
-  right: 6px;
+  top: 12px;
+  right: 12px;
+  z-index: 3;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 4px;
+  gap: 5px;
 }
 
 .badge {
-  padding: 2px 7px;
-  border-radius: 4px;
-  font-size: 0.625rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  line-height: 1.3;
+  padding: 4px 9px;
+  border-radius: 6px;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
 .badge-pin {
@@ -244,7 +265,7 @@ onMounted(() => {
 
 .tile-id {
   font-size: clamp(1.75rem, 4.5vw, 2.5rem);
-  font-weight: 500;
+  font-weight: 600;
   letter-spacing: -0.03em;
   line-height: 1;
 }
