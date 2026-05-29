@@ -19,16 +19,17 @@
                 type="button"
                 class="op"
                 :class="{ active: item.sticky }"
+                data-type="pin"
                 @pointerdown.stop
                 @click.stop="setPin(item)"
               >
                 Pin
               </button>
-              <span class="op-dot" />
               <button
                 type="button"
                 class="op"
                 :class="{ active: item.fixed }"
+                data-type="fix"
                 @pointerdown.stop
                 @click.stop="setFixed(item)"
               >
@@ -279,49 +280,61 @@ onMounted(() => {
 .tile-ops {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   margin-top: 6px;
-  padding: 6px 14px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.55);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
 }
 
 .op {
-  min-height: 32px;
-  padding: 6px 12px;
-  border: none;
-  border-radius: 8px;
-  background: none;
-  color: rgba(0, 0, 0, 0.45);
+  min-height: 36px;
+  padding: 7px 18px;
+  border: 2px solid rgba(0, 0, 0, 0.14);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.82);
+  color: rgba(0, 0, 0, 0.55);
   font-family: inherit;
   font-size: 0.8125rem;
-  font-weight: 500;
+  font-weight: 600;
+  letter-spacing: 0.02em;
   cursor: pointer;
   transition:
     color 0.15s ease,
-    background 0.15s ease;
+    background 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 .op:hover {
-  background: rgba(255, 255, 255, 0.4);
+  border-radius: 999px;
+  background: #fff;
+  border-color: rgba(0, 0, 0, 0.22);
+  color: rgba(0, 0, 0, 0.75);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
 }
 
-.op.active {
-  color: #2563eb;
-  font-weight: 600;
+.op.active[data-type='pin'] {
+  background: #2563eb;
+  border-color: #1d4ed8;
+  color: #fff;
+  box-shadow: 0 2px 12px rgba(37, 99, 235, 0.45);
 }
 
-.op:last-of-type.active {
-  color: #d97706;
+.op.active[data-type='pin']:hover {
+  background: #1d4ed8;
+  border-color: #1e40af;
+  color: #fff;
 }
 
-.op-dot {
-  width: 3px;
-  height: 3px;
-  border-radius: 50%;
-  background: rgba(0, 0, 0, 0.2);
+.op.active[data-type='fix'] {
+  background: #d97706;
+  border-color: #b45309;
+  color: #fff;
+  box-shadow: 0 2px 12px rgba(217, 119, 6, 0.45);
+}
+
+.op.active[data-type='fix']:hover {
+  background: #b45309;
+  border-color: #92400e;
+  color: #fff;
 }
 
 /* ── 底部悬浮毛玻璃工具栏 ── */
