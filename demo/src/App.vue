@@ -3,11 +3,7 @@
     <div class="grid-wrap">
       <PrAdaptiveGrid ref="gridRef" :gap="8">
         <template #default="{ item }">
-          <div
-            class="tile"
-            :class="{ 'is-pinned': item.sticky, 'is-fixed': item.fixed }"
-            :style="{ backgroundColor: getTileColor(item.id) }"
-          >
+          <div class="tile" :class="{ 'is-pinned': item.sticky, 'is-fixed': item.fixed }" :style="{ backgroundColor: getTileColor(item.id) }">
             <div v-if="item.sticky || item.fixed" class="tile-badges">
               <span v-if="item.sticky" class="badge badge-pin">📌 Pin</span>
               <span v-if="item.fixed" class="badge badge-fixed">🔒 Fixed</span>
@@ -15,26 +11,8 @@
             <span class="tile-id">{{ item.id }}</span>
             <span class="tile-meta">{{ item.w }}×{{ item.h }}</span>
             <div class="tile-ops">
-              <button
-                type="button"
-                class="op"
-                :class="{ active: item.sticky }"
-                data-type="pin"
-                @pointerdown.stop
-                @click.stop="setPin(item)"
-              >
-                Pin
-              </button>
-              <button
-                type="button"
-                class="op"
-                :class="{ active: item.fixed }"
-                data-type="fix"
-                @pointerdown.stop
-                @click.stop="setFixed(item)"
-              >
-                Fixed
-              </button>
+              <button type="button" class="op" :class="{ active: item.sticky }" data-type="pin" @pointerdown.stop @click.stop="setPin(item)">Pin</button>
+              <button type="button" class="op" :class="{ active: item.fixed }" data-type="fix" @pointerdown.stop @click.stop="setFixed(item)">Fixed</button>
             </div>
           </div>
         </template>
@@ -42,6 +20,21 @@
     </div>
 
     <div class="float-bar">
+      <div class="help-wrap">
+        <button type="button" class="help-btn" aria-label="Pin 与 Fixed 说明">?</button>
+        <div class="help-panel" role="tooltip" aria-label="按钮说明">
+          <p class="help-title">按钮说明</p>
+          <div class="help-item">
+            <span class="help-tag help-tag-pin">📌 Pin</span>
+            <p class="help-desc">滚动时固定在网格可视区域，类似 sticky 锚点。</p>
+          </div>
+          <div class="help-item">
+            <span class="help-tag help-tag-fixed">🔒 Fixed</span>
+            <p class="help-desc">锁定 ids 槽位，不可拖动，排序时不会被其他 item 挤压位移。</p>
+          </div>
+        </div>
+      </div>
+      <span class="bar-sep" />
       <button type="button" class="bar-btn" :disabled="userCount <= 1" @click="changeUserCount(-1)">−</button>
       <span class="bar-count">{{ userCount }}</span>
       <button type="button" class="bar-btn" @click="changeUserCount(1)">+</button>
@@ -174,7 +167,8 @@ onMounted(() => {
 .grid-wrap {
   position: absolute;
   inset: 0;
-  padding: 6px 6px 0;
+  padding: 8px;
+  box-sizing: border-box;
 }
 
 /* ── Tile ── */
@@ -282,20 +276,24 @@ onMounted(() => {
   align-items: center;
   gap: 8px;
   margin-top: 6px;
+  position: relative;
+  z-index: 3;
 }
 
 .op {
   min-height: 36px;
   padding: 7px 18px;
-  border: 2px solid rgba(0, 0, 0, 0.14);
+  border: 2px solid rgba(0, 0, 0, 0.22);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.82);
-  color: rgba(0, 0, 0, 0.55);
+  background: #fff;
+  color: #1a1a1a;
   font-family: inherit;
-  font-size: 0.8125rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
+  font-size: 0.875rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
   cursor: pointer;
+  -webkit-font-smoothing: antialiased;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
   transition:
     color 0.15s ease,
     background 0.15s ease,
@@ -306,9 +304,9 @@ onMounted(() => {
 .op:hover {
   border-radius: 999px;
   background: #fff;
-  border-color: rgba(0, 0, 0, 0.22);
-  color: rgba(0, 0, 0, 0.75);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
+  border-color: rgba(0, 0, 0, 0.32);
+  color: #000;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
 }
 
 .op.active[data-type='pin'] {
@@ -337,7 +335,7 @@ onMounted(() => {
   color: #fff;
 }
 
-/* ── 底部悬浮毛玻璃工具栏 ── */
+/* ── 底部悬浮工具栏 ── */
 .float-bar {
   position: fixed;
   left: 50%;
@@ -354,6 +352,129 @@ onMounted(() => {
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
   backdrop-filter: blur(20px) saturate(1.5);
   -webkit-backdrop-filter: blur(20px) saturate(1.5);
+}
+
+.help-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.help-btn {
+  width: 48px;
+  height: 48px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text);
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1;
+  cursor: help;
+  transition: background 0.15s ease;
+}
+
+.help-btn:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.help-panel {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 18px);
+  width: min(300px, calc(100vw - 48px));
+  padding: 14px 16px 16px;
+  border-radius: 16px;
+  background: rgba(28, 28, 30, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(20px) saturate(1.5);
+  -webkit-backdrop-filter: blur(20px) saturate(1.5);
+  pointer-events: none;
+  visibility: hidden;
+  opacity: 0;
+  transform: translateX(-50%) translateY(16px) scale(0.5);
+  transform-origin: bottom center;
+  overflow: hidden;
+}
+
+.help-panel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: linear-gradient(to top, rgba(28, 28, 30, 0.98) 0%, transparent 50%);
+  pointer-events: none;
+}
+
+.help-wrap:hover .help-panel,
+.help-wrap:focus-within .help-panel {
+  visibility: visible;
+  pointer-events: auto;
+  animation: help-rise 0.32s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes help-rise {
+  0% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(20px) scale(0.5);
+    clip-path: inset(100% 0 0 0 round 16px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+    clip-path: inset(0 0 0 0 round 16px);
+  }
+}
+
+.help-title,
+.help-item {
+  position: relative;
+  z-index: 1;
+}
+
+.help-title {
+  margin: 0 0 12px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.help-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.help-item + .help-item {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.help-tag {
+  align-self: flex-start;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.help-tag-pin {
+  background: #2563eb;
+  color: #fff;
+}
+
+.help-tag-fixed {
+  background: #d97706;
+  color: #fff;
+}
+
+.help-desc {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: rgba(245, 245, 245, 0.75);
 }
 
 .bar-btn {
