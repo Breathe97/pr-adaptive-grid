@@ -53,13 +53,17 @@ export interface GridReorderPayload {
   nextPinId?: string
 }
 
-/** setItem 可选参数（不含 id 与布局坐标，坐标由组件内部 getLayout 计算） */
-export type GridSetItemOptions = Partial<Pick<GridItem, 'sticky' | 'fixed'>> & {
-  /** 新 item 插入 ids 的索引，默认追加到末尾 */
+/** setItem / setItems 可选参数（仅 sticky、fixed、index；布局坐标由组件内部计算） */
+export interface GridSetItemOptions {
+  /** 滚动时固定在容器可视区域 */
+  sticky?: boolean
+  /** 固定位置：不可拖动，拖动排序时不会被挤压位移 */
+  fixed?: boolean
+  /** 新 item 插入 ids 的索引（仅 setItem 生效），默认追加到末尾 */
   index?: number
 }
 
-/** setItem / setItems 单条入参 */
+/** setItem / setItems 单条入参；options 省略或为 undefined 时保留该 id 已有属性 */
 export interface GridSetItemEntry {
   id: string
   options?: GridSetItemOptions
@@ -69,7 +73,7 @@ export interface GridSetItemEntry {
 export interface PrAdaptiveGridExpose {
   /** 新增或更新 item；id 已存在时按 options 合并更新属性 */
   setItem: (id: string, options?: GridSetItemOptions) => void
-  /** 批量新增或更新 item，数组顺序即 ids 顺序 */
+  /** 批量新增或更新 item；数组顺序即 ids 顺序，未包含的已有 id 会被移除；entry.options 为 undefined 时保留该 id 原有属性 */
   setItems: (entries: GridSetItemEntry[]) => void
   /** 按 id 移除一个或多个 item */
   removeItem: (ids: string | string[]) => void

@@ -21,6 +21,7 @@
       <span class="toolbar-count">{{ userCount }}</span>
       <button type="button" class="toolbar-btn" @click="changeUserCount(1)">+</button>
       <button type="button" class="toolbar-shuffle-btn" :disabled="userCount <= 1" @click="shuffleItems">打乱</button>
+      <button type="button" class="toolbar-shuffle-btn" @click="syncGrid">同步</button>
     </div>
   </div>
 </template>
@@ -30,9 +31,11 @@ import { ref, onMounted } from 'vue'
 import { PrAdaptiveGrid } from '../../src/index.ts'
 import type { GridItem, PrAdaptiveGridExpose } from '../../src/index.ts'
 
+const DEFAULT_USER_COUNT = 8
+
 const gridRef = ref<PrAdaptiveGridExpose>()
 
-const userCount = ref(8)
+const userCount = ref(DEFAULT_USER_COUNT)
 const itemColorMap = ref(new Map<string, string>())
 
 const randomItemColor = (): string => {
@@ -50,6 +53,8 @@ const ensureItemColor = (id: string) => {
 const getItemColor = (id: string): string => itemColorMap.value.get(id) ?? '#f5f5f5'
 
 const createUserIds = (count: number) => Array.from({ length: count }, (_, i) => `${i + 1}`)
+
+const getDefaultIds = () => createUserIds(DEFAULT_USER_COUNT)
 
 const setPin = (item: GridItem) => {
   gridRef.value?.settleActiveAnimations()
@@ -100,11 +105,19 @@ const shuffleItems = () => {
 }
 
 const initGrid = () => {
-  const ids = createUserIds(userCount.value)
+  const ids = getDefaultIds()
   ids.forEach((id) => ensureItemColor(id))
   gridRef.value?.setItems(
     ids.map((id, index) => (index === 0 ? { id, options: { sticky: true, fixed: true } } : { id }))
   )
+}
+
+const syncGrid = () => {
+  gridRef.value?.settleActiveAnimations()
+  userCount.value = DEFAULT_USER_COUNT
+  const ids = getDefaultIds()
+  ids.forEach((id) => ensureItemColor(id))
+  gridRef.value?.setItems(ids.map((id) => ({ id })))
 }
 
 onMounted(() => {

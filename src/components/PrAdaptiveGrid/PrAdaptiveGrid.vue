@@ -168,24 +168,37 @@ const setItem = (id: string, options: GridSetItemOptions = {}) => {
 }
 
 const setItems = (entries: GridSetItemEntry[]) => {
-  if (!entries.length) return
-
   const previousIds = [...itemIds.value]
-  const entryIdOrder = entries.map((entry) => entry.id)
+  const seen = new Set<string>()
+  const entryIdOrder: string[] = []
+
+  for (const entry of entries) {
+    if (seen.has(entry.id)) continue
+    seen.add(entry.id)
+    entryIdOrder.push(entry.id)
+  }
+
   const entryIdSet = new Set(entryIdOrder)
-  const unlistedIds = previousIds.filter((id) => !entryIdSet.has(id))
-  const candidateIds = [...entryIdOrder, ...unlistedIds]
+  const removedIds = previousIds.filter((id) => !entryIdSet.has(id))
 
-  itemIds.value = mergeIdsPreservingFixed(previousIds, candidateIds, getFixedIdSet())
+  for (const id of removedIds) {
+    itemMetaMap.delete(id)
+  }
 
-  for (const { id, options = {} } of entries) {
-    if (!itemMetaMap.has(id)) {
-      itemMetaMap.set(id, {})
+  for (const { id, options } of entries) {
+    if (options === undefined) {
+      if (!itemMetaMap.has(id)) {
+        itemMetaMap.set(id, {})
+      }
+      continue
     }
+
     const { index: _index, ...metaPatch } = options
     const prevMeta = itemMetaMap.get(id) ?? {}
     itemMetaMap.set(id, { ...prevMeta, ...metaPatch })
   }
+
+  itemIds.value = mergeIdsPreservingFixed(previousIds, entryIdOrder, getFixedIdSet())
 
   const stickyId = entries.find(({ options }) => options?.sticky === true)?.id
   if (stickyId) {
