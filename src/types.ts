@@ -48,6 +48,8 @@ export interface GridLayoutResult {
 export interface GridReorderPayload {
   ids: string[]
   list: GridItem[]
+  /** 与普通 item 交换 pin 位置时，新的 pin id */
+  nextPinId?: string
 }
 
 /** PrAdaptiveGrid 对外暴露的方法 */

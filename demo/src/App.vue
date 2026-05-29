@@ -83,7 +83,10 @@ const setPin = (item: GridItem) => {
   applyLayout(currentIds.value, layoutMode.value)
 }
 
-const onReorder = ({ ids }: GridReorderPayload) => {
+const onReorder = ({ ids, nextPinId }: GridReorderPayload) => {
+  if (nextPinId != null) {
+    pinId.value = nextPinId
+  }
   currentIds.value = ids
   applyLayout(ids, layoutMode.value)
 }

@@ -1,5 +1,5 @@
 <template>
-  <div ref="pr_adaptive_grid_ref" class="pr-adaptive-grid" :style="ScrollContainerStyle" @scroll="onScroll" @click.capture="onGridClickCapture">
+  <div ref="pr_adaptive_grid_ref" class="pr-adaptive-grid" :class="{ 'pr-adaptive-grid-sortable': sortable }" :style="ScrollContainerStyle" @scroll="onScroll" @click.capture="onGridClickCapture">
     <div ref="pr_adaptive_grid_content_ref" class="pr-adaptive-grid-content" :style="ContainerStyle">
       <div v-for="item in list" :key="`span-${item.id}`" class="pr-adaptive-grid-item-span" :data-item-id="item.id" :style="ItemSpanStyle(item)" />
       <div
@@ -573,6 +573,10 @@ const swapItemsLayout = (fromId: string, toId: string): GridItem[] => {
 }
 
 const getHitTestLayout = (item: GridItem): GridLayoutRect | undefined => {
+  if (item.sticky) {
+    return getItemLayout(item.id)
+  }
+
   if (dragStarted) {
     const content = pr_adaptive_grid_content_ref.value
     if (!content) return contentLayoutMap.get(item.id)
@@ -596,7 +600,7 @@ const findDropTargetAt = (clientX: number, clientY: number): string | undefined 
   const y = clientY - contentRect.top
 
   for (const item of props.list) {
-    if (item.id === draggingId || item.sticky) continue
+    if (item.id === draggingId) continue
 
     const layout = getHitTestLayout(item)
     if (!layout) continue
@@ -610,13 +614,19 @@ const findDropTargetAt = (clientX: number, clientY: number): string | undefined 
 }
 
 const performLiveSwap = (fromId: string, toId: string) => {
+  const from = props.list.find((item) => item.id === fromId)
+  const to = props.list.find((item) => item.id === toId)
   const newList = swapItemsLayout(fromId, toId)
 
   liveSwapPartnerId = toId
 
+  const pinSwap = Boolean(from?.sticky) !== Boolean(to?.sticky)
+  const nextPinId = pinSwap ? (from?.sticky ? toId : fromId) : undefined
+
   emit('reorder', {
     ids: getVisualSortIds(newList),
-    list: newList
+    list: newList,
+    ...(nextPinId != null ? { nextPinId } : {})
   })
 }
 
@@ -762,7 +772,7 @@ const onDocumentPointerUp = (event: PointerEvent) => {
 }
 
 const onItemPointerDown = (event: PointerEvent, item: GridItem) => {
-  if (!props.sortable || item.sticky || event.button !== 0) return
+  if (!props.sortable || event.button !== 0) return
 
   cancelDragRelease()
   cleanupDragListeners()
@@ -1408,6 +1418,11 @@ defineExpose({
 .pr-adaptive-grid-item-sticky .pr-adaptive-grid-item-inner {
   cursor: default;
   touch-action: auto;
+}
+
+.pr-adaptive-grid-sortable .pr-adaptive-grid-item-sticky .pr-adaptive-grid-item-inner {
+  cursor: grab;
+  touch-action: none;
 }
 
 .pr-adaptive-grid-item-drop-target .pr-adaptive-grid-item-inner {
