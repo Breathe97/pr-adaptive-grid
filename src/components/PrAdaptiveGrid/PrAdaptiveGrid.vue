@@ -14,7 +14,8 @@
           'pr-adaptive-grid-item-no-transition': (scrollTransitionDisabled && !layoutTransitionActive) || (suppressTransition && !enteringItemIds.has(item.id)),
           'pr-adaptive-grid-item-dragging': dragState?.id === item.id && dragReleasingId !== item.id,
           'pr-adaptive-grid-item-dragging-release': dragReleasingId === item.id,
-          'pr-adaptive-grid-item-drop-target': dropTargetId === item.id
+          'pr-adaptive-grid-item-drop-target': dropTargetId === item.id,
+          'pr-adaptive-grid-item-fixed': isItemFixed(item)
         }"
         :style="StyleItemOuter(item.id)"
       >
@@ -557,6 +558,36 @@ const StyleItemOuter = (id: string): CSSProperties => {
 
 const getVisualSortIds = (list: GridItem[]): string[] => [...list].sort((a, b) => a.y - b.y || a.x - b.x).map((item) => item.id)
 
+const isItemFixed = (item: GridItem | undefined): boolean => Boolean(item?.fixed)
+
+/** 固定 item 保持当前 ids 槽位，其余 item 按视觉顺序填入剩余位置 */
+const applyFixedPositions = (sortedIds: string[]): string[] => {
+  const n = props.list.length
+  if (!n) return []
+
+  const fixedIds = new Set(props.list.filter(isItemFixed).map((item) => item.id))
+  if (fixedIds.size === 0) return sortedIds
+
+  const previousIds = getVisualSortIds(props.list)
+  const result: string[] = new Array(n)
+
+  for (let i = 0; i < n; i++) {
+    if (fixedIds.has(previousIds[i])) {
+      result[i] = previousIds[i]
+    }
+  }
+
+  const movableSorted = sortedIds.filter((id) => !fixedIds.has(id))
+  let movableCursor = 0
+  for (let i = 0; i < n; i++) {
+    if (result[i] == null) {
+      result[i] = movableSorted[movableCursor++]
+    }
+  }
+
+  return result
+}
+
 const swapItemsLayout = (fromId: string, toId: string): GridItem[] => {
   const from = props.list.find((item) => item.id === fromId)
   const to = props.list.find((item) => item.id === toId)
@@ -600,7 +631,7 @@ const findDropTargetAt = (clientX: number, clientY: number): string | undefined 
   const y = clientY - contentRect.top
 
   for (const item of props.list) {
-    if (item.id === draggingId) continue
+    if (item.id === draggingId || isItemFixed(item)) continue
 
     const layout = getHitTestLayout(item)
     if (!layout) continue
@@ -616,15 +647,18 @@ const findDropTargetAt = (clientX: number, clientY: number): string | undefined 
 const performLiveSwap = (fromId: string, toId: string) => {
   const from = props.list.find((item) => item.id === fromId)
   const to = props.list.find((item) => item.id === toId)
+  if (isItemFixed(from) || isItemFixed(to)) return
+
   const newList = swapItemsLayout(fromId, toId)
 
   liveSwapPartnerId = toId
 
   const pinSwap = Boolean(from?.sticky) !== Boolean(to?.sticky)
   const nextPinId = pinSwap ? (from?.sticky ? toId : fromId) : undefined
+  const visualIds = getVisualSortIds(newList)
 
   emit('reorder', {
-    ids: getVisualSortIds(newList),
+    ids: applyFixedPositions(visualIds),
     list: newList,
     ...(nextPinId != null ? { nextPinId } : {})
   })
@@ -772,7 +806,7 @@ const onDocumentPointerUp = (event: PointerEvent) => {
 }
 
 const onItemPointerDown = (event: PointerEvent, item: GridItem) => {
-  if (!props.sortable || event.button !== 0) return
+  if (!props.sortable || event.button !== 0 || isItemFixed(item)) return
 
   cancelDragRelease()
   cleanupDragListeners()
@@ -1423,6 +1457,12 @@ defineExpose({
 .pr-adaptive-grid-sortable .pr-adaptive-grid-item-sticky .pr-adaptive-grid-item-inner {
   cursor: grab;
   touch-action: none;
+}
+
+.pr-adaptive-grid-item-fixed .pr-adaptive-grid-item-inner,
+.pr-adaptive-grid-sortable .pr-adaptive-grid-item-fixed .pr-adaptive-grid-item-inner {
+  cursor: default;
+  touch-action: auto;
 }
 
 .pr-adaptive-grid-item-drop-target .pr-adaptive-grid-item-inner {

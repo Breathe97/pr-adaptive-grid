@@ -14,6 +14,8 @@ export interface GridItem {
   h: number
   /** 滚动时固定在容器可视区域 */
   sticky?: boolean
+  /** 固定位置：不可拖动，拖动排序时不会被挤压位移 */
+  fixed?: boolean
 }
 
 export interface GridConfig {
