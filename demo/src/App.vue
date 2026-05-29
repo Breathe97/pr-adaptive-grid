@@ -152,7 +152,13 @@ const shuffleItems = () => {
 const initGrid = () => {
   const ids = getDefaultIds()
   ids.forEach((id) => ensureItemColor(id))
-  gridRef.value?.setItems(ids.map((id, index) => (index === 0 ? { id, options: { sticky: true, fixed: true } } : { id })))
+  gridRef.value?.setItems(
+    ids.map((id, index) => {
+      if (index === 0) return { id, options: { sticky: true } }
+      if (index === 1) return { id, options: { fixed: true } }
+      return { id }
+    })
+  )
 }
 
 const syncGrid = () => {
