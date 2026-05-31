@@ -23,13 +23,7 @@
           <slot :item="item" />
         </div>
       </div>
-      <div
-        v-for="ghost in leavingItems"
-        :key="`leaving-${ghost.item.id}`"
-        class="pr-adaptive-grid-item pr-adaptive-grid-item-leaving"
-        :data-item-id="ghost.item.id"
-        :style="StyleLeavingItemOuter(ghost)"
-      >
+      <div v-for="ghost in leavingItems" :key="`leaving-${ghost.item.id}`" class="pr-adaptive-grid-item pr-adaptive-grid-item-leaving" :data-item-id="ghost.item.id" :style="StyleLeavingItemOuter(ghost)">
         <div class="pr-adaptive-grid-item-inner" :style="StyleLeavingItemInner(ghost.item.id)">
           <slot :item="ghost.item" />
         </div>
@@ -1081,8 +1075,7 @@ const interruptPendingExitAnimation = (): boolean => {
   return true
 }
 
-const getNewItemsForEnter = () =>
-  list.value.filter((item) => !knownItemIds.has(item.id) || recentlyRemovedIds.has(item.id))
+const getNewItemsForEnter = () => list.value.filter((item) => !knownItemIds.has(item.id) || recentlyRemovedIds.has(item.id))
 
 const updateStickyOnScroll = () => {
   const container = pr_adaptive_grid_ref.value
@@ -1128,10 +1121,7 @@ const computeLayoutAnimDurations = (nextRects: Map<string, GridLayoutRect>): num
     const sizeChange = Math.abs(next.w - prev.w) + Math.abs(next.h - prev.h)
     const travel = distance + sizeChange * 0.35
 
-    const ms =
-      travel < 0.5
-        ? LAYOUT_TRANSITION_MIN_MS
-        : Math.min(LAYOUT_TRANSITION_MAX_MS, Math.max(LAYOUT_TRANSITION_MIN_MS, Math.round(travel / LAYOUT_TRANSITION_SPEED)))
+    const ms = travel < 0.5 ? LAYOUT_TRANSITION_MIN_MS : Math.min(LAYOUT_TRANSITION_MAX_MS, Math.max(LAYOUT_TRANSITION_MIN_MS, Math.round(travel / LAYOUT_TRANSITION_SPEED)))
 
     layoutAnimDurationMap.set(item.id, ms)
     maxDuration = Math.max(maxDuration, ms)
@@ -1493,9 +1483,9 @@ defineExpose({
 <style scoped>
 /* iOS 风格缓动：位移快速启动、末端平滑减速 */
 .pr-adaptive-grid {
-  --ag-ease-position: cubic-bezier(0.22, 1, 0.36, 1);
-  --ag-ease-size: cubic-bezier(0.32, 0.72, 0, 1);
-  --ag-ease-fade: cubic-bezier(0.32, 0.72, 0, 1);
+  --ag-ease-position: cubic-bezier(0.22, 0.62, 0.25, 1.00);
+  --ag-ease-size: cubic-bezier(0.22, 0.62, 0.25, 1.00);
+  --ag-ease-fade: ease-out;
   --ag-duration-position: 800ms;
   --ag-duration-size: 800ms;
   --ag-duration-enter: 800ms;
