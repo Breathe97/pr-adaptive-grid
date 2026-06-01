@@ -69,7 +69,7 @@ export interface GridSetItemEntry {
   options?: GridSetItemOptions
 }
 
-/** 可见 item 变化回调（virtualScroll 开启时随滚动实时触发） */
+/** 监听 visible-change 事件时的回调类型 */
 export type GridVisibleChangeHandler = (ids: string[]) => void
 
 /** PrAdaptiveGrid 对外暴露的方法 */

@@ -33,7 +33,7 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, computed, reactive, onMounted, onBeforeUnmount, watch, nextTick, type CSSProperties, type PropType } from 'vue'
+import { ref, computed, reactive, onMounted, onBeforeUnmount, watch, nextTick, type CSSProperties } from 'vue'
 import type { GridDirection, GridItem, GridLayoutRect, GridReorderPayload, GridSetItemEntry, GridSetItemOptions } from '../../types'
 import { resolveGridLayout } from './getLayout'
 import { mergeIdsPreservingFixed } from './mergeIdsPreservingFixed'
@@ -75,11 +75,6 @@ const props = defineProps({
   virtualOffsetPages: {
     type: Number,
     default: 2
-  },
-  /** 可见 item 变化时的回调（与 visible-change 事件同步触发） */
-  onVisibleChange: {
-    type: Function as PropType<((ids: string[]) => void) | undefined>,
-    default: undefined
   }
 })
 
@@ -141,13 +136,12 @@ const rebuildLayout = () => {
   })
 }
 
-const notifyItemsChanged = async (reason: string) => {
+const notifyItemsChanged = async (_reason: string) => {
   await nextTick()
   if (dragStarted && dragState.value) {
     scheduleDragReorderSync()
-    return
   }
-  scheduleSync({ animate: true, reason })
+  // 布局同步由 list/cols/rows 的 props-watch 统一触发，避免与 setItems 重复 scheduleSync
 }
 
 const setItem = (id: string, options: GridSetItemOptions = {}) => {
@@ -617,10 +611,12 @@ const getItemRectForVirtual = (item: GridItem): GridLayoutRect | undefined => {
   return computeItemRect(item, width, height, gridCols.value, gridRows.value, props.gap, resolvedRowHeight.value)
 }
 
+const isVirtualWindowReady = () =>
+  containerViewportHeight.value > 0 && resolvedRowHeight.value > 0 && list.value.length > 0
+
 const computeVisibleList = (): GridItem[] => {
-  if (!props.virtualScroll || !layoutInitialized.value || resolvedRowHeight.value <= 0) {
-    return list.value
-  }
+  if (!props.virtualScroll) return list.value
+  if (!isVirtualWindowReady()) return []
 
   const forcedIds = getForcedRenderIds()
   const range = getScrollViewportRange()
@@ -633,7 +629,7 @@ const computeVisibleList = (): GridItem[] => {
     }
 
     const rect = getItemRectForVirtual(item)
-    if (!rect || rectIntersectsViewport(rect, range)) {
+    if (rect && rectIntersectsViewport(rect, range)) {
       next.push(item)
     }
   }
@@ -656,13 +652,14 @@ const getIdsToMeasure = (): Set<string> => {
 let lastVisibleIdsKey = ''
 
 const notifyVisibleChange = (items: GridItem[]) => {
+  if (props.virtualScroll && !isVirtualWindowReady()) return
+
   const key = items.map((item) => item.id).join(',')
   if (key === lastVisibleIdsKey) return
 
   lastVisibleIdsKey = key
   const ids = items.map((item) => item.id)
   emit('visible-change', ids)
-  props.onVisibleChange?.(ids)
 }
 
 let virtualSyncRaf = 0
@@ -677,13 +674,16 @@ const scheduleVirtualSync = () => {
   })
 }
 
-const updateVirtualWindow = (options?: { sync?: boolean }) => {
+const updateVirtualWindow = (options?: { sync?: boolean; notify?: boolean }) => {
   const next = computeVisibleList()
   const prevKey = visibleList.value.map((item) => item.id).join(',')
   const nextKey = next.map((item) => item.id).join(',')
 
   visibleList.value = next
-  notifyVisibleChange(next)
+
+  if (options?.notify !== false) {
+    notifyVisibleChange(next)
+  }
 
   if (options?.sync !== false && nextKey !== prevKey) {
     scheduleVirtualSync()
@@ -740,8 +740,9 @@ const syncKnownItemIds = () => {
 
 const syncLayout = (debugReason?: string) => {
   const before = AG_DEBUG ? captureLayoutSnapshot() : null
+  const shouldNotifyVisible = debugReason !== 'virtual-window'
 
-  updateVirtualWindow({ sync: false })
+  updateVirtualWindow({ sync: false, notify: false })
 
   const idsToMeasure = getIdsToMeasure()
   const rects = measureItemRects(idsToMeasure)
@@ -770,6 +771,8 @@ const syncLayout = (debugReason?: string) => {
   }
 
   updateStickyOnScroll()
+
+  updateVirtualWindow({ sync: false, notify: shouldNotifyVisible })
 
   const state = dragState.value
   if (state && dragStarted) {
@@ -1391,6 +1394,8 @@ const runExitThenReposition = async (ghosts: LeavingGhost[], reason: string) => 
   void cleanupExitGhosts(ghosts, token, fadeStartedAt)
 }
 
+let pendingSync: { animate?: boolean; reason?: string } | null = null
+
 const scheduleSync = (options?: { animate?: boolean; reason?: string }) => {
   const reason = options?.reason ?? 'unspecified'
 
@@ -1400,16 +1405,24 @@ const scheduleSync = (options?: { animate?: boolean; reason?: string }) => {
     return
   }
 
+  pendingSync = {
+    animate: pendingSync?.animate || options?.animate,
+    reason: pendingSync ? `${pendingSync.reason}+${reason}` : reason
+  }
+
   agLog('scheduleSync:queued', { reason, animate: options?.animate, ...getDebugFlags() })
 
   cancelAnimationFrame(raf)
   raf = requestAnimationFrame(() => {
+    const syncOptions = pendingSync
+    pendingSync = null
+    if (!syncOptions) return
+
     void (async () => {
       measureContainer()
       await nextTick()
 
       const runSync = (syncReason: string) => {
-        updateVirtualWindow({ sync: false })
         syncLayout(syncReason)
         syncKnownItemIds()
         previousListLength.value = list.value.length
@@ -1417,10 +1430,10 @@ const scheduleSync = (options?: { animate?: boolean; reason?: string }) => {
       }
 
       const isIntroSingleItem = list.value.length === 1 && previousListLength.value === 0
-      const shouldAnimate = Boolean(options?.animate && layoutInitialized.value && !isIntroSingleItem)
+      const shouldAnimate = Boolean(syncOptions.animate && layoutInitialized.value && !isIntroSingleItem)
 
       agLog('scheduleSync:run', {
-        reason,
+        reason: syncOptions.reason,
         shouldAnimate,
         isIntroSingleItem,
         newItemCount: list.value.filter((item) => !knownItemIds.has(item.id)).length,
@@ -1438,7 +1451,7 @@ const scheduleSync = (options?: { animate?: boolean; reason?: string }) => {
         }
 
         if (newItems.length > 0) {
-          agLog('scheduleSync:path-add-items', { reason, newIds: newItems.map((item) => item.id) })
+          agLog('scheduleSync:path-add-items', { reason: syncOptions.reason, newIds: newItems.map((item) => item.id) })
           for (const item of newItems) {
             enteringItemIds.add(item.id)
           }
@@ -1446,13 +1459,13 @@ const scheduleSync = (options?: { animate?: boolean; reason?: string }) => {
 
           const repositionExisting = list.value.some((item) => knownItemIds.has(item.id) && !recentlyRemovedIds.has(item.id))
           if (repositionExisting) {
-            runRepositionThenEnter(newItems, reason)
+            runRepositionThenEnter(newItems, syncOptions.reason ?? 'unspecified')
           } else {
-            runSync(`${reason}:add-only`)
+            runSync(`${syncOptions.reason}:add-only`)
             void playEnterAnimation(newItems)
           }
         } else if (hasRemoval) {
-          agLog('scheduleSync:path-remove-reorder', { reason, removedIds, ...getDebugFlags() })
+          agLog('scheduleSync:path-remove-reorder', { reason: syncOptions.reason, removedIds, ...getDebugFlags() })
           pendingRemoveLayout = {
             cols: gridCols.value,
             rows: gridRows.value,
@@ -1460,17 +1473,17 @@ const scheduleSync = (options?: { animate?: boolean; reason?: string }) => {
             items: list.value.map((item) => ({ ...item }))
           }
           const ghosts = leavingItems.value.filter((ghost) => removedIds.includes(ghost.item.id))
-          void runExitThenReposition(ghosts, reason)
+          void runExitThenReposition(ghosts, syncOptions.reason ?? 'unspecified')
         } else {
-          agLog('scheduleSync:path-pure-reorder', { reason, ...getDebugFlags() })
+          agLog('scheduleSync:path-pure-reorder', { reason: syncOptions.reason, ...getDebugFlags() })
           scheduleTransitionSync(() => {
             previousListLength.value = list.value.length
             finishInitialLayout()
-          }, `${reason}:pure-reorder`)
+          }, `${syncOptions.reason}:pure-reorder`)
         }
       } else {
-        agLog('scheduleSync:path-no-animate', { reason, ...getDebugFlags() })
-        runSync(`${reason}:no-animate`)
+        agLog('scheduleSync:path-no-animate', { reason: syncOptions.reason, ...getDebugFlags() })
+        runSync(`${syncOptions.reason}:no-animate`)
       }
     })()
   })
@@ -1506,7 +1519,10 @@ onMounted(async () => {
   await nextTick()
   if (pr_adaptive_grid_ref.value) observer.observe(pr_adaptive_grid_ref.value)
   if (pr_adaptive_grid_content_ref.value) observer.observe(pr_adaptive_grid_content_ref.value)
-  scheduleSync({ reason: 'mount' })
+  // 无初始数据时不 scheduleSync，避免与父组件 setItems 触发的 props-watch 重复同步
+  if (itemIds.value.length > 0) {
+    scheduleSync({ reason: 'mount' })
+  }
 })
 
 watch(
