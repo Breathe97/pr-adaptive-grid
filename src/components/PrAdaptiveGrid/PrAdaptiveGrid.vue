@@ -96,8 +96,6 @@ const gridCols = ref(1)
 const gridRows = ref(1)
 const gridFirstScreenRowSplit = ref<number>()
 
-/** 首屏按最多 4 行均分容器高度（与 mode2 左侧 fullId 占 4 行一致） */
-const FIRST_SCREEN_ROWS = 4
 /** 全局动画时长范围 */
 const ANIM_MIN_MS = 300
 const ANIM_MAX_MS = 800
@@ -473,7 +471,8 @@ const resolvedRowHeight = computed(() => {
   }
   if (containerViewportHeight.value <= 0 || gridRows.value <= 0) return 0
 
-  const split = gridFirstScreenRowSplit.value != null && gridFirstScreenRowSplit.value > 0 ? gridFirstScreenRowSplit.value : Math.min(gridRows.value, FIRST_SCREEN_ROWS)
+  const split =
+    gridFirstScreenRowSplit.value != null && gridFirstScreenRowSplit.value > 0 ? gridFirstScreenRowSplit.value : gridRows.value
   const totalGap = Math.max(0, split - 1) * props.gap
   return (containerViewportHeight.value - totalGap) / split
 })
