@@ -1,7 +1,7 @@
 <template>
   <div class="demo">
     <div class="grid-wrap">
-      <PrAdaptiveGrid ref="gridRef" :gap="8">
+      <PrAdaptiveGrid ref="gridRef" :gap="8" @visible-change="onVisibleChange">
         <template #default="{ item }">
           <div class="tile" :class="{ 'is-pinned': item.sticky, 'is-fixed': item.fixed }" :style="{ backgroundColor: getTileColor(item.id) }">
             <div v-if="item.sticky || item.fixed" class="tile-badges">
@@ -50,7 +50,7 @@ import { ref, onMounted } from 'vue'
 import { PrAdaptiveGrid } from '../../src/index.ts'
 import type { GridItem, PrAdaptiveGridExpose } from '../../src/index.ts'
 
-const DEFAULT_USER_COUNT = 8
+const DEFAULT_USER_COUNT = 48
 
 const gridRef = ref<PrAdaptiveGridExpose>()
 const userCount = ref(DEFAULT_USER_COUNT)
@@ -141,6 +141,10 @@ const syncGrid = () => {
   userCount.value = DEFAULT_USER_COUNT
   getDefaultIds().forEach((id) => ensureTileColor(id))
   gridRef.value?.setItems(getDefaultIds().map((id) => ({ id })))
+}
+
+const onVisibleChange = (ids: string[]) => {
+  console.log('[visible items]', ids.length, ids.join(', '), ids)
 }
 
 onMounted(() => {

@@ -3,7 +3,7 @@
     <div ref="pr_adaptive_grid_content_ref" class="pr-adaptive-grid-content" :style="ContainerStyle">
       <div v-for="item in list" :key="`span-${item.id}`" class="pr-adaptive-grid-item-span" :data-item-id="item.id" :style="ItemSpanStyle(item)" />
       <div
-        v-for="item in list"
+        v-for="item in visibleList"
         :key="`item-${item.id}`"
         class="pr-adaptive-grid-item"
         :data-item-id="item.id"
@@ -33,7 +33,7 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, computed, reactive, onMounted, onBeforeUnmount, watch, nextTick, type CSSProperties } from 'vue'
+import { ref, computed, reactive, onMounted, onBeforeUnmount, watch, nextTick, type CSSProperties, type PropType } from 'vue'
 import type { GridDirection, GridItem, GridLayoutRect, GridReorderPayload, GridSetItemEntry, GridSetItemOptions } from '../../types'
 import { resolveGridLayout } from './getLayout'
 import { mergeIdsPreservingFixed } from './mergeIdsPreservingFixed'
@@ -65,11 +65,27 @@ const props = defineProps({
   sortable: {
     type: Boolean,
     default: true
+  },
+  /** 是否开启虚拟渲染：span 全量，item 仅渲染视口附近窗口 */
+  virtualScroll: {
+    type: Boolean,
+    default: true
+  },
+  /** 视口上下各扩展的页数（1 页 = 1 个视口高度），默认 ±2 页共 5 页 */
+  virtualOffsetPages: {
+    type: Number,
+    default: 2
+  },
+  /** 可见 item 变化时的回调（与 visible-change 事件同步触发） */
+  onVisibleChange: {
+    type: Function as PropType<((ids: string[]) => void) | undefined>,
+    default: undefined
   }
 })
 
 const emit = defineEmits<{
   reorder: [payload: GridReorderPayload]
+  'visible-change': [ids: string[]]
 }>()
 
 const pr_adaptive_grid_ref = ref<HTMLElement>()
@@ -79,6 +95,8 @@ const pr_adaptive_grid_content_ref = ref<HTMLElement>()
 const itemIds = ref<string[]>([])
 const itemMetaMap = reactive(new Map<string, { sticky?: boolean; fixed?: boolean }>())
 const list = ref<GridItem[]>([])
+/** 当前渲染窗口内的 item（virtualScroll 关闭时等于 list） */
+const visibleList = ref<GridItem[]>([])
 const gridCols = ref(1)
 const gridRows = ref(1)
 const gridFirstScreenRowSplit = ref<number>()
@@ -529,7 +547,150 @@ const measureContainer = () => {
   containerViewportHeight.value = container.clientHeight
 }
 
-const measureItemRects = (): Map<string, GridLayoutRect> => {
+const measureSpanRect = (span: HTMLElement, contentRect: DOMRect): GridLayoutRect => {
+  const spanRect = span.getBoundingClientRect()
+  return {
+    x: spanRect.left - contentRect.left,
+    y: spanRect.top - contentRect.top,
+    w: spanRect.width,
+    h: spanRect.height
+  }
+}
+
+const getForcedRenderIds = (): Set<string> => {
+  const ids = new Set<string>()
+
+  for (const item of list.value) {
+    if (item.sticky) ids.add(item.id)
+  }
+
+  const draggingId = dragState.value?.id
+  if (draggingId) ids.add(draggingId)
+
+  const targetId = dropTargetId.value
+  if (targetId) ids.add(targetId)
+
+  for (const id of enteringItemIds) {
+    ids.add(id)
+  }
+
+  return ids
+}
+
+const getScrollViewportRange = () => {
+  const container = pr_adaptive_grid_ref.value
+  if (!container || containerViewportHeight.value <= 0) {
+    return { top: 0, bottom: Number.POSITIVE_INFINITY }
+  }
+
+  const pageHeight = containerViewportHeight.value
+  const offset = Math.max(0, props.virtualOffsetPages) * pageHeight
+  const scrollTop = container.scrollTop
+
+  return {
+    top: scrollTop - offset,
+    bottom: scrollTop + pageHeight + offset
+  }
+}
+
+const rectIntersectsViewport = (rect: GridLayoutRect, range: { top: number; bottom: number }) => {
+  const itemTop = rect.y
+  const itemBottom = rect.y + rect.h
+  return itemBottom >= range.top && itemTop <= range.bottom
+}
+
+const getItemRectForVirtual = (item: GridItem): GridLayoutRect | undefined => {
+  const cached = contentLayoutMap.get(item.id)
+  if (cached) return cached
+
+  const content = pr_adaptive_grid_content_ref.value
+  if (!content) return undefined
+
+  const { width, height } = content.getBoundingClientRect()
+  if (!width || !height) return undefined
+
+  const span = content.querySelector<HTMLElement>(`.pr-adaptive-grid-item-span[data-item-id="${item.id}"]`)
+  if (span) {
+    return measureSpanRect(span, content.getBoundingClientRect())
+  }
+
+  return computeItemRect(item, width, height, gridCols.value, gridRows.value, props.gap, resolvedRowHeight.value)
+}
+
+const computeVisibleList = (): GridItem[] => {
+  if (!props.virtualScroll || !layoutInitialized.value || resolvedRowHeight.value <= 0) {
+    return list.value
+  }
+
+  const forcedIds = getForcedRenderIds()
+  const range = getScrollViewportRange()
+  const next: GridItem[] = []
+
+  for (const item of list.value) {
+    if (forcedIds.has(item.id)) {
+      next.push(item)
+      continue
+    }
+
+    const rect = getItemRectForVirtual(item)
+    if (!rect || rectIntersectsViewport(rect, range)) {
+      next.push(item)
+    }
+  }
+
+  return next
+}
+
+const getIdsToMeasure = (): Set<string> => {
+  if (!props.virtualScroll) {
+    return new Set(list.value.map((item) => item.id))
+  }
+
+  const ids = new Set(visibleList.value.map((item) => item.id))
+  for (const item of list.value) {
+    if (item.sticky) ids.add(item.id)
+  }
+  return ids
+}
+
+let lastVisibleIdsKey = ''
+
+const notifyVisibleChange = (items: GridItem[]) => {
+  const key = items.map((item) => item.id).join(',')
+  if (key === lastVisibleIdsKey) return
+
+  lastVisibleIdsKey = key
+  const ids = items.map((item) => item.id)
+  emit('visible-change', ids)
+  props.onVisibleChange?.(ids)
+}
+
+let virtualSyncRaf = 0
+
+const scheduleVirtualSync = () => {
+  cancelAnimationFrame(virtualSyncRaf)
+  virtualSyncRaf = requestAnimationFrame(() => {
+    void (async () => {
+      await nextTick()
+      syncLayout('virtual-window')
+    })()
+  })
+}
+
+const updateVirtualWindow = (options?: { sync?: boolean }) => {
+  const next = computeVisibleList()
+  const prevKey = visibleList.value.map((item) => item.id).join(',')
+  const nextKey = next.map((item) => item.id).join(',')
+
+  visibleList.value = next
+  notifyVisibleChange(next)
+
+  if (options?.sync !== false && nextKey !== prevKey) {
+    scheduleVirtualSync()
+  }
+}
+
+const measureItemRects = (idsToMeasure?: Set<string>): Map<string, GridLayoutRect> => {
   const rects = new Map<string, GridLayoutRect>()
   const content = pr_adaptive_grid_content_ref.value
   if (!content) return rects
@@ -538,24 +699,17 @@ const measureItemRects = (): Map<string, GridLayoutRect> => {
   if (!width || !height) return rects
 
   const rowHeight = resolvedRowHeight.value
-  const spans = content.querySelectorAll<HTMLElement>('.pr-adaptive-grid-item-span')
   const contentRect = content.getBoundingClientRect()
-  const canMeasure = spans.length === list.value.length
+  const targetIds = idsToMeasure ?? new Set(list.value.map((item) => item.id))
 
   list.value.forEach((item) => {
+    if (!targetIds.has(item.id)) return
+
     let rect: GridLayoutRect | undefined
+    const span = content.querySelector<HTMLElement>(`.pr-adaptive-grid-item-span[data-item-id="${item.id}"]`)
 
-    if (canMeasure) {
-      const span = content.querySelector<HTMLElement>(`.pr-adaptive-grid-item-span[data-item-id="${item.id}"]`)
-      if (!span) return
-
-      const spanRect = span.getBoundingClientRect()
-      rect = {
-        x: spanRect.left - contentRect.left,
-        y: spanRect.top - contentRect.top,
-        w: spanRect.width,
-        h: spanRect.height
-      }
+    if (span) {
+      rect = measureSpanRect(span, contentRect)
     } else {
       rect = computeItemRect(item, width, height, gridCols.value, gridRows.value, props.gap, rowHeight)
     }
@@ -587,7 +741,10 @@ const syncKnownItemIds = () => {
 const syncLayout = (debugReason?: string) => {
   const before = AG_DEBUG ? captureLayoutSnapshot() : null
 
-  const rects = measureItemRects()
+  updateVirtualWindow({ sync: false })
+
+  const idsToMeasure = getIdsToMeasure()
+  const rects = measureItemRects(idsToMeasure)
 
   if (layoutTransitionActive.value) {
     const maxDuration = computeLayoutAnimDurations(rects)
@@ -598,12 +755,17 @@ const syncLayout = (debugReason?: string) => {
     contentLayoutMap.set(id, rect)
   })
 
-  // 清理已移除项
+  // 清理已移除项；虚拟窗口外条目释放缓存
   for (const id of [...contentLayoutMap.keys()]) {
     if (!list.value.some((item) => item.id === id)) {
       contentLayoutMap.delete(id)
       stickyOffsetMap.delete(id)
       enteringItemIds.delete(id)
+      continue
+    }
+
+    if (props.virtualScroll && !idsToMeasure.has(id)) {
+      contentLayoutMap.delete(id)
     }
   }
 
@@ -622,7 +784,9 @@ const syncLayout = (debugReason?: string) => {
     agLog('syncLayout', {
       reason: debugReason,
       moved: diffLayoutSnapshot(before, after),
-      canMeasure: rects.size === list.value.length,
+      measuredCount: rects.size,
+      visibleCount: visibleList.value.length,
+      totalCount: list.value.length,
       ...getDebugFlags()
     })
   }
@@ -648,14 +812,7 @@ const getItemLayout = (id: string): GridLayoutRect | undefined => {
 
   const span = content.querySelector<HTMLElement>(`.pr-adaptive-grid-item-span[data-item-id="${id}"]`)
   if (span) {
-    const contentRect = content.getBoundingClientRect()
-    const spanRect = span.getBoundingClientRect()
-    return {
-      x: spanRect.left - contentRect.left,
-      y: spanRect.top - contentRect.top,
-      w: spanRect.width,
-      h: spanRect.height
-    }
+    return measureSpanRect(span, content.getBoundingClientRect())
   }
 
   return computeItemRect(item, width, height, gridCols.value, gridRows.value, props.gap, resolvedRowHeight.value)
@@ -1252,6 +1409,7 @@ const scheduleSync = (options?: { animate?: boolean; reason?: string }) => {
       await nextTick()
 
       const runSync = (syncReason: string) => {
+        updateVirtualWindow({ sync: false })
         syncLayout(syncReason)
         syncKnownItemIds()
         previousListLength.value = list.value.length
@@ -1321,7 +1479,10 @@ const scheduleSync = (options?: { animate?: boolean; reason?: string }) => {
 let scrollRaf = 0
 const onScroll = () => {
   cancelAnimationFrame(scrollRaf)
-  scrollRaf = requestAnimationFrame(updateStickyOnScroll)
+  scrollRaf = requestAnimationFrame(() => {
+    updateStickyOnScroll()
+    updateVirtualWindow()
+  })
 
   if (dragStarted) return
 
@@ -1427,6 +1588,7 @@ onBeforeUnmount(() => {
   finishDrag()
   cancelAnimationFrame(raf)
   cancelAnimationFrame(scrollRaf)
+  cancelAnimationFrame(virtualSyncRaf)
   window.clearTimeout(layoutTransitionTimer)
   window.clearTimeout(scrollTransitionTimer)
   window.clearTimeout(dragReleaseTimer)
@@ -1467,11 +1629,14 @@ const settleActiveAnimations = () => {
   agLog('settleActiveAnimations:done', getDebugFlags())
 }
 
+const getVisibleItems = (): GridItem[] => visibleList.value.map((item) => ({ ...item }))
+
 defineExpose({
   setItem,
   setItems,
   removeItem,
   getItems,
+  getVisibleItems,
   shuffleItems,
   settleActiveAnimations,
   startDebugCapture,

@@ -69,6 +69,9 @@ export interface GridSetItemEntry {
   options?: GridSetItemOptions
 }
 
+/** 可见 item 变化回调（virtualScroll 开启时随滚动实时触发） */
+export type GridVisibleChangeHandler = (ids: string[]) => void
+
 /** PrAdaptiveGrid 对外暴露的方法 */
 export interface PrAdaptiveGridExpose {
   /** 新增或更新 item；id 已存在时按 options 合并更新属性 */
@@ -89,6 +92,8 @@ export interface PrAdaptiveGridExpose {
   endDebugCapture: () => string
   /** 写入一条外部诊断日志（如 demo shuffle） */
   recordDebug: (event: string, data?: Record<string, unknown>) => void
+  /** 获取当前渲染窗口内的 item 列表（只读快照） */
+  getVisibleItems: () => GridItem[]
 }
 
 /** 布局诊断日志条目 */
