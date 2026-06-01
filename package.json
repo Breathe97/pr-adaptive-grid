@@ -1,7 +1,7 @@
 {
   "name": "pr-adaptive-grid",
   "description": "基于 vue3 封装的一个自适应网格布局组件。",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "files": [
     "dist"
@@ -38,6 +38,6 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/Breathe97/pr-screen-adapter"
+    "url": "git+https://github.com/Breathe97/pr-screen-adapter.git"
   }
 }
