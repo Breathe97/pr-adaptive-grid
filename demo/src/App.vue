@@ -49,7 +49,7 @@
 import { ref, onMounted } from 'vue'
 import type { GridItem, PrAdaptiveGridExpose } from 'pr-adaptive-grid'
 
-const DEFAULT_USER_COUNT = 1
+const DEFAULT_USER_COUNT = 10
 
 const gridRef = ref<PrAdaptiveGridExpose>()
 const userCount = ref(DEFAULT_USER_COUNT)

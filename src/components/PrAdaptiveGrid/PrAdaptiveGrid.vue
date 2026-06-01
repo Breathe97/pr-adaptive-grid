@@ -550,6 +550,35 @@ const measureSpanRect = (span: HTMLElement, contentRect: DOMRect): GridLayoutRec
   }
 }
 
+/** 读取已渲染 item 层的实际像素位置（FLIP 起点，比 contentLayoutMap 更可靠） */
+const measureItemDomRect = (el: HTMLElement, contentRect: DOMRect): GridLayoutRect => {
+  const rect = el.getBoundingClientRect()
+  return {
+    x: rect.left - contentRect.left,
+    y: rect.top - contentRect.top,
+    w: rect.width,
+    h: rect.height
+  }
+}
+
+const captureRenderedItemRects = (): Map<string, GridLayoutRect> => {
+  const map = new Map<string, GridLayoutRect>()
+  const content = pr_adaptive_grid_content_ref.value
+  if (!content) return map
+
+  const contentRect = content.getBoundingClientRect()
+  const targets = props.virtualScroll ? visibleList.value : list.value
+
+  for (const item of targets) {
+    const el = content.querySelector<HTMLElement>(`.pr-adaptive-grid-item[data-item-id="${item.id}"]`)
+    if (el) {
+      map.set(item.id, measureItemDomRect(el, contentRect))
+    }
+  }
+
+  return map
+}
+
 const getForcedRenderIds = (): Set<string> => {
   const ids = new Set<string>()
 
@@ -636,8 +665,12 @@ const computeVisibleList = (): GridItem[] => {
   return next
 }
 
+/** 可见 id 集合（排序后），用于判断集合是否变化；打乱仅改变顺序时不应触发 virtual-window sync */
+const getVisibleIdSetKey = (items: GridItem[]): string =>
+  [...items.map((item) => item.id)].sort().join(',')
+
 const getIdsToMeasure = (): Set<string> => {
-  if (!props.virtualScroll) {
+  if (!props.virtualScroll || layoutTransitionActive.value) {
     return new Set(list.value.map((item) => item.id))
   }
 
@@ -653,7 +686,7 @@ let lastVisibleIdsKey = ''
 const notifyVisibleChange = (items: GridItem[]) => {
   if (props.virtualScroll && !isVirtualWindowReady()) return
 
-  const key = items.map((item) => item.id).join(',')
+  const key = getVisibleIdSetKey(items)
   if (key === lastVisibleIdsKey) return
 
   lastVisibleIdsKey = key
@@ -675,8 +708,8 @@ const scheduleVirtualSync = () => {
 
 const updateVirtualWindow = (options?: { sync?: boolean; notify?: boolean }) => {
   const next = computeVisibleList()
-  const prevKey = visibleList.value.map((item) => item.id).join(',')
-  const nextKey = next.map((item) => item.id).join(',')
+  const prevSetKey = getVisibleIdSetKey(visibleList.value)
+  const nextSetKey = getVisibleIdSetKey(next)
 
   visibleList.value = next
 
@@ -684,7 +717,7 @@ const updateVirtualWindow = (options?: { sync?: boolean; notify?: boolean }) => 
     notifyVisibleChange(next)
   }
 
-  if (options?.sync !== false && nextKey !== prevKey) {
+  if (options?.sync !== false && nextSetKey !== prevSetKey) {
     scheduleVirtualSync()
   }
 }
@@ -737,25 +770,7 @@ const syncKnownItemIds = () => {
   }
 }
 
-const syncLayout = (debugReason?: string) => {
-  const before = AG_DEBUG ? captureLayoutSnapshot() : null
-  const shouldNotifyVisible = debugReason !== 'virtual-window'
-
-  updateVirtualWindow({ sync: false, notify: false })
-
-  const idsToMeasure = getIdsToMeasure()
-  const rects = measureItemRects(idsToMeasure)
-
-  if (layoutTransitionActive.value) {
-    const maxDuration = computeLayoutAnimDurations(rects)
-    refreshLayoutTransitionTimer(maxDuration, debugReason ?? 'syncLayout')
-  }
-
-  rects.forEach((rect, id) => {
-    contentLayoutMap.set(id, rect)
-  })
-
-  // 清理已移除项；虚拟窗口外条目释放缓存
+const cleanupLayoutMap = (idsToMeasure: Set<string>) => {
   for (const id of [...contentLayoutMap.keys()]) {
     if (!list.value.some((item) => item.id === id)) {
       contentLayoutMap.delete(id)
@@ -764,13 +779,14 @@ const syncLayout = (debugReason?: string) => {
       continue
     }
 
-    if (props.virtualScroll && !idsToMeasure.has(id)) {
+    if (props.virtualScroll && !layoutTransitionActive.value && !idsToMeasure.has(id)) {
       contentLayoutMap.delete(id)
     }
   }
+}
 
+const finishSyncLayout = (debugReason: string | undefined, shouldNotifyVisible: boolean, before: ReturnType<typeof captureLayoutSnapshot> | null, measuredCount: number) => {
   updateStickyOnScroll()
-
   updateVirtualWindow({ sync: false, notify: shouldNotifyVisible })
 
   const state = dragState.value
@@ -786,12 +802,44 @@ const syncLayout = (debugReason?: string) => {
     agLog('syncLayout', {
       reason: debugReason,
       moved: diffLayoutSnapshot(before, after),
-      measuredCount: rects.size,
+      measuredCount,
       visibleCount: visibleList.value.length,
       totalCount: list.value.length,
       ...getDebugFlags()
     })
   }
+}
+
+const syncLayout = (debugReason?: string) => {
+  const before = AG_DEBUG ? captureLayoutSnapshot() : null
+  const shouldNotifyVisible = debugReason !== 'virtual-window'
+
+  updateVirtualWindow({ sync: false, notify: false })
+
+  const idsToMeasure = getIdsToMeasure()
+  const rects = measureItemRects(idsToMeasure)
+
+  if (layoutTransitionActive.value) {
+    const domPrev = captureRenderedItemRects()
+    const maxDuration = computeLayoutAnimDurations(rects, domPrev)
+    refreshLayoutTransitionTimer(maxDuration, debugReason ?? 'syncLayout')
+    void pr_adaptive_grid_content_ref.value?.offsetHeight
+
+    requestAnimationFrame(() => {
+      rects.forEach((rect, id) => {
+        contentLayoutMap.set(id, rect)
+      })
+      cleanupLayoutMap(idsToMeasure)
+      finishSyncLayout(debugReason, shouldNotifyVisible, before, rects.size)
+    })
+    return
+  }
+
+  rects.forEach((rect, id) => {
+    contentLayoutMap.set(id, rect)
+  })
+  cleanupLayoutMap(idsToMeasure)
+  finishSyncLayout(debugReason, shouldNotifyVisible, before, rects.size)
 }
 
 const getItemLayout = (id: string): GridLayoutRect | undefined => {
@@ -805,6 +853,9 @@ const getItemLayout = (id: string): GridLayoutRect | undefined => {
 
   const cached = contentLayoutMap.get(id)
   if (cached) return cached
+
+  // 布局过渡中禁止用已更新的 span/网格坐标回退，否则会直接跳到终点
+  if (layoutTransitionActive.value) return undefined
 
   const content = pr_adaptive_grid_content_ref.value
   if (!content) return undefined
@@ -1265,14 +1316,14 @@ let raf = 0
 let layoutTransitionTimer = 0
 let scrollTransitionTimer = 0
 
-const computeLayoutAnimDurations = (nextRects: Map<string, GridLayoutRect>): number => {
+const computeLayoutAnimDurations = (nextRects: Map<string, GridLayoutRect>, domPrevRects?: Map<string, GridLayoutRect>): number => {
   layoutAnimDurationMap.clear()
   let maxDuration = LAYOUT_TRANSITION_MIN_MS
 
   for (const item of list.value) {
     if (enteringItemIds.has(item.id)) continue
 
-    const prev = contentLayoutMap.get(item.id)
+    const prev = domPrevRects?.get(item.id) ?? contentLayoutMap.get(item.id)
     const next = nextRects.get(item.id)
     if (!prev || !next) continue
 
