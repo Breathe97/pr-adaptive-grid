@@ -1484,6 +1484,10 @@ const scheduleSync = (options?: { animate?: boolean; reason?: string }) => {
       } else {
         agLog('scheduleSync:path-no-animate', { reason: syncOptions.reason, ...getDebugFlags() })
         runSync(`${syncOptions.reason}:no-animate`)
+        // watch:ids-pre 可能已写入 enteringItemIds；无动画路径需立即展示，避免 opacity:0 残留
+        for (const id of [...enteringItemIds]) {
+          enteringItemIds.delete(id)
+        }
       }
     })()
   })

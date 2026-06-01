@@ -47,10 +47,9 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { PrAdaptiveGrid } from '../../src/index.ts'
-import type { GridItem, PrAdaptiveGridExpose } from '../../src/index.ts'
+import type { GridItem, PrAdaptiveGridExpose } from 'pr-adaptive-grid'
 
-const DEFAULT_USER_COUNT = 48
+const DEFAULT_USER_COUNT = 0
 
 const gridRef = ref<PrAdaptiveGridExpose>()
 const userCount = ref(DEFAULT_USER_COUNT)

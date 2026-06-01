@@ -1,7 +1,6 @@
 import { createApp } from 'vue'
+import PrAdaptiveGrid from 'pr-adaptive-grid'
 import './style.css'
 import App from './App.vue'
 
-const app = createApp(App)
-
-app.mount('#app')
+createApp(App).use(PrAdaptiveGrid).mount('#app')
