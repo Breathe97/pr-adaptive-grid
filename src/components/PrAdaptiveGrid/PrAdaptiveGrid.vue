@@ -419,8 +419,13 @@ interface DragState {
   pointerId: number
   startClientX: number
   startClientY: number
+  /** 指针相对 item 左上角的偏移（内容区坐标） */
   grabOffsetX: number
   grabOffsetY: number
+  /** 拖动中的绝对视觉位置（内容区坐标，不随 liveSwap 改变 layout 而重置） */
+  visualX: number
+  visualY: number
+  /** 松手回槽动画：相对目标 layout 的偏移 */
   offsetX: number
   offsetY: number
   /** 按下时的尺寸，拖动浮层期间保持不变 */
@@ -791,7 +796,7 @@ const finishSyncLayout = (debugReason: string | undefined, shouldNotifyVisible: 
 
   const state = dragState.value
   if (state && dragStarted) {
-    const synced = updateDragOffset(state, lastPointerClientX, lastPointerClientY)
+    const synced = updateDragVisualPosition(state, lastPointerClientX, lastPointerClientY)
     if (synced) {
       dragState.value = synced
     }
@@ -879,23 +884,28 @@ const StyleItemOuter = (id: string): CSSProperties => {
   const isActiveDrag = state?.id === id && dragReleasingId.value !== id
   const isRelease = dragReleasingId.value === id && state?.id === id
 
-  if (isActiveDrag || isRelease) {
-    const useSlotSize = Boolean(isRelease && state.useSlotSize)
+  if (isActiveDrag) {
+    return {
+      width: `${state.frozenW}px`,
+      height: `${state.frozenH}px`,
+      transform: `translate3d(${state.visualX}px, ${state.visualY}px, 0)`
+    }
+  }
+
+  if (isRelease) {
+    const useSlotSize = Boolean(state.useSlotSize)
     const w = useSlotSize ? layout.w : state.frozenW
     const h = useSlotSize ? layout.h : state.frozenH
-    const offsetX = useSlotSize ? 0 : state.offsetX
-    const offsetY = useSlotSize ? 0 : state.offsetY
 
     return {
       width: `${w}px`,
       height: `${h}px`,
-      transform: `translate3d(${layout.x + offsetX}px, ${layout.y + offsetY}px, 0)`
+      transform: `translate3d(${layout.x + state.offsetX}px, ${layout.y + state.offsetY}px, 0)`
     }
   }
 
-  const dragging = state?.id === id ? state : null
-  const x = layout.x + (dragging?.offsetX ?? 0)
-  const y = layout.y + (dragging?.offsetY ?? 0)
+  const x = layout.x
+  const y = layout.y
 
   const style: AgItemOuterStyle = {
     width: `${layout.w}px`,
@@ -1087,6 +1097,17 @@ const finishDrag = () => {
     const releaseToken = dragReleaseToken
     const releasingId = state.id
 
+    const releaseLayout = getItemLayout(releasingId)
+    const releaseOffsetX = releaseLayout ? state.visualX - releaseLayout.x : 0
+    const releaseOffsetY = releaseLayout ? state.visualY - releaseLayout.y : 0
+
+    dragState.value = {
+      ...state,
+      offsetX: releaseOffsetX,
+      offsetY: releaseOffsetY,
+      useSlotSize: false
+    }
+
     requestAnimationFrame(() => {
       if (dragReleaseToken !== releaseToken) return
       if (dragState.value?.id !== releasingId) return
@@ -1113,12 +1134,10 @@ const finishDrag = () => {
   dragStarted = false
 }
 
-const updateDragOffset = (state: DragState, clientX: number, clientY: number): DragState | null => {
+/** 按指针绝对坐标更新拖动视觉位置（与格子 layout 解耦，避免 swap 时跳动） */
+const updateDragVisualPosition = (state: DragState, clientX: number, clientY: number): DragState | null => {
   const content = pr_adaptive_grid_content_ref.value
   if (!content) return null
-
-  const layout = getItemLayout(state.id)
-  if (!layout) return null
 
   const contentRect = content.getBoundingClientRect()
   const px = clientX - contentRect.left
@@ -1126,8 +1145,8 @@ const updateDragOffset = (state: DragState, clientX: number, clientY: number): D
 
   return {
     ...state,
-    offsetX: px - layout.x - state.grabOffsetX,
-    offsetY: py - layout.y - state.grabOffsetY
+    visualX: px - state.grabOffsetX,
+    visualY: py - state.grabOffsetY
   }
 }
 
@@ -1152,7 +1171,7 @@ const onDocumentPointerMove = (event: PointerEvent) => {
   lastPointerClientX = event.clientX
   lastPointerClientY = event.clientY
 
-  const nextState = updateDragOffset(state, event.clientX, event.clientY)
+  const nextState = updateDragVisualPosition(state, event.clientX, event.clientY)
   if (!nextState) return
 
   dragState.value = nextState
@@ -1195,6 +1214,8 @@ const onItemPointerDown = (event: PointerEvent, item: GridItem) => {
     startClientY: event.clientY,
     grabOffsetX: pointerX - layout.x,
     grabOffsetY: pointerY - layout.y,
+    visualX: layout.x,
+    visualY: layout.y,
     offsetX: 0,
     offsetY: 0,
     frozenW: layout.w,
