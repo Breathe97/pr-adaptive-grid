@@ -1,7 +1,7 @@
 <template>
   <div class="demo">
     <div class="grid-wrap">
-      <PrAdaptiveGrid ref="gridRef" :gap="8">
+      <PrAdaptiveGrid ref="gridRef" :layout="layout">
         <template #default="{ item }">
           <div class="tile" :class="{ 'is-pinned': item.sticky, 'is-fixed': item.fixed }" :style="{ backgroundColor: getTileColor(item.id) }">
             <div v-if="item.sticky || item.fixed" class="tile-badges">
@@ -47,10 +47,10 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { PrAdaptiveGrid } from '../../src/index.ts'
-import type { GridItem, PrAdaptiveGridExpose } from '../../src/index.ts'
+import { PrAdaptiveGrid, getLayout } from '../../src/index.ts'
+import type { Layout } from '../../src/index.ts'
 
-const DEFAULT_USER_COUNT = 8
+const DEFAULT_USER_COUNT = 12
 
 const gridRef = ref<PrAdaptiveGridExpose>()
 const userCount = ref(DEFAULT_USER_COUNT)
@@ -77,80 +77,42 @@ const createUserIds = (count: number) => Array.from({ length: count }, (_, i) =>
 
 const getDefaultIds = () => createUserIds(DEFAULT_USER_COUNT)
 
-const setPin = (item: GridItem) => {
-  gridRef.value?.settleActiveAnimations()
-  gridRef.value?.setItem(item.id, { sticky: !item.sticky })
-}
+const setPin = (item: GridItem) => {}
 
-const setFixed = (item: GridItem) => {
-  gridRef.value?.settleActiveAnimations()
-  gridRef.value?.setItem(item.id, { fixed: !item.fixed })
+const setFixed = (item: GridItem) => {}
+
+const layout = ref<Layout>({ gap: 8, cols: 1, rows: 1, items: [] })
+
+const createIds = (count: number = 8) => {
+  const ids = []
+  for (let index = 1; index <= count; index++) {
+    ids.push(`${index}`)
+  }
+  return ids
 }
 
 const changeUserCount = (delta: number) => {
-  const next = Math.max(1, userCount.value + delta)
-  if (next === userCount.value) return
-
-  userCount.value = next
-  gridRef.value?.settleActiveAnimations()
-
-  const items = gridRef.value?.getItems() ?? []
-
-  if (delta < 0) {
-    const removeIndex = Math.floor(Math.random() * items.length)
-    gridRef.value?.removeItem(items[removeIndex].id)
-    return
+  if (delta === 1) {
+    userCount.value += 1
   }
-
-  const maxId = items.reduce((max, item) => Math.max(max, Number(item.id) || 0), 0)
-  const newId = `${maxId + 1}`
-  ensureTileColor(newId)
-  gridRef.value?.setItem(newId, { index: 0 })
+  if (delta === -1) {
+    userCount.value -= 1
+  }
+  initGrid()
 }
 
-const shuffleItems = () => {
-  const items = gridRef.value?.getItems() ?? []
-  if (items.length <= 1) return
-
-  gridRef.value?.recordDebug('demo:shuffle:click', {
-    scrollTop: document.querySelector('.pr-adaptive-grid')?.scrollTop ?? 0,
-    itemCount: items.length
-  })
-
-  gridRef.value?.settleActiveAnimations()
-  gridRef.value?.shuffleItems()
-
-  gridRef.value?.recordDebug('demo:shuffle:done', {
-    itemCount: gridRef.value?.getItems().length ?? 0
-  })
-}
+const shuffleItems = () => {}
 
 const initGrid = () => {
-  getDefaultIds().forEach((id) => ensureTileColor(id))
-  gridRef.value?.setItems(
-    getDefaultIds().map((id, index) => {
-      if (index === 0) return { id, options: { sticky: true } }
-      if (index === 1) return { id, options: { fixed: true } }
-      return { id }
-    })
-  )
+  const ids = createIds(userCount.value)
+  layout.value = getLayout('1', ids)
+  console.log('\x1b[38;2;0;151;255m%c%s\x1b[0m', 'color:#0097ff;', `------->Breathe: layout.value`, layout.value)
 }
 
-const syncGrid = () => {
-  gridRef.value?.settleActiveAnimations()
-  userCount.value = DEFAULT_USER_COUNT
-  getDefaultIds().forEach((id) => ensureTileColor(id))
-  gridRef.value?.setItems(getDefaultIds().map((id) => ({ id })))
-}
+const syncGrid = () => {}
 
 onMounted(() => {
   initGrid()
-
-  if (!import.meta.env.DEV) return
-  ;(window as Window & { __agDebug?: { start: () => void; end: () => string } }).__agDebug = {
-    start: () => gridRef.value?.startDebugCapture(),
-    end: () => gridRef.value?.endDebugCapture() ?? '{"error":"grid not ready"}'
-  }
 })
 </script>
 

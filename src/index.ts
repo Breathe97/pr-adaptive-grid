@@ -1,4 +1,5 @@
 import PrAdaptiveGrid from './components/PrAdaptiveGrid/PrAdaptiveGrid.vue' // 引入封装好的组件
+export * from './getLayout.ts'
 export * from './types.ts'
 
 // 按需引入
