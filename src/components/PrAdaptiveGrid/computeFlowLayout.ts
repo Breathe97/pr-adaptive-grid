@@ -3,7 +3,9 @@ import type { GridSizeSpec } from '../../types'
 import { resolveGridSizeSpec } from './resolveGridSize'
 
 export interface ItemLayoutMeta {
+  /** 仅 sticky: true 时参与布局 */
   width?: GridSizeSpec
+  /** 仅 sticky: true 时参与布局 */
   height?: GridSizeSpec
   sticky?: boolean
   fixed?: boolean
@@ -51,56 +53,16 @@ export const splitIntegerTotal = (total: number, parts: number): number[] => {
 /**
  * 行内宽度：flex 均分可用宽度（整数 px），保证 sum(w) + (n-1)*gap === rowWidth。
  */
-const distributeRowWidths = (
-  rowIds: string[],
-  meta: Map<string, ItemLayoutMeta>,
-  rowWidth: number,
-  gap: number
-): Map<string, number> => {
+/** 流式行内宽度均分（忽略 meta.width，仅 sticky 使用自定义宽高） */
+const distributeRowWidths = (rowIds: string[], rowWidth: number, gap: number): Map<string, number> => {
   const widths = new Map<string, number>()
   const n = rowIds.length
   if (!n || rowWidth <= 0) return widths
 
   const totalGap = Math.max(0, n - 1) * gap
   const available = Math.max(0, rowWidth - totalGap)
-
-  const flexIds: string[] = []
-  const fixed = new Map<string, number>()
-  let fixedSum = 0
-
-  for (const id of rowIds) {
-    const raw = meta.get(id)?.width
-    if (typeof raw === 'number' && raw > 0) {
-      fixed.set(id, raw)
-      fixedSum += raw
-    } else {
-      flexIds.push(id)
-    }
-  }
-
-  const flexAvailable = Math.max(0, available - fixedSum)
-  const flexWidths = splitIntegerTotal(flexAvailable, flexIds.length)
-  flexIds.forEach((id, i) => widths.set(id, flexWidths[i]))
-
-  if (flexIds.length === 0 && fixedSum > 0) {
-    const scale = fixedSum > available ? available / fixedSum : 1
-    let scaledSum = 0
-    for (const id of rowIds) {
-      const w = Math.floor((fixed.get(id) ?? 0) * scale)
-      widths.set(id, w)
-      scaledSum += w
-    }
-    const drift = available - scaledSum
-    if (drift !== 0) {
-      const last = rowIds[n - 1]
-      widths.set(last, Math.max(0, (widths.get(last) ?? 0) + drift))
-    }
-    return absorbRowWidthDrift(widths, rowIds, rowWidth, gap)
-  }
-
-  for (const [id, w] of fixed) {
-    widths.set(id, w)
-  }
+  const flexWidths = splitIntegerTotal(available, n)
+  rowIds.forEach((id, i) => widths.set(id, flexWidths[i]))
 
   return absorbRowWidthDrift(widths, rowIds, rowWidth, gap)
 }
@@ -133,7 +95,7 @@ const absorbRowWidthDrift = (
  * 计算流式 item 的像素布局（不含 sticky）。
  */
 export const computeFlowLayout = (input: FlowLayoutInput): FlowLayoutResult => {
-  const { flowX, flowY, flowW, flowH, ids, meta, cols, firstScreenRows, gap, defaultHeight } = input
+  const { flowX, flowY, flowW, flowH, ids, cols, firstScreenRows, gap, defaultHeight } = input
 
   const rects = new Map<string, { x: number; y: number; w: number; h: number }>()
 
@@ -167,7 +129,7 @@ export const computeFlowLayout = (input: FlowLayoutInput): FlowLayoutResult => {
       idOffset += count
 
       const rowBandH = rowHeights[ri] ?? overflowRowHeight
-      const widthMap = distributeRowWidths(rowIds, meta, flowW, gap)
+      const widthMap = distributeRowWidths(rowIds, flowW, gap)
 
       let x = flowX
       for (const id of rowIds) {

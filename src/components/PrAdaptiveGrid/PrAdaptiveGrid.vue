@@ -23,6 +23,15 @@
         >
           <slot :item="item" />
         </div>
+        <template v-if="canResizeItem(item)">
+          <div
+            v-for="edge in RESIZE_EDGES"
+            :key="edge"
+            class="pr-adaptive-grid-resize-handle"
+            :class="`pr-adaptive-grid-resize-handle-${edge}`"
+            @pointerdown.stop.prevent="(e) => onResizePointerDown(e, item, edge)"
+          />
+        </template>
       </div>
     </div>
   </div>
@@ -45,6 +54,7 @@ import type {
   GridItem,
   GridLayoutRect,
   GridReorderPayload,
+  GridResizePayload,
   GridSetItemEntry,
   GridSetItemOptions,
   GridSizeSpec
@@ -78,6 +88,8 @@ const props = withDefaults(
     right?: GridSizeSpec
     bottom?: GridSizeSpec
     sortable?: boolean
+    resizable?: boolean
+    minItemSize?: number
     virtualScroll?: boolean
     virtualOffsetPages?: number
   }>(),
@@ -88,6 +100,8 @@ const props = withDefaults(
     right: 0,
     bottom: 0,
     sortable: true,
+    resizable: true,
+    minItemSize: 48,
     virtualScroll: true,
     virtualOffsetPages: 2
   }
@@ -95,8 +109,12 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   reorder: [payload: GridReorderPayload]
+  resize: [payload: GridResizePayload]
   'visible-change': [ids: string[]]
 }>()
+
+const RESIZE_EDGES = ['n', 's', 'e', 'w'] as const
+type ResizeEdge = (typeof RESIZE_EDGES)[number]
 
 const containerRef = ref<HTMLElement>()
 const contentRef = ref<HTMLElement>()
@@ -426,8 +444,17 @@ const itemClasses = (item: GridItem) => ({
     !isEnterPlay(item.id) &&
     !isExitPlay(item.id),
   'pr-adaptive-grid-item-dragging': dragState.value?.id === item.id,
+  'pr-adaptive-grid-item-resizing': resizeState.value?.id === item.id,
   'pr-adaptive-grid-item-drop-target': dropTargetId.value === item.id
 })
+
+const canResizeItem = (item: GridItem) =>
+  props.resizable &&
+  Boolean(item.sticky) &&
+  !item.fixed &&
+  !layoutTransitionActive.value &&
+  dragState.value?.id !== item.id &&
+  resizeState.value?.id !== item.id
 
 const measureContainer = () => {
   const el = containerRef.value
@@ -666,16 +693,19 @@ const buildStickyScrollTransform = () => {
 }
 
 const styleItemOuter = (id: string): AgOuterStyle => {
-  const to = layoutMap.get(id)
+  const resize = resizeState.value
+  const resizeVisual = resize?.id === id ? resize.visualRect : null
+  const to = resizeVisual ?? layoutMap.get(id)
   if (!to) return { position: 'absolute', left: '0', top: '0', width: '0', height: '0' }
 
   const meta = itemMetaMap.get(id)
   const drag = dragState.value
   const isDragging = drag?.id === id
+  const isResizing = resize?.id === id
   const from = layoutSnapshotFrom.get(id)
   const flip = layoutAnimFlipMap.get(id)
   const flipMode = Boolean(flip) && usesLayoutFlip(id)
-  const useFrom = Boolean(from) && isLayoutFromFrame(id) && !flipMode
+  const useFrom = Boolean(from) && isLayoutFromFrame(id) && !flipMode && !isResizing
   const display = useFrom && from ? from : to
 
   let x = display.x
@@ -696,7 +726,7 @@ const styleItemOuter = (id: string): AgOuterStyle => {
   }
 
   const dur = durationOverrides.get(id)
-  const isStickyPinned = Boolean(meta?.sticky) && !isDragging
+  const isStickyPinned = Boolean(meta?.sticky) && !isDragging && !isResizing
 
   const style: AgOuterStyle = {
     position: 'absolute',
@@ -704,7 +734,7 @@ const styleItemOuter = (id: string): AgOuterStyle => {
     top: `${y}px`,
     width: `${w}px`,
     height: `${h}px`,
-    zIndex: isDragging
+    zIndex: isDragging || isResizing
       ? 20
       : isExiting(id) || isEnterHidden(id) || isEnterPlay(id)
         ? 16
@@ -732,7 +762,7 @@ const styleItemOuter = (id: string): AgOuterStyle => {
     if (!flipMode) style['--ag-duration-size'] = `${sizeMs}ms`
   }
 
-  if (isStickyPinned && !(flipMode && isLayoutPlayFrame(id))) {
+  if ((isStickyPinned || isResizing) && !(flipMode && isLayoutPlayFrame(id))) {
     style.transition = 'none'
   }
 
@@ -740,16 +770,29 @@ const styleItemOuter = (id: string): AgOuterStyle => {
 }
 
 const styleItemInner = (id: string): CSSProperties => {
-  const to = layoutMap.get(id)
+  const resize = resizeState.value
+  const resizeVisual = resize?.id === id ? resize.visualRect : null
+  const to = resizeVisual ?? layoutMap.get(id)
   const drag = dragState.value
   const isDragging = drag?.id === id
+  const isResizing = resize?.id === id
   const from = layoutSnapshotFrom.get(id)
   const flipMode = usesLayoutFlip(id)
-  const useFrom = Boolean(from) && isLayoutFromFrame(id) && !flipMode
+  const useFrom = Boolean(from) && isLayoutFromFrame(id) && !flipMode && !isResizing
   const display = useFrom && from ? from : to
 
-  const w = isDragging && drag ? drag.frozenW : display?.w ?? 0
-  const h = isDragging && drag ? drag.frozenH : display?.h ?? 0
+  const w =
+    isResizing && resize
+      ? resize.visualRect.w
+      : isDragging && drag
+        ? drag.frozenW
+        : display?.w ?? 0
+  const h =
+    isResizing && resize
+      ? resize.visualRect.h
+      : isDragging && drag
+        ? drag.frozenH
+        : display?.h ?? 0
   const dur = durationOverrides.get(id)
 
   const sizeMs = dur?.size ?? scaleMs(SIZE_TRANSITION_MS)
@@ -791,10 +834,188 @@ const styleItemInner = (id: string): CSSProperties => {
   return {
     ...base,
     transition:
-      isLayoutPlayFrame(id) && !flipMode && !suppressTransition.value && !isDragging
+      isLayoutPlayFrame(id) && !flipMode && !suppressTransition.value && !isDragging && !isResizing
         ? `width ${sizeMs}ms ease, height ${sizeMs}ms ease`
         : undefined
   }
+}
+
+interface ResizeState {
+  id: string
+  edge: ResizeEdge
+  pointerId: number
+  startRect: GridLayoutRect
+  visualRect: GridLayoutRect
+}
+
+const resizeState = ref<ResizeState | null>(null)
+let resizePointerTarget: HTMLElement | null = null
+
+const minItemSize = () => Math.max(16, props.minItemSize)
+
+const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v))
+
+const clampResizeRect = (id: string, rect: GridLayoutRect): GridLayoutRect => {
+  const min = minItemSize()
+  const cw = containerW.value
+  const ch = containerH.value
+  const meta = itemMetaMap.get(id)
+
+  if (meta?.sticky) {
+    const x = clamp(rect.x, 0, Math.max(0, cw - min))
+    const y = clamp(rect.y, 0, Math.max(0, ch - min))
+    const w = clamp(rect.w, min, Math.max(min, cw - x))
+    const h = clamp(rect.h, min, Math.max(min, ch - y))
+    return { x, y, w, h }
+  }
+
+  const flow = getFlowAreaSnapshot()
+  const x = clamp(rect.x, flow.x, Math.max(flow.x, flow.x + flow.w - min))
+  const y = clamp(rect.y, flow.y, Math.max(flow.y, flow.y + flow.h - min))
+  const w = clamp(rect.w, min, Math.max(min, flow.x + flow.w - x))
+  const h = clamp(rect.h, min, Math.max(min, flow.y + flow.h - y))
+  return { x, y, w, h }
+}
+
+const computeResizeRect = (
+  state: ResizeState,
+  clientX: number,
+  clientY: number
+): GridLayoutRect => {
+  const content = contentRef.value
+  if (!content) return state.visualRect
+
+  const { x: px, y: py } = clientToContentPoint(content, clientX, clientY)
+  const r = state.startRect
+  let x = r.x
+  let y = r.y
+  let w = r.w
+  let h = r.h
+
+  if (state.edge.includes('e')) {
+    w = Math.max(minItemSize(), px - x)
+  }
+  if (state.edge.includes('w')) {
+    const right = r.x + r.w
+    x = px
+    w = Math.max(minItemSize(), right - x)
+  }
+  if (state.edge.includes('s')) {
+    h = Math.max(minItemSize(), py - y)
+  }
+  if (state.edge.includes('n')) {
+    const bottom = r.y + r.h
+    y = py
+    h = Math.max(minItemSize(), bottom - y)
+  }
+
+  return clampResizeRect(state.id, { x, y, w, h })
+}
+
+const commitResizeMeta = (id: string, rect: GridLayoutRect) => {
+  const meta = itemMetaMap.get(id) ?? {}
+  if (!meta.sticky) return
+
+  const w = Math.round(rect.w)
+  const h = Math.round(rect.h)
+
+  itemMetaMap.set(id, {
+    ...meta,
+    left: Math.round(rect.x),
+    top: Math.round(rect.y),
+    width: w,
+    height: h,
+    right: undefined,
+    bottom: undefined
+  })
+
+  emit('resize', {
+    id,
+    x: Math.round(rect.x),
+    y: Math.round(rect.y),
+    w,
+    h,
+    width: w,
+    height: h,
+    left: Math.round(rect.x),
+    top: Math.round(rect.y)
+  })
+}
+
+/** 流式 item 不使用 width/height，避免残留自定义尺寸 */
+const sanitizeMetaForLayout = (meta: ItemLayoutMeta): ItemLayoutMeta => {
+  if (meta.sticky) return meta
+  const { width: _w, height: _h, left: _l, top: _t, right: _r, bottom: _b, ...rest } = meta
+  return rest
+}
+
+const onResizePointerDown = (event: PointerEvent, item: GridItem, edge: ResizeEdge) => {
+  if (!props.resizable || item.fixed) return
+  if (event.button !== 0) return
+
+  const rect = layoutMap.get(item.id)
+  if (!rect) return
+
+  endDrag()
+
+  if (!item.sticky) return
+
+  resizePointerTarget = event.currentTarget as HTMLElement
+  resizeState.value = {
+    id: item.id,
+    edge,
+    pointerId: event.pointerId,
+    startRect: { ...rect },
+    visualRect: { ...rect }
+  }
+
+  try {
+    resizePointerTarget.setPointerCapture(event.pointerId)
+  } catch {
+    /* ignore */
+  }
+
+  window.addEventListener('pointermove', onWindowResizeMove)
+  window.addEventListener('pointerup', onWindowResizeUp)
+  window.addEventListener('pointercancel', onWindowResizeUp)
+}
+
+const onWindowResizeMove = (event: PointerEvent) => {
+  const state = resizeState.value
+  if (!state || event.pointerId !== state.pointerId) return
+
+  resizeState.value = {
+    ...state,
+    visualRect: computeResizeRect(state, event.clientX, event.clientY)
+  }
+}
+
+const endResize = () => {
+  window.removeEventListener('pointermove', onWindowResizeMove)
+  window.removeEventListener('pointerup', onWindowResizeUp)
+  window.removeEventListener('pointercancel', onWindowResizeUp)
+
+  const state = resizeState.value
+  if (state && resizePointerTarget) {
+    try {
+      resizePointerTarget.releasePointerCapture(state.pointerId)
+    } catch {
+      /* ignore */
+    }
+  }
+
+  if (state) {
+    commitResizeMeta(state.id, state.visualRect)
+  }
+
+  resizePointerTarget = null
+  resizeState.value = null
+  queueLayout(false)
+}
+
+const onWindowResizeUp = (event: PointerEvent) => {
+  if (resizeState.value && event.pointerId !== resizeState.value.pointerId) return
+  endResize()
 }
 
 interface DragState {
@@ -862,8 +1083,10 @@ const swapIds = (a: string, b: string) => {
 }
 
 const onItemPointerDown = (event: PointerEvent, item: GridItem) => {
+  if ((event.target as HTMLElement).closest('.pr-adaptive-grid-resize-handle')) return
   if (!props.sortable || item.fixed || item.sticky) return
   if (event.button !== 0) return
+  if (resizeState.value) return
 
   const rect = layoutMap.get(item.id)
   if (!rect) return
@@ -1013,6 +1236,7 @@ const updateVisibleWindow = (offsetPages = props.virtualOffsetPages) => {
   const range = getScrollRange(offsetPages)
   const forced = new Set(getStickyIds())
   if (dragState.value) forced.add(dragState.value.id)
+  if (resizeState.value) forced.add(resizeState.value.id)
   exitingIds.value.forEach((id) => forced.add(id))
   enterHiddenIds.value.forEach((id) => forced.add(id))
   enterPlayIds.value.forEach((id) => forced.add(id))
@@ -1052,7 +1276,7 @@ const setItem = (id: string, options: GridSetItemOptions = {}) => {
     markEnterHidden([id])
   }
 
-  itemMetaMap.set(id, { ...(itemMetaMap.get(id) ?? {}), ...patch })
+  itemMetaMap.set(id, sanitizeMetaForLayout({ ...(itemMetaMap.get(id) ?? {}), ...patch }))
 
   if (exists && options.index != null) {
     const next = prev.filter((x) => x !== id)
@@ -1088,7 +1312,7 @@ const setItems = (entries: GridSetItemEntry[]) => {
     }
     const { index: _i, ...patch } = options
     if (!itemMetaMap.has(id)) itemMetaMap.set(id, {})
-    itemMetaMap.set(id, { ...(itemMetaMap.get(id) ?? {}), ...patch })
+    itemMetaMap.set(id, sanitizeMetaForLayout({ ...(itemMetaMap.get(id) ?? {}), ...patch }))
   }
 
   const nextOrder = mergeIdsPreservingFixed(prev, order, getFixedSet())
@@ -1154,6 +1378,7 @@ const settleActiveAnimations = () => {
   }
 
   endDrag()
+  endResize()
   rebuildLayout()
   requestAnimationFrame(() => {
     suppressTransition.value = false
@@ -1203,6 +1428,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   resizeObserver?.disconnect()
   endDrag()
+  endResize()
   window.clearTimeout(layoutTransitionTimer)
   clearItemLifecycleState()
 })
@@ -1301,6 +1527,60 @@ defineExpose({
 .pr-adaptive-grid-item-inner {
   box-sizing: border-box;
   overflow: hidden;
+}
+
+.pr-adaptive-grid-resize-handle {
+  position: absolute;
+  z-index: 3;
+  touch-action: none;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.pr-adaptive-grid-item:hover .pr-adaptive-grid-resize-handle,
+.pr-adaptive-grid-item-resizing .pr-adaptive-grid-resize-handle {
+  opacity: 1;
+}
+
+.pr-adaptive-grid-resize-handle-n {
+  top: 0;
+  left: 8px;
+  right: 8px;
+  height: 8px;
+  cursor: ns-resize;
+}
+
+.pr-adaptive-grid-resize-handle-s {
+  bottom: 0;
+  left: 8px;
+  right: 8px;
+  height: 8px;
+  cursor: ns-resize;
+}
+
+.pr-adaptive-grid-resize-handle-e {
+  top: 8px;
+  right: 0;
+  bottom: 8px;
+  width: 8px;
+  cursor: ew-resize;
+}
+
+.pr-adaptive-grid-resize-handle-w {
+  top: 8px;
+  left: 0;
+  bottom: 8px;
+  width: 8px;
+  cursor: ew-resize;
+}
+
+.pr-adaptive-grid-item-resizing {
+  z-index: 25 !important;
+}
+
+.pr-adaptive-grid-item-resizing .pr-adaptive-grid-item-inner {
+  outline: 2px solid rgba(37, 99, 235, 0.55);
+  outline-offset: -2px;
 }
 
 /* 新增/移除渐入渐出由内联 style 驱动；类名仅用于层级与调试 */

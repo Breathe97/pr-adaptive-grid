@@ -32,8 +32,9 @@ export interface GridLayoutRect {
 }
 
 export interface GridSetItemOptions {
-  /** sticky 支持百分比；流式区 item 建议传像素 */
+  /** 仅 sticky: true 时生效，支持百分比或像素 */
   width?: GridSizeSpec
+  /** 仅 sticky: true 时生效，支持百分比或像素 */
   height?: GridSizeSpec
   /** 仅 sticky: true 时生效 */
   left?: number
@@ -54,6 +55,18 @@ export interface GridSetItemEntry {
 
 export interface GridReorderPayload {
   ids: string[]
+}
+
+export interface GridResizePayload {
+  id: string
+  x: number
+  y: number
+  w: number
+  h: number
+  width: number
+  height: number
+  left?: number
+  top?: number
 }
 
 export type GridVisibleChangeHandler = (ids: string[]) => void
