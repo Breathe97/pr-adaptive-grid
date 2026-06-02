@@ -145,7 +145,7 @@ const shuffleItems = () => {
 }
 
 const initGrid = () => {
-  gridRef.value?.setTransitionTimeScale(3) // 放慢 3 倍观察
+  // gridRef.value?.setTransitionTimeScale(3) // 放慢 3 倍观察
   gridRef.value?.setItems(createUserIds(userCount.value).map((id) => ({ id })))
 }
 

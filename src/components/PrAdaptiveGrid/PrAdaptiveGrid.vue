@@ -174,12 +174,23 @@ const armEnterLifecycleTimer = () => {
 
   enterDelayTimer = window.setTimeout(() => {
     const playing = new Set(enterHiddenIds.value)
-    replaceIdSet(enterHiddenIds, new Set())
+    if (!playing.size) return
+
     requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        enterPlayIds.value = playing
+      replaceIdSet(enterHiddenIds, new Set())
+      enterPlayIds.value = playing
+      void nextTick(() => {
+        const content = contentRef.value
+        if (!content) return
+        for (const id of playing) {
+          const inner = content.querySelector<HTMLElement>(
+            `[data-item-id="${id}"] .pr-adaptive-grid-item-inner`
+          )
+          if (inner) void inner.offsetHeight
+        }
       })
     })
+
     enterCompleteTimer = window.setTimeout(() => {
       replaceIdSet(enterPlayIds, new Set())
     }, scaleMs(ITEM_LIFECYCLE_MS) + 50)
@@ -231,8 +242,16 @@ const scheduleExitLifecycle = (ids: string[]) => {
   addToIdSet(exitingIds, ids)
   window.clearTimeout(exitCompleteTimer)
   requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      exitPlayIds.value = new Set(exitingIds.value)
+    exitPlayIds.value = new Set(exitingIds.value)
+    void nextTick(() => {
+      const content = contentRef.value
+      if (!content) return
+      for (const id of exitPlayIds.value) {
+        const inner = content.querySelector<HTMLElement>(
+          `[data-item-id="${id}"] .pr-adaptive-grid-item-inner`
+        )
+        if (inner) void inner.offsetHeight
+      }
     })
   })
   exitCompleteTimer = window.setTimeout(finishExitLifecycle, scaleMs(ITEM_LIFECYCLE_MS))
@@ -458,11 +477,26 @@ const layoutRectChanged = (from: GridLayoutRect, to: GridLayoutRect) =>
   Math.hypot(to.x - from.x, to.y - from.y) > 1 ||
   Math.hypot(to.w - from.w, to.h - from.h) > 1
 
+/** 流式位 → Pin 槽位（仅此时做 FLIP）；已在槽位重排（仅尺寸变化）不做过渡 */
+const isStickyPinSlotTransition = (from: GridLayoutRect, to: GridLayoutRect) =>
+  Math.hypot(to.x - from.x, to.y - from.y) > 24
+
+/** sticky 用布局坐标；流式项用 DOM 视口坐标（含滚动） */
+const resolveTransitionFrom = (
+  id: string,
+  domSnapshot: Map<string, GridLayoutRect>,
+  layoutBefore: Map<string, GridLayoutRect>
+) => (itemMetaMap.get(id)?.sticky ? layoutBefore.get(id) : domSnapshot.get(id))
+
+const shouldAnimateStickyLayout = (from: GridLayoutRect, to: GridLayoutRect) =>
+  isStickyPinSlotTransition(from, to)
+
 const durationOverrides = new Map<string, { position: number; size: number }>()
 
 /** 对比旧快照与新快照，为每个变化的 item 登记过渡 */
 const planLayoutTransition = (
-  oldSnapshot: Map<string, GridLayoutRect>,
+  domSnapshot: Map<string, GridLayoutRect>,
+  layoutBefore: Map<string, GridLayoutRect>,
   newSnapshot: Map<string, GridLayoutRect>
 ) => {
   layoutSnapshotFrom.clear()
@@ -475,8 +509,9 @@ const planLayoutTransition = (
 
   for (const [id, to] of newSnapshot) {
     if (isEnterHidden(id) || isExiting(id)) continue
-    const from = oldSnapshot.get(id)
+    const from = resolveTransitionFrom(id, domSnapshot, layoutBefore)
     if (!from || !layoutRectChanged(from, to)) continue
+    if (itemMetaMap.get(id)?.sticky && !shouldAnimateStickyLayout(from, to)) continue
 
     layoutSnapshotFrom.set(id, { ...from })
     const posDist = Math.hypot(to.x - from.x, to.y - from.y)
@@ -567,7 +602,8 @@ const scheduleLayout = async (animate = true) => {
   if (animate) await waitForLayoutAnimateReady()
   if (runId !== layoutRunId) return
 
-  const oldSnapshot = animate ? captureSnapshotFromDom() : copyLayoutSnapshot(layoutMap)
+  const layoutBefore = copyLayoutSnapshot(layoutMap)
+  const domSnapshot = animate ? captureSnapshotFromDom() : layoutBefore
 
   rebuildLayout()
   await nextTick()
@@ -593,7 +629,7 @@ const scheduleLayout = async (animate = true) => {
     return
   }
 
-  const { maxDuration, hasMovement } = planLayoutTransition(oldSnapshot, newSnapshot)
+  const { maxDuration, hasMovement } = planLayoutTransition(domSnapshot, layoutBefore, newSnapshot)
 
   if (!hasMovement) {
     clearLayoutTransitionState()
@@ -605,7 +641,10 @@ const scheduleLayout = async (animate = true) => {
   layoutAnimFlipMap.clear()
   for (const id of layoutSnapshotFrom.keys()) {
     if (!itemMetaMap.get(id)?.sticky) continue
-    const visual = oldSnapshot.get(id)
+    const from = layoutBefore.get(id)
+    const to = newSnapshot.get(id)
+    if (!from || !to || !isStickyPinSlotTransition(from, to)) continue
+    const visual = domSnapshot.get(id)
     if (!visual) continue
     const flip = computeItemFlip(id, visual)
     if (flip) layoutAnimFlipMap.set(id, flip)
@@ -658,7 +697,6 @@ const styleItemOuter = (id: string): AgOuterStyle => {
 
   const dur = durationOverrides.get(id)
   const isStickyPinned = Boolean(meta?.sticky) && !isDragging
-  const applyScrollStick = isStickyPinned && !isLayoutFromFrame(id)
 
   const style: AgOuterStyle = {
     position: 'absolute',
@@ -681,9 +719,7 @@ const styleItemOuter = (id: string): AgOuterStyle => {
 
   if (flipMode && isLayoutFromFrame(id) && flip) {
     style.transform = buildFlipTransform(flip)
-  } else if (flipMode && isLayoutPlayFrame(id)) {
-    style.transform = buildStickyScrollTransform()
-  } else if (applyScrollStick) {
+  } else if (isStickyPinned) {
     style.transform = buildStickyScrollTransform()
   } else if (!isDragging) {
     style.transform = 'translate3d(0,0,0)'
@@ -694,6 +730,10 @@ const styleItemOuter = (id: string): AgOuterStyle => {
     const sizeMs = dur?.size ?? scaleMs(SIZE_TRANSITION_MS)
     style['--ag-duration-position'] = `${posMs}ms`
     if (!flipMode) style['--ag-duration-size'] = `${sizeMs}ms`
+  }
+
+  if (isStickyPinned && !(flipMode && isLayoutPlayFrame(id))) {
+    style.transition = 'none'
   }
 
   return style
@@ -715,15 +755,45 @@ const styleItemInner = (id: string): CSSProperties => {
   const sizeMs = dur?.size ?? scaleMs(SIZE_TRANSITION_MS)
   const lifecycleMs = scaleMs(ITEM_LIFECYCLE_MS)
 
-  return {
+  const base: CSSProperties = {
     width: `${w}px`,
     height: `${h}px`,
+    transformOrigin: 'center center'
+  }
+
+  if (isEnterHidden(id)) {
+    return {
+      ...base,
+      opacity: 0,
+      transform: 'scale(0.5)',
+      transition: 'none'
+    }
+  }
+
+  if (isEnterPlay(id)) {
+    return {
+      ...base,
+      opacity: 1,
+      transform: 'scale(1)',
+      transition: `opacity ${lifecycleMs}ms ease, transform ${lifecycleMs}ms ease`
+    }
+  }
+
+  if (isExitPlay(id)) {
+    return {
+      ...base,
+      opacity: 0,
+      transform: 'scale(0.5)',
+      transition: `opacity ${lifecycleMs}ms ease, transform ${lifecycleMs}ms ease`
+    }
+  }
+
+  return {
+    ...base,
     transition:
       isLayoutPlayFrame(id) && !flipMode && !suppressTransition.value && !isDragging
         ? `width ${sizeMs}ms ease, height ${sizeMs}ms ease`
-        : isEnterPlay(id) || isExitPlay(id)
-          ? `opacity ${lifecycleMs}ms ease, transform ${lifecycleMs}ms ease`
-          : undefined
+        : undefined
   }
 }
 
@@ -1211,7 +1281,15 @@ defineExpose({
   transition: transform var(--ag-duration-position, 800ms) ease !important;
 }
 
-/* sticky(Pin)：absolute + translate3d(scroll)，滚动补偿不做 transition */
+/* sticky(Pin)：默认禁止 transform 过渡；仅首次 Pin 的 flip-play 允许 */
+.pr-adaptive-grid-item-sticky:not(.pr-adaptive-grid-item-layout-flip-play) {
+  transition: none !important;
+}
+
+.pr-adaptive-grid-item-sticky.pr-adaptive-grid-item-layout-flip-play:not(.pr-adaptive-grid-item-dragging) {
+  transition: transform var(--ag-duration-position, 800ms) ease !important;
+}
+
 .pr-adaptive-grid-item-sticky {
   will-change: transform, left, top;
 }
@@ -1225,29 +1303,7 @@ defineExpose({
   overflow: hidden;
 }
 
-/* 新增：全透明占位 → 重排 → 缩放 0.5→1、透明 0→1 */
-.pr-adaptive-grid-item-enter-hidden .pr-adaptive-grid-item-inner {
-  opacity: 0;
-  transform: scale(0.5);
-  transition: none !important;
-}
-
-.pr-adaptive-grid-item-enter-play .pr-adaptive-grid-item-inner {
-  opacity: 1;
-  transform: scale(1);
-  transition:
-    opacity var(--ag-duration-lifecycle, 300ms) ease,
-    transform var(--ag-duration-lifecycle, 300ms) ease !important;
-}
-
-/* 移除：缩放 1→0.5、透明 1→0，结束后再重排 */
-.pr-adaptive-grid-item-exit-play .pr-adaptive-grid-item-inner {
-  opacity: 0;
-  transform: scale(0.5);
-  transition:
-    opacity var(--ag-duration-lifecycle, 300ms) ease,
-    transform var(--ag-duration-lifecycle, 300ms) ease;
-}
+/* 新增/移除渐入渐出由内联 style 驱动；类名仅用于层级与调试 */
 
 .pr-adaptive-grid-item-no-transition,
 .pr-adaptive-grid-item-dragging {
