@@ -1,15 +1,34 @@
 <template>
   <div class="demo">
     <div class="grid-wrap">
-      <PrAdaptiveGrid ref="gridRef" :gap="8" @visible-change="onVisibleChange">
+      <PrAdaptiveGrid
+        ref="gridRef"
+        :gap="8"
+        :item-width="300"
+        :item-height="200"
+        :cols="layout.cols"
+        :rows="layout.rows"
+        :left="layout.left"
+        :top="layout.top"
+        :right="layout.right"
+        :bottom="layout.bottom"
+        :virtual-scroll="false"
+        :sortable="true"
+        @visible-change="onVisibleChange"
+      >
         <template #default="{ item }">
-          <div class="tile" :class="{ 'is-pinned': item.sticky, 'is-fixed': item.fixed }" :style="{ backgroundColor: getTileColor(item.id) }">
+          <div
+            class="tile"
+            :class="{ 'is-pinned': item.sticky, 'is-fixed': item.fixed }"
+            :style="{ backgroundColor: getTileColor(item.id) }"
+          >
             <div v-if="item.sticky || item.fixed" class="tile-badges">
               <span v-if="item.sticky" class="badge badge-pin">📌 Pin</span>
               <span v-if="item.fixed" class="badge badge-fixed">🔒 Fixed</span>
             </div>
             <span class="tile-id">{{ item.id }}</span>
-            <span class="tile-meta">{{ item.w }}×{{ item.h }}</span>
+            <span class="tile-meta">{{ Math.round(item.w) }}×{{ Math.round(item.h) }}</span>
+            <p class="tile-hint">{{ getTileHint(item.id) }}</p>
             <div class="tile-ops">
               <button type="button" class="op" :class="{ active: item.sticky }" data-type="pin" @pointerdown.stop @click.stop="setPin(item)">Pin</button>
               <button type="button" class="op" :class="{ active: item.fixed }" data-type="fix" @pointerdown.stop @click.stop="setFixed(item)">Fixed</button>
@@ -21,16 +40,16 @@
 
     <div class="float-bar">
       <div class="help-wrap">
-        <button type="button" class="help-btn" aria-label="Pin 与 Fixed 说明">?</button>
-        <div class="help-panel" role="tooltip" aria-label="按钮说明">
-          <p class="help-title">按钮说明</p>
+        <button type="button" class="help-btn" aria-label="说明">?</button>
+        <div class="help-panel" role="tooltip">
+          <p class="help-title">测试说明（预设 5 个 item）</p>
           <div class="help-item">
-            <span class="help-tag help-tag-pin">📌 Pin</span>
-            <p class="help-desc">滚动时固定在网格可视区域，类似 sticky 锚点。</p>
+            <span class="help-tag">布局</span>
+            <p class="help-desc">首屏 2×2（1–4），第 5 个在下方需滚动。cols=2 rows=2，无 Pin。</p>
           </div>
           <div class="help-item">
-            <span class="help-tag help-tag-fixed">🔒 Fixed</span>
-            <p class="help-desc">锁定 ids 槽位，不可拖动，排序时不会被其他 item 挤压位移。</p>
+            <span class="help-tag">🔒 Fixed</span>
+            <p class="help-desc">锁定槽位后不可拖排序。</p>
           </div>
         </div>
       </div>
@@ -40,45 +59,59 @@
       <button type="button" class="bar-btn" @click="changeUserCount(1)">+</button>
       <span class="bar-sep" />
       <button type="button" class="bar-text" :disabled="userCount <= 1" @click="shuffleItems">打乱</button>
-      <button type="button" class="bar-text" @click="syncGrid">同步</button>
+      <button type="button" class="bar-text" @click="syncGrid">重置</button>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import type { GridItem, PrAdaptiveGridExpose } from 'pr-adaptive-grid'
+import { resolveDemoLayout } from './layoutConfig'
 
-const DEFAULT_USER_COUNT = 10
+/** 默认 5 个：首屏 2+2，第 5 个在第二屏 */
+const DEFAULT_USER_COUNT = 5
+
+const TILE_COLORS: Record<string, string> = {
+  '1': 'hsl(350 85% 72%)',
+  '2': 'hsl(45 90% 68%)',
+  '3': 'hsl(145 75% 68%)',
+  '4': 'hsl(210 90% 72%)',
+  '5': 'hsl(270 80% 75%)',
+  '6': 'hsl(15 85% 70%)',
+  '7': 'hsl(185 80% 68%)',
+  '8': 'hsl(300 75% 72%)'
+}
+
+const TILE_HINTS: Record<string, string> = {
+  '1': '首屏左上',
+  '2': '首屏右上',
+  '3': '首屏左下',
+  '4': '首屏右下',
+  '5': '第二屏（下滑）'
+}
 
 const gridRef = ref<PrAdaptiveGridExpose>()
 const userCount = ref(DEFAULT_USER_COUNT)
-const tileColorMap = ref(new Map<string, string>())
+const hasSticky = ref(false)
 
-/** 高饱和度随机色，亮度偏高以对比黑色背景 */
-const pickContrastColor = (): string => {
-  const hue = Math.floor(Math.random() * 360)
-  const sat = 88 + Math.floor(Math.random() * 13)
-  const light = 65 + Math.floor(Math.random() * 14)
-  return `hsl(${hue} ${sat}% ${light}%)`
-}
+const layout = computed(() => resolveDemoLayout(userCount.value, hasSticky.value))
 
-const ensureTileColor = (id: string) => {
-  if (tileColorMap.value.has(id)) return
-  const next = new Map(tileColorMap.value)
-  next.set(id, pickContrastColor())
-  tileColorMap.value = next
-}
-
-const getTileColor = (id: string): string => tileColorMap.value.get(id) ?? 'hsl(210 95% 72%)'
+const getTileColor = (id: string) => TILE_COLORS[id] ?? 'hsl(210 95% 72%)'
+const getTileHint = (id: string) => TILE_HINTS[id] ?? ''
 
 const createUserIds = (count: number) => Array.from({ length: count }, (_, i) => `${i + 1}`)
 
-const getDefaultIds = () => createUserIds(DEFAULT_USER_COUNT)
-
 const setPin = (item: GridItem) => {
   gridRef.value?.settleActiveAnimations()
-  gridRef.value?.setItem(item.id, { sticky: !item.sticky })
+  const next = !item.sticky
+  gridRef.value?.setItem(item.id, {
+    sticky: next,
+    ...(next ? { left: 0, top: 0, width: 300, height: 200 } : {})
+  })
+  void nextTick(() => {
+    hasSticky.value = gridRef.value?.getItems().some((i) => i.sticky) ?? false
+  })
 }
 
 const setFixed = (item: GridItem) => {
@@ -102,58 +135,32 @@ const changeUserCount = (delta: number) => {
   }
 
   const maxId = items.reduce((max, item) => Math.max(max, Number(item.id) || 0), 0)
-  const newId = `${maxId + 1}`
-  ensureTileColor(newId)
-  gridRef.value?.setItem(newId, { index: 0 })
+  gridRef.value?.setItem(`${maxId + 1}`, { index: 0 })
 }
 
 const shuffleItems = () => {
-  const items = gridRef.value?.getItems() ?? []
-  if (items.length <= 1) return
-
-  gridRef.value?.recordDebug('demo:shuffle:click', {
-    scrollTop: document.querySelector('.pr-adaptive-grid')?.scrollTop ?? 0,
-    itemCount: items.length
-  })
-
+  if ((gridRef.value?.getItems().length ?? 0) <= 1) return
   gridRef.value?.settleActiveAnimations()
   gridRef.value?.shuffleItems()
-
-  gridRef.value?.recordDebug('demo:shuffle:done', {
-    itemCount: gridRef.value?.getItems().length ?? 0
-  })
 }
 
 const initGrid = () => {
-  getDefaultIds().forEach((id) => ensureTileColor(id))
-  gridRef.value?.setItems(
-    getDefaultIds().map((id, index) => {
-      if (index === 0) return { id, options: { sticky: true } }
-      if (index === 1) return { id, options: { fixed: true } }
-      return { id }
-    })
-  )
+  gridRef.value?.setItems(createUserIds(userCount.value).map((id) => ({ id })))
 }
 
 const syncGrid = () => {
   gridRef.value?.settleActiveAnimations()
   userCount.value = DEFAULT_USER_COUNT
-  getDefaultIds().forEach((id) => ensureTileColor(id))
-  gridRef.value?.setItems(getDefaultIds().map((id) => ({ id })))
+  hasSticky.value = false
+  initGrid()
 }
 
 const onVisibleChange = (ids: string[]) => {
-  console.log('[visible items]', ids.length, ids.join(', '), ids)
+  console.log('[visible]', ids.join(', '))
 }
 
 onMounted(() => {
   initGrid()
-
-  if (!import.meta.env.DEV) return
-  ;(window as Window & { __agDebug?: { start: () => void; end: () => string } }).__agDebug = {
-    start: () => gridRef.value?.startDebugCapture(),
-    end: () => gridRef.value?.endDebugCapture() ?? '{"error":"grid not ready"}'
-  }
 })
 </script>
 
@@ -174,7 +181,6 @@ onMounted(() => {
   box-sizing: border-box;
 }
 
-/* ── Tile ── */
 .tile {
   position: relative;
   width: 100%;
@@ -183,89 +189,39 @@ onMounted(() => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 4px;
   padding: 10px;
   border-radius: 10px;
   color: #1a1a1a;
   overflow: hidden;
-  isolation: isolate;
 }
 
-/* Pin / Fixed 内阴影层（::before = Pin，::after = Fixed） */
-.tile::before,
-.tile::after {
+.tile-hint {
+  margin: 0;
+  font-size: 0.75rem;
+  color: rgba(0, 0, 0, 0.45);
+}
+
+.is-pinned::before,
+.is-fixed::after {
   content: '';
   position: absolute;
   inset: 0;
-  z-index: 1;
   border-radius: inherit;
   pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.2s ease;
 }
 
 .is-pinned::before {
-  opacity: 1;
   box-shadow: inset 0 0 40px 8px rgba(37, 99, 235, 0.28);
 }
 
 .is-fixed::after {
-  opacity: 1;
   box-shadow: inset 0 0 40px 8px rgba(217, 119, 6, 0.28);
-}
-
-.is-pinned.is-fixed::before {
-  box-shadow: inset 0 0 36px 6px rgba(37, 99, 235, 0.22);
-}
-
-.is-pinned.is-fixed::after {
-  box-shadow: inset 0 0 36px 6px rgba(217, 119, 6, 0.22);
-}
-
-.tile-id,
-.tile-meta,
-.tile-ops,
-.tile-badges {
-  position: relative;
-  z-index: 2;
-}
-
-.tile-badges {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  z-index: 3;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 5px;
-}
-
-.badge {
-  padding: 4px 9px;
-  border-radius: 6px;
-  font-size: 0.6875rem;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  line-height: 1.2;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-}
-
-.badge-pin {
-  background: #2563eb;
-  color: #fff;
-}
-
-.badge-fixed {
-  background: #d97706;
-  color: #fff;
 }
 
 .tile-id {
   font-size: clamp(1.75rem, 4.5vw, 2.5rem);
   font-weight: 600;
-  letter-spacing: -0.03em;
-  line-height: 1;
 }
 
 .tile-meta {
@@ -276,52 +232,24 @@ onMounted(() => {
 
 .tile-ops {
   display: flex;
-  align-items: center;
   gap: 8px;
-  margin-top: 6px;
-  position: relative;
-  z-index: 3;
+  margin-top: 4px;
 }
 
 .op {
-  min-height: 36px;
-  padding: 7px 18px;
+  min-height: 32px;
+  padding: 6px 14px;
   border: 2px solid rgba(0, 0, 0, 0.22);
   border-radius: 999px;
   background: #fff;
-  color: #1a1a1a;
-  font-family: inherit;
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   font-weight: 700;
-  letter-spacing: 0.03em;
   cursor: pointer;
-  -webkit-font-smoothing: antialiased;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
-  transition:
-    color 0.15s ease,
-    background 0.15s ease,
-    border-color 0.15s ease,
-    box-shadow 0.15s ease;
-}
-
-.op:hover {
-  border-radius: 999px;
-  background: #fff;
-  border-color: rgba(0, 0, 0, 0.32);
-  color: #000;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
 }
 
 .op.active[data-type='pin'] {
   background: #2563eb;
   border-color: #1d4ed8;
-  color: #fff;
-  box-shadow: 0 2px 12px rgba(37, 99, 235, 0.45);
-}
-
-.op.active[data-type='pin']:hover {
-  background: #1d4ed8;
-  border-color: #1e40af;
   color: #fff;
 }
 
@@ -329,16 +257,8 @@ onMounted(() => {
   background: #d97706;
   border-color: #b45309;
   color: #fff;
-  box-shadow: 0 2px 12px rgba(217, 119, 6, 0.45);
 }
 
-.op.active[data-type='fix']:hover {
-  background: #b45309;
-  border-color: #92400e;
-  color: #fff;
-}
-
-/* ── 底部悬浮工具栏 ── */
 .float-bar {
   position: fixed;
   left: 50%;
@@ -352,14 +272,11 @@ onMounted(() => {
   border-radius: 999px;
   background: rgba(28, 28, 30, 0.72);
   border: 1px solid rgba(255, 255, 255, 0.14);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
-  backdrop-filter: blur(20px) saturate(1.5);
-  -webkit-backdrop-filter: blur(20px) saturate(1.5);
+  backdrop-filter: blur(20px);
 }
 
 .help-wrap {
   position: relative;
-  flex-shrink: 0;
 }
 
 .help-btn {
@@ -370,192 +287,92 @@ onMounted(() => {
   background: rgba(255, 255, 255, 0.1);
   color: var(--text);
   font-size: 1.25rem;
-  font-weight: 600;
-  line-height: 1;
   cursor: help;
-  transition: background 0.15s ease;
-}
-
-.help-btn:hover {
-  background: rgba(255, 255, 255, 0.18);
 }
 
 .help-panel {
   position: absolute;
   left: 50%;
   bottom: calc(100% + 8px);
-  width: min(300px, calc(100vw - 48px));
-  padding: 14px 16px 16px;
+  width: min(320px, calc(100vw - 48px));
+  padding: 14px 16px;
   border-radius: 16px;
   background: rgba(28, 28, 30, 0.92);
   border: 1px solid rgba(255, 255, 255, 0.14);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(20px) saturate(1.5);
-  -webkit-backdrop-filter: blur(20px) saturate(1.5);
-  pointer-events: none;
-  visibility: hidden;
+  transform: translateX(-50%) translateY(8px);
   opacity: 0;
-  transform: translateX(-50%) translateY(16px) scale(0.5);
-  transform-origin: bottom center;
-  overflow: hidden;
-}
-
-.help-panel::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  background: linear-gradient(to top, rgba(28, 28, 30, 0.98) 0%, transparent 50%);
+  visibility: hidden;
   pointer-events: none;
 }
 
 .help-wrap:hover .help-panel,
 .help-wrap:focus-within .help-panel {
+  opacity: 1;
   visibility: visible;
   pointer-events: auto;
-  animation: help-rise 500ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
-}
-
-@keyframes help-rise {
-  0% {
-    opacity: 0;
-    transform: translateX(-50%) translateY(20px) scaleX(0.2);
-    clip-path: inset(100% 0 0 0 round 16px);
-  }
-  100% {
-    opacity: 1;
-    transform: translateX(-50%) translateY(-10px) scaleX(1);
-    clip-path: inset(0 0 0 0 round 16px);
-  }
-}
-
-.help-title,
-.help-item {
-  position: relative;
-  z-index: 1;
+  transform: translateX(-50%) translateY(-8px);
 }
 
 .help-title {
-  margin: 0 0 12px;
+  margin: 0 0 10px;
   font-size: 0.875rem;
   font-weight: 600;
   color: var(--text);
 }
 
-.help-item {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
 .help-item + .help-item {
-  margin-top: 12px;
-  padding-top: 12px;
+  margin-top: 10px;
+  padding-top: 10px;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .help-tag {
-  align-self: flex-start;
-  padding: 3px 10px;
+  display: inline-block;
+  padding: 2px 8px;
   border-radius: 999px;
   font-size: 0.75rem;
   font-weight: 600;
-  line-height: 1.3;
-}
-
-.help-tag-pin {
-  background: #2563eb;
-  color: #fff;
-}
-
-.help-tag-fixed {
-  background: #d97706;
-  color: #fff;
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text);
 }
 
 .help-desc {
-  margin: 0;
+  margin: 6px 0 0;
   font-size: 0.8125rem;
   line-height: 1.5;
   color: rgba(245, 245, 245, 0.75);
 }
 
-.bar-btn {
-  width: 48px;
+.bar-btn,
+.bar-text {
   height: 48px;
   border: none;
-  border-radius: 50%;
+  border-radius: 999px;
   background: rgba(255, 255, 255, 0.1);
   color: var(--text);
-  font-size: 1.375rem;
-  line-height: 1;
   cursor: pointer;
-  transition: background 0.15s ease;
 }
 
-.bar-btn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.18);
+.bar-btn {
+  width: 48px;
+  font-size: 1.375rem;
 }
 
-.bar-btn:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
+.bar-text {
+  padding: 0 20px;
+  font-size: 0.9375rem;
 }
 
 .bar-count {
   min-width: 32px;
   text-align: center;
-  font-size: 1.0625rem;
   font-weight: 600;
-  font-variant-numeric: tabular-nums;
   color: var(--text);
 }
 
 .bar-sep {
   width: 1px;
   height: 28px;
-  margin: 0 4px;
   background: rgba(255, 255, 255, 0.15);
-}
-
-.bar-text {
-  height: 48px;
-  padding: 0 20px;
-  border: none;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.1);
-  color: var(--text);
-  font-family: inherit;
-  font-size: 0.9375rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background 0.15s ease;
-}
-
-.bar-text:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.18);
-}
-
-.bar-text:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-}
-
-@media (max-width: 480px) {
-  .float-bar {
-    width: calc(100% - 24px);
-    flex-wrap: wrap;
-    justify-content: center;
-    border-radius: 16px;
-  }
-
-  .bar-sep {
-    display: none;
-  }
-
-  .bar-text {
-    flex: 1;
-    min-width: 80px;
-  }
 }
 </style>

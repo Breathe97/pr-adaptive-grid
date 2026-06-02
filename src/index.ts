@@ -1,7 +1,7 @@
-import PrAdaptiveGrid from './components/PrAdaptiveGrid/PrAdaptiveGrid.vue' // 引入封装好的组件
+import PrAdaptiveGrid from './components/PrAdaptiveGrid/PrAdaptiveGrid.vue'
 export * from './types.ts'
+export { packRowCounts } from './components/PrAdaptiveGrid/packRowCounts'
 
-// 按需引入
 export { PrAdaptiveGrid }
 
 const component = [PrAdaptiveGrid]
