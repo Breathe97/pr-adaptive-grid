@@ -1,8 +1,10 @@
 import { packRowCounts } from './packRowCounts'
+import type { GridSizeSpec } from '../../types'
+import { resolveGridSizeSpec } from './resolveGridSize'
 
 export interface ItemLayoutMeta {
-  width?: number
-  height?: number
+  width?: GridSizeSpec
+  height?: GridSizeSpec
   sticky?: boolean
   fixed?: boolean
   left?: number
@@ -50,7 +52,7 @@ const distributeRowWidths = (
 
   for (const id of rowIds) {
     const w = meta.get(id)?.width
-    if (w != null && w > 0) {
+    if (typeof w === 'number' && w > 0) {
       fixed.set(id, w)
       fixedSum += w
     } else {
@@ -88,7 +90,7 @@ const distributeRowHeights = (
   const heights = new Map<string, number>()
   for (const id of rowIds) {
     const h = meta.get(id)?.height
-    heights.set(id, h != null && h > 0 ? h : rowHeight)
+    heights.set(id, typeof h === 'number' && h > 0 ? h : rowHeight)
   }
   return heights
 }
@@ -186,8 +188,8 @@ export const computeStickyRect = (input: StickyLayoutInput): { x: number; y: num
   const right = meta.right ?? 0
   const bottom = meta.bottom ?? 0
 
-  let w = meta.width ?? defaultWidth
-  let h = meta.height ?? defaultHeight
+  let w = resolveGridSizeSpec(meta.width, containerW, defaultWidth)
+  let h = resolveGridSizeSpec(meta.height, containerH, defaultHeight)
 
   if (meta.width == null && right > 0) {
     w = Math.max(0, containerW - left - right)
@@ -221,14 +223,15 @@ export const unionStickyRects = (
 }
 
 /**
- * 流式区域 = 容器 − sticky 并集 − props 四边距。
- * 并集贴在左侧时，流式区从并集右缘开始；并集贴在顶部时，流式区从并集下缘开始。
+ * 流式区域 = 容器 − sticky 并集 − 已扣 gap 的边距。
+ * sticky 贴左/上时，流式区从并集外缘 + gap 开始。
  */
 export const resolveFlowArea = (
   containerW: number,
   containerH: number,
   insets: { left: number; top: number; right: number; bottom: number },
-  stickyUnion: { x: number; y: number; w: number; h: number } | null
+  stickyUnion: { x: number; y: number; w: number; h: number } | null,
+  gap = 0
 ): { x: number; y: number; w: number; h: number } => {
   let x = insets.left
   let y = insets.top
@@ -238,14 +241,15 @@ export const resolveFlowArea = (
   if (stickyUnion && stickyUnion.w > 0 && stickyUnion.h > 0) {
     const unionRight = stickyUnion.x + stickyUnion.w
     const unionBottom = stickyUnion.y + stickyUnion.h
+    const g = Math.max(0, gap)
 
     if (stickyUnion.x <= insets.left + 1) {
-      x = Math.max(x, unionRight)
+      x = Math.max(x, unionRight + g)
       w = Math.max(0, containerW - insets.right - x)
     }
 
     if (stickyUnion.y <= insets.top + 1) {
-      y = Math.max(y, unionBottom)
+      y = Math.max(y, unionBottom + g)
       h = Math.max(0, containerH - insets.bottom - y)
     }
   }

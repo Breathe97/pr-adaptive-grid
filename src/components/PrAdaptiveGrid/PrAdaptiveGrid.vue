@@ -37,9 +37,19 @@ import {
   onBeforeUnmount,
   watch,
   nextTick,
+  withDefaults,
+  defineProps,
   type CSSProperties
 } from 'vue'
-import type { GridItem, GridLayoutRect, GridReorderPayload, GridSetItemEntry, GridSetItemOptions } from '../../types'
+import type {
+  GridItem,
+  GridLayoutRect,
+  GridReorderPayload,
+  GridSetItemEntry,
+  GridSetItemOptions,
+  GridSizeSpec
+} from '../../types'
+import { applyLayoutInsetGap, resolveGridInsets } from './resolveGridSize'
 import {
   computeFlowLayout,
   computeStickyRect,
@@ -55,20 +65,32 @@ type AgOuterStyle = CSSProperties & {
   '--ag-duration-size'?: string
 }
 
-const props = defineProps({
-  gap: { type: Number, default: 8 },
-  itemWidth: { type: Number, required: true },
-  itemHeight: { type: Number, required: true },
-  cols: { type: Number, required: true },
-  rows: { type: Number, required: true },
-  left: { type: Number, default: 0 },
-  top: { type: Number, default: 0 },
-  right: { type: Number, default: 0 },
-  bottom: { type: Number, default: 0 },
-  sortable: { type: Boolean, default: true },
-  virtualScroll: { type: Boolean, default: true },
-  virtualOffsetPages: { type: Number, default: 2 }
-})
+const props = withDefaults(
+  defineProps<{
+    gap?: number
+    itemWidth: number
+    itemHeight: number
+    cols: number
+    rows: number
+    left?: GridSizeSpec
+    top?: GridSizeSpec
+    right?: GridSizeSpec
+    bottom?: GridSizeSpec
+    sortable?: boolean
+    virtualScroll?: boolean
+    virtualOffsetPages?: number
+  }>(),
+  {
+    gap: 8,
+    left: 0,
+    top: 0,
+    right: 0,
+    bottom: 0,
+    sortable: true,
+    virtualScroll: true,
+    virtualOffsetPages: 2
+  }
+)
 
 const emit = defineEmits<{
   reorder: [payload: GridReorderPayload]
@@ -91,6 +113,8 @@ const containerH = ref(0)
 const layoutTransitionActive = ref(false)
 const suppressTransition = ref(true)
 const layoutInitialized = ref(false)
+/** pin(sticky) 切换时：先以 absolute 做过渡，结束后再切回 sticky */
+const stickyToggleAnimIds = reactive(new Set<string>())
 
 const ANIM_MIN_MS = 300
 const ANIM_MAX_MS = 800
@@ -104,10 +128,21 @@ const getFlowIds = () => itemIds.value.filter((id) => !itemMetaMap.get(id)?.stic
 
 const getStickyIds = () => itemIds.value.filter((id) => itemMetaMap.get(id)?.sticky)
 
+/** 应用层逻辑边距 → 解析为 px 并扣除 gap，得到真实流式布局边距 */
+const getLayoutInsets = (cw: number, ch: number) =>
+  applyLayoutInsetGap(
+    resolveGridInsets(
+      { left: props.left, top: props.top, right: props.right, bottom: props.bottom },
+      cw,
+      ch
+    ),
+    props.gap
+  )
+
 const getFlowAreaSnapshot = () => {
   const cw = containerW.value
   const ch = containerH.value
-  const insets = { left: props.left, top: props.top, right: props.right, bottom: props.bottom }
+  const insets = getLayoutInsets(cw, ch)
   const stickyRects: Array<{ x: number; y: number; w: number; h: number }> = []
 
   for (const id of getStickyIds()) {
@@ -123,7 +158,7 @@ const getFlowAreaSnapshot = () => {
     )
   }
 
-  return resolveFlowArea(cw, ch, insets, unionStickyRects(stickyRects))
+  return resolveFlowArea(cw, ch, insets, unionStickyRects(stickyRects), props.gap)
 }
 
 const rebuildLayout = () => {
@@ -175,7 +210,7 @@ const rebuildLayout = () => {
     flowResult.contentHeight,
     ...[...nextRects.values()].map((r) => r.y + r.h)
   )
-  contentHeight.value = maxBottom + props.bottom
+  contentHeight.value = maxBottom + getLayoutInsets(cw, ch).bottom
 
   layoutMap.clear()
   nextRects.forEach((rect, id) => layoutMap.set(id, rect))
@@ -218,6 +253,7 @@ const contentStyle = computed((): CSSProperties => ({
 const itemClasses = (item: GridItem) => ({
   'pr-adaptive-grid-item-sticky': item.sticky,
   'pr-adaptive-grid-item-fixed': item.fixed,
+  'pr-adaptive-grid-item-sticky-toggle': stickyToggleAnimIds.has(item.id),
   'pr-adaptive-grid-item-layout-anim': layoutTransitionActive.value,
   'pr-adaptive-grid-item-no-transition': suppressTransition.value && !layoutTransitionActive.value,
   'pr-adaptive-grid-item-dragging': dragState.value?.id === item.id,
@@ -269,6 +305,16 @@ const refreshLayoutTransitionTimer = (durationMs: number) => {
   }, durationMs + 50)
 }
 
+let stickyToggleAnimTimer = 0
+
+const triggerStickyToggleAnim = (id: string) => {
+  stickyToggleAnimIds.add(id)
+  window.clearTimeout(stickyToggleAnimTimer)
+  stickyToggleAnimTimer = window.setTimeout(() => {
+    stickyToggleAnimIds.delete(id)
+  }, ANIM_MAX_MS + 80)
+}
+
 const scheduleLayout = async (animate = true) => {
   prevLayoutSnapshot.clear()
   layoutMap.forEach((rect, id) => prevLayoutSnapshot.set(id, { ...rect }))
@@ -294,19 +340,35 @@ const scheduleLayout = async (animate = true) => {
   layoutMap.forEach((r, id) => next.set(id, { ...r }))
   const { position, size } = computeLayoutAnimDurations(next, prevLayoutSnapshot)
   durationOverrides.clear()
+  let maxDuration = ANIM_MIN_MS
+  let hasMovement = false
+
   next.forEach((rect, id) => {
     const p = prevLayoutSnapshot.get(id)
     if (!p) return
     const posDist = Math.hypot(rect.x - p.x, rect.y - p.y)
+    const sizeDist = Math.hypot(rect.w - p.w, rect.h - p.h)
+    if (posDist > 1 || sizeDist > 1) hasMovement = true
+    const posDur = getDurationForDistance(posDist, ANIM_MIN_MS, ANIM_MAX_MS)
+    maxDuration = Math.max(maxDuration, posDur)
     durationOverrides.set(id, {
-      position: getDurationForDistance(posDist, ANIM_MIN_MS, ANIM_MAX_MS),
+      position: posDur,
       size: SIZE_TRANSITION_MS
     })
   })
+
+  for (const id of stickyToggleAnimIds) {
+    if (!durationOverrides.has(id)) {
+      durationOverrides.set(id, { position: ANIM_MAX_MS, size: SIZE_TRANSITION_MS })
+    }
+    maxDuration = Math.max(maxDuration, ANIM_MAX_MS)
+    hasMovement = true
+  }
+
   void position
   void size
 
-  refreshLayoutTransitionTimer(ANIM_MAX_MS)
+  refreshLayoutTransitionTimer(hasMovement ? ANIM_MAX_MS : maxDuration)
   updateVisibleWindow()
 }
 
@@ -329,21 +391,26 @@ const styleItemOuter = (id: string): AgOuterStyle => {
   }
 
   const dur = durationOverrides.get(id)
+  const pinTransition =
+    layoutTransitionActive.value && stickyToggleAnimIds.has(id) && !isDragging
+  const useStickyPosition = Boolean(meta?.sticky) && !pinTransition
+
   const style: AgOuterStyle = {
-    position: meta?.sticky ? 'sticky' : 'absolute',
-    left: meta?.sticky ? `${rect.x}px` : `${x}px`,
-    top: meta?.sticky ? `${rect.y}px` : `${y}px`,
+    position: useStickyPosition ? 'sticky' : 'absolute',
+    left: `${useStickyPosition ? rect.x : x}px`,
+    top: `${useStickyPosition ? rect.y : y}px`,
     width: `${rect.w}px`,
     height: `${rect.h}px`,
     zIndex: isDragging ? 20 : meta?.sticky ? 10 : 1
   }
 
-  if (!meta?.sticky) {
+  if (!useStickyPosition) {
     style.transform = isDragging ? undefined : `translate3d(0,0,0)`
   }
 
   if (layoutTransitionActive.value && !suppressTransition.value && !isDragging) {
     style['--ag-duration-position'] = `${dur?.position ?? ANIM_MAX_MS}ms`
+    style['--ag-duration-size'] = `${dur?.size ?? SIZE_TRANSITION_MS}ms`
   }
 
   return style
@@ -606,12 +673,17 @@ const setItem = (id: string, options: GridSetItemOptions = {}) => {
     itemMetaMap.set(id, {})
   }
 
+  const prevSticky = itemMetaMap.get(id)?.sticky
   itemMetaMap.set(id, { ...(itemMetaMap.get(id) ?? {}), ...patch })
 
   if (exists && options.index != null) {
     const next = prev.filter((x) => x !== id)
     next.splice(Math.min(options.index, next.length), 0, id)
     itemIds.value = mergeIdsPreservingFixed(prev, next, getFixedSet())
+  }
+
+  if (patch.sticky !== undefined && patch.sticky !== prevSticky) {
+    triggerStickyToggleAnim(id)
   }
 
   void scheduleLayout(true)
@@ -722,6 +794,7 @@ onBeforeUnmount(() => {
   resizeObserver?.disconnect()
   endDrag()
   window.clearTimeout(layoutTransitionTimer)
+  window.clearTimeout(stickyToggleAnimTimer)
 })
 
 watch(
@@ -774,6 +847,26 @@ defineExpose({
 
 .pr-adaptive-grid-item-sticky {
   flex-shrink: 0;
+}
+
+.pr-adaptive-grid-item-sticky.pr-adaptive-grid-item-layout-anim:not(.pr-adaptive-grid-item-dragging) {
+  transition:
+    left var(--ag-duration-position, 800ms) ease,
+    top var(--ag-duration-position, 800ms) ease,
+    width var(--ag-duration-size, 500ms) ease,
+    height var(--ag-duration-size, 500ms) ease;
+}
+
+.pr-adaptive-grid-item-sticky-toggle .pr-adaptive-grid-item-inner {
+  transition:
+    box-shadow 0.35s ease,
+    transform 0.35s ease;
+  transform: scale(1.015);
+}
+
+.pr-adaptive-grid-item-sticky .pr-adaptive-grid-item-inner {
+  transition: box-shadow 0.35s ease;
+  box-shadow: inset 0 0 0 2px rgba(37, 99, 235, 0.4);
 }
 
 .pr-adaptive-grid-item-inner {
