@@ -32,74 +32,108 @@ export interface FlowLayoutResult {
   contentHeight: number
 }
 
+/** 将 total 均分为 parts 份整数，余数分配给前几项 */
+export const splitIntegerTotal = (total: number, parts: number): number[] => {
+  const n = Math.max(0, Math.floor(parts))
+  if (n === 0) return []
+
+  const t = Math.max(0, Math.floor(total))
+  const base = Math.floor(t / n)
+  let rem = t - base * n
+
+  return Array.from({ length: n }, () => {
+    const extra = rem > 0 ? 1 : 0
+    if (rem > 0) rem -= 1
+    return base + extra
+  })
+}
+
+/**
+ * 行内宽度：flex 均分可用宽度（整数 px），保证 sum(w) + (n-1)*gap === rowWidth。
+ */
 const distributeRowWidths = (
   rowIds: string[],
   meta: Map<string, ItemLayoutMeta>,
   rowWidth: number,
-  gap: number,
-  defaultWidth: number
+  gap: number
 ): Map<string, number> => {
   const widths = new Map<string, number>()
-  if (!rowIds.length) return widths
-
   const n = rowIds.length
+  if (!n || rowWidth <= 0) return widths
+
   const totalGap = Math.max(0, n - 1) * gap
   const available = Math.max(0, rowWidth - totalGap)
 
+  const flexIds: string[] = []
   const fixed = new Map<string, number>()
   let fixedSum = 0
-  let flexCount = 0
 
   for (const id of rowIds) {
-    const w = meta.get(id)?.width
-    if (typeof w === 'number' && w > 0) {
-      fixed.set(id, w)
-      fixedSum += w
+    const raw = meta.get(id)?.width
+    if (typeof raw === 'number' && raw > 0) {
+      fixed.set(id, raw)
+      fixedSum += raw
     } else {
-      flexCount += 1
+      flexIds.push(id)
     }
   }
 
-  const flexSpace = Math.max(0, available - fixedSum)
-  const flexEach = flexCount > 0 ? flexSpace / flexCount : 0
+  const flexAvailable = Math.max(0, available - fixedSum)
+  const flexWidths = splitIntegerTotal(flexAvailable, flexIds.length)
+  flexIds.forEach((id, i) => widths.set(id, flexWidths[i]))
 
-  if (flexCount === n) {
-    const each = available / n
+  if (flexIds.length === 0 && fixedSum > 0) {
+    const scale = fixedSum > available ? available / fixedSum : 1
+    let scaledSum = 0
     for (const id of rowIds) {
-      widths.set(id, each)
+      const w = Math.floor((fixed.get(id) ?? 0) * scale)
+      widths.set(id, w)
+      scaledSum += w
     }
-    return widths
+    const drift = available - scaledSum
+    if (drift !== 0) {
+      const last = rowIds[n - 1]
+      widths.set(last, Math.max(0, (widths.get(last) ?? 0) + drift))
+    }
+    return absorbRowWidthDrift(widths, rowIds, rowWidth, gap)
   }
 
-  for (const id of rowIds) {
-    if (fixed.has(id)) {
-      widths.set(id, fixed.get(id)!)
-    } else {
-      widths.set(id, flexEach > 0 ? flexEach : defaultWidth)
-    }
+  for (const [id, w] of fixed) {
+    widths.set(id, w)
+  }
+
+  return absorbRowWidthDrift(widths, rowIds, rowWidth, gap)
+}
+
+const absorbRowWidthDrift = (
+  widths: Map<string, number>,
+  rowIds: string[],
+  rowWidth: number,
+  gap: number
+): Map<string, number> => {
+  const n = rowIds.length
+  if (!n) return widths
+
+  let used = 0
+  for (let i = 0; i < n; i++) {
+    used += widths.get(rowIds[i]) ?? 0
+    if (i < n - 1) used += gap
+  }
+
+  const drift = rowWidth - used
+  if (drift !== 0) {
+    const last = rowIds[n - 1]
+    widths.set(last, Math.max(0, (widths.get(last) ?? 0) + drift))
   }
 
   return widths
-}
-
-const distributeRowHeights = (
-  rowIds: string[],
-  meta: Map<string, ItemLayoutMeta>,
-  rowHeight: number
-): Map<string, number> => {
-  const heights = new Map<string, number>()
-  for (const id of rowIds) {
-    const h = meta.get(id)?.height
-    heights.set(id, typeof h === 'number' && h > 0 ? h : rowHeight)
-  }
-  return heights
 }
 
 /**
  * 计算流式 item 的像素布局（不含 sticky）。
  */
 export const computeFlowLayout = (input: FlowLayoutInput): FlowLayoutResult => {
-  const { flowX, flowY, flowW, flowH, ids, meta, cols, firstScreenRows, gap, defaultWidth, defaultHeight } = input
+  const { flowX, flowY, flowW, flowH, ids, meta, cols, firstScreenRows, gap, defaultHeight } = input
 
   const rects = new Map<string, { x: number; y: number; w: number; h: number }>()
 
@@ -114,52 +148,53 @@ export const computeFlowLayout = (input: FlowLayoutInput): FlowLayoutResult => {
 
   const screenRowTotal = screenRows.length || 1
   const screenGap = Math.max(0, screenRowTotal - 1) * gap
-  const screenRowHeight =
-    flowH > 0 ? (flowH - screenGap) / screenRowTotal : defaultHeight > 0 ? defaultHeight : 1
+  const screenContentH = flowH > 0 ? Math.max(0, flowH - screenGap) : 0
+  const screenRowHeights =
+    screenContentH > 0
+      ? splitIntegerTotal(screenContentH, screenRowTotal)
+      : Array(screenRowTotal).fill(defaultHeight > 0 ? defaultHeight : 1)
 
-  const overflowRowHeight = screenRowHeight
+  const overflowRowHeight =
+    screenRowHeights[screenRowHeights.length - 1] ?? (defaultHeight > 0 ? defaultHeight : 1)
 
   let y = flowY
   let idOffset = 0
 
-  const placeRows = (counts: number[], baseRowHeight: number) => {
-    for (const count of counts) {
+  const placeRows = (counts: number[], rowHeights: number[]) => {
+    for (let ri = 0; ri < counts.length; ri++) {
+      const count = counts[ri]
       const rowIds = ids.slice(idOffset, idOffset + count)
       idOffset += count
 
-      const widthMap = distributeRowWidths(rowIds, meta, flowW, gap, defaultWidth)
-      const heightMap = distributeRowHeights(rowIds, meta, baseRowHeight)
-
-      let rowH = baseRowHeight
-      for (const id of rowIds) {
-        rowH = Math.max(rowH, heightMap.get(id) ?? baseRowHeight)
-      }
+      const rowBandH = rowHeights[ri] ?? overflowRowHeight
+      const widthMap = distributeRowWidths(rowIds, meta, flowW, gap)
 
       let x = flowX
       for (const id of rowIds) {
         const w = widthMap.get(id) ?? 0
-        const h = heightMap.get(id) ?? rowH
-        rects.set(id, { x, y, w, h })
+        rects.set(id, { x, y, w, h: rowBandH })
         x += w + gap
       }
 
-      y += rowH + gap
+      y += rowBandH + gap
     }
   }
 
-  placeRows(screenRows, screenRowHeight)
+  placeRows(screenRows, screenRowHeights)
 
   if (overflowRows.length) {
-    placeRows(overflowRows, overflowRowHeight)
+    placeRows(
+      overflowRows,
+      overflowRows.map(() => overflowRowHeight)
+    )
   }
 
-  const contentHeight = Math.max(y - gap, flowY + screenRowHeight)
+  const contentHeight = Math.max(y - gap, flowY + (screenRowHeights[0] ?? overflowRowHeight))
 
-  void defaultHeight
   return { rects, contentHeight }
 }
 
-/** 首屏单行基准高度 */
+/** 首屏单行基准高度（整数 px，与 splitIntegerTotal 一致） */
 export const getScreenBandRowHeight = (
   flowH: number,
   firstScreenRowCount: number,
@@ -168,7 +203,9 @@ export const getScreenBandRowHeight = (
 ): number => {
   const total = Math.max(1, firstScreenRowCount)
   const rowGap = Math.max(0, total - 1) * gap
-  return flowH > 0 ? (flowH - rowGap) / total : defaultHeight > 0 ? defaultHeight : 1
+  const contentH = flowH > 0 ? Math.max(0, flowH - rowGap) : 0
+  if (contentH <= 0) return defaultHeight > 0 ? defaultHeight : 1
+  return splitIntegerTotal(contentH, total)[0] ?? defaultHeight
 }
 
 export interface StickyLayoutInput {
@@ -243,12 +280,17 @@ export const resolveFlowArea = (
     const unionBottom = stickyUnion.y + stickyUnion.h
     const g = Math.max(0, gap)
 
-    if (stickyUnion.x <= insets.left + 1) {
+    const onLeftColumn = stickyUnion.x <= insets.left + 1
+
+    if (onLeftColumn) {
       x = Math.max(x, unionRight + g)
       w = Math.max(0, containerW - insets.right - x)
     }
 
-    if (stickyUnion.y <= insets.top + 1) {
+    // 左侧通栏 Pin（占满高度）的 y 也为 0，不能当作顶栏 sticky 把流式区整体下移
+    const isTopBandOnly = unionBottom < containerH - insets.bottom - 1
+
+    if (stickyUnion.y <= insets.top + 1 && (!onLeftColumn || isTopBandOnly)) {
       y = Math.max(y, unionBottom + g)
       h = Math.max(0, containerH - insets.bottom - y)
     }

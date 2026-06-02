@@ -1,27 +1,9 @@
 <template>
   <div class="demo">
     <div class="grid-wrap">
-      <PrAdaptiveGrid
-        ref="gridRef"
-        :gap="VIEW_GAP"
-        :item-width="300"
-        :item-height="200"
-        :cols="layout.cols"
-        :rows="layout.rows"
-        :left="layout.left"
-        :top="layout.top"
-        :right="layout.right"
-        :bottom="layout.bottom"
-        :virtual-scroll="false"
-        :sortable="true"
-        @visible-change="onVisibleChange"
-      >
+      <PrAdaptiveGrid ref="gridRef" :gap="VIEW_GAP" :item-width="300" :item-height="200" :cols="layout.cols" :rows="layout.rows" :left="layout.left" :top="layout.top" :right="layout.right" :bottom="layout.bottom" :virtual-scroll="false" :sortable="true" @visible-change="onVisibleChange">
         <template #default="{ item }">
-          <div
-            class="tile"
-            :class="{ 'is-pinned': item.sticky, 'is-fixed': item.fixed }"
-            :style="{ backgroundColor: getTileColor(item.id) }"
-          >
+          <div class="tile" :class="{ 'is-pinned': item.sticky, 'is-fixed': item.fixed }" :style="{ backgroundColor: getTileColor(item.id) }">
             <div v-if="item.sticky || item.fixed" class="tile-badges">
               <span v-if="item.sticky" class="badge badge-pin">📌 Pin</span>
               <span v-if="item.fixed" class="badge badge-fixed">🔒 Fixed</span>
@@ -49,7 +31,7 @@
           </div>
           <div class="help-item">
             <span class="help-tag">📌 Pin</span>
-            <p class="help-desc">同时仅 1 个；70%×100%；流式区 left 传 70%，组件内按 :gap 计算真实区域。</p>
+            <p class="help-desc">同时仅 1 个；70%×100%；流式区由 sticky 并集 + 组件 gap 自动让位。</p>
           </div>
           <div class="help-item">
             <span class="help-tag">🔒 Fixed</span>
@@ -70,7 +52,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import type { GridItem, PrAdaptiveGridExpose } from 'pr-adaptive-grid'
+import type { GridItem, GridSetItemEntry, PrAdaptiveGridExpose } from 'pr-adaptive-grid'
 import { resolveDemoLayout } from './layoutConfig'
 import { resolvePinItemLayout } from './pinConfig'
 
@@ -100,23 +82,10 @@ const TILE_HINTS: Record<string, string> = {
 
 const gridRef = ref<PrAdaptiveGridExpose>()
 const userCount = ref(DEFAULT_USER_COUNT)
-const hasSticky = ref(false)
-/** 当前唯一 Pin 的 item id */
+/** 当前唯一 Pin 的 item id（仅 UI 状态） */
 const pinnedId = ref<string | null>(null)
 
-const applyPinLayout = (id: string) => {
-  gridRef.value?.setItem(id, { sticky: true, ...resolvePinItemLayout() })
-}
-
-const clearOtherPins = (keepId: string) => {
-  for (const item of gridRef.value?.getItems() ?? []) {
-    if (item.sticky && item.id !== keepId) {
-      gridRef.value?.setItem(item.id, { sticky: false })
-    }
-  }
-}
-
-const layout = computed(() => resolveDemoLayout(userCount.value, hasSticky.value))
+const layout = computed(() => resolveDemoLayout(userCount.value))
 
 const getTileColor = (id: string) => TILE_COLORS[id] ?? 'hsl(210 95% 72%)'
 const getTileHint = (id: string) => TILE_HINTS[id] ?? ''
@@ -127,17 +96,21 @@ const setPin = (item: GridItem) => {
   const turningOn = !item.sticky
 
   if (turningOn) {
-    hasSticky.value = true
     pinnedId.value = item.id
-    clearOtherPins(item.id)
-    applyPinLayout(item.id)
+    const entries: GridSetItemEntry[] = (gridRef.value?.getItems() ?? []).map((i) => {
+      if (i.id === item.id) {
+        return { id: i.id, options: { sticky: true, ...resolvePinItemLayout() } }
+      }
+      if (i.sticky) {
+        return { id: i.id, options: { sticky: false } }
+      }
+      return { id: i.id }
+    })
+    gridRef.value?.setItems(entries)
     return
   }
 
-  if (pinnedId.value === item.id) {
-    pinnedId.value = null
-    hasSticky.value = false
-  }
+  pinnedId.value = null
   gridRef.value?.setItem(item.id, { sticky: false })
 }
 
@@ -172,13 +145,13 @@ const shuffleItems = () => {
 }
 
 const initGrid = () => {
+  gridRef.value?.setTransitionTimeScale(3) // 放慢 3 倍观察
   gridRef.value?.setItems(createUserIds(userCount.value).map((id) => ({ id })))
 }
 
 const syncGrid = () => {
   gridRef.value?.settleActiveAnimations()
   userCount.value = DEFAULT_USER_COUNT
-  hasSticky.value = false
   pinnedId.value = null
   initGrid()
 }

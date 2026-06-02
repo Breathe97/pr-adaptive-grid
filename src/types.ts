@@ -19,6 +19,7 @@ export interface GridItem {
   y: number
   w: number
   h: number
+  /** 为 true 时以 absolute + 滚动 translate 固定在容器可视区（非 CSS position:sticky） */
   sticky?: boolean
   fixed?: boolean
 }
@@ -39,6 +40,7 @@ export interface GridSetItemOptions {
   top?: number
   right?: number
   bottom?: number
+  /** 为 true 时以 absolute + 滚动 translate 固定在容器可视区（非 CSS position:sticky） */
   sticky?: boolean
   fixed?: boolean
   /** 插入 ids 的索引，默认 0（首屏第一行） */
@@ -64,4 +66,7 @@ export interface PrAdaptiveGridExpose {
   getVisibleItems: (offsetPages?: number) => GridItem[]
   settleActiveAnimations: () => void
   shuffleItems: () => void
+  /** 过渡时长系数，默认 1；所有动画时长会乘以该值 */
+  getTransitionTimeScale: () => number
+  setTransitionTimeScale: (scale: number) => void
 }
