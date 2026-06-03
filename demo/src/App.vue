@@ -118,7 +118,11 @@ const setPin = async (target: LayoutItem) => {
   const index = ids.indexOf(targetId)
   if (target.sticky === true) {
     layoutMode.value = '1'
-    layout.value = getLayout(layoutMode.value, ids)
+    layout.value = getLayout('1', ids)
+    layout.value = {
+      ...layout.value,
+      items: layout.value.items.map((it) => ({ ...it, sticky: false }))
+    }
     return
   }
   if (index < 0) return
