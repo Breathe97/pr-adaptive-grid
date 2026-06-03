@@ -2,7 +2,7 @@
   <div ref="pr_adaptive_grid_ref" class="pr-adaptive-grid" @scroll="onScroll">
     <div ref="pr_adaptive_grid_content_ref" class="pr-adaptive-grid-content" :style="ContainerStyle">
       <div v-for="(item, index) in layout.items" :key="index" class="pr-adaptive-grid-item-span" :data-item-index="index" :style="ItemSpanStyle(item)" />
-      <div v-for="row in RenderItems" :key="row._leaving ? `leaving-${row.id}` : `item-${row.id}`" class="pr-adaptive-grid-item" :class="itemClass(row)" :style="ItemStyle(row)" @transitionend="(e) => onItemTransitionEnd(e, row)">
+      <div v-for="row in RenderItems" :key="row._leaving ? `leaving-${row.id}` : `item-${row.id}`" class="pr-adaptive-grid-item" :class="itemClass(row)" :style="ItemStyle(row)">
         <div class="pr-adaptive-grid-item-inner" :class="itemInnerClass(row)" :style="ItemInnerStyle(row)" @animationend.self="(e) => onInnerAnimationEnd(e, row)">
           <slot :item="row.slotItem" />
         </div>
@@ -80,20 +80,6 @@ const getRect = (_index: number, isLeaving: boolean, id: string): ItemRect | und
 const enterAnimIds = ref(new Set<string>()) // 正在播放入场 animation 的 id
 const leaveAnimIds = ref(new Set<string>()) // 正在播放离场 animation 的 id
 const leavingItems = ref<LeavingRow[]>([]) // 已从 layout 移除、DOM 仍保留的离场项
-
-/** layout 位移动画结束后移除 layout-anim（Pin 滚动更新不再走 transition） */
-const cancelLayoutAnim = (id: string) => {
-  if (!layoutAnimIds.value.has(id)) return
-  const next = new Set(layoutAnimIds.value)
-  next.delete(id)
-  layoutAnimIds.value = next
-}
-
-/** 外层 item transform 过渡结束 */
-const onItemTransitionEnd = (e: TransitionEvent, row: RenderRow) => {
-  if (row._leaving === true || e.propertyName !== 'transform') return
-  cancelLayoutAnim(row.id)
-}
 
 /** 取消指定 id 的入场动画状态 */
 const cancelEnter = (id: string) => {
@@ -625,10 +611,6 @@ defineExpose({
 
 .pr-adaptive-grid-item-pinned {
   z-index: 20;
-}
-
-.pr-adaptive-grid-item-pinned:not(.pr-adaptive-grid-item-layout-anim) {
-  transition: none !important;
 }
 
 .pr-adaptive-grid-item-no-transition {
