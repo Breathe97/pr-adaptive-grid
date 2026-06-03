@@ -23,7 +23,7 @@ const getLayoutModel1 = (ids: string[]): Layout => {
   // console.log('\x1b[38;2;0;151;255m%c%s\x1b[0m', 'color:#0097ff;', `------->Breathe: mainIds`, mainIds)
   // console.log('\x1b[38;2;0;151;255m%c%s\x1b[0m', 'color:#0097ff;', `------->Breathe: surplusIds`, surplusIds)
 
-  const layout: Layout = { gap: 20, cols: 1, rows: 1, items: [] }
+  const layout: Layout = { gap: 8, cols: 1, rows: 1, items: [] }
 
   const createMain = (mainIds: string[]) => {
     switch (mainIds.length) {

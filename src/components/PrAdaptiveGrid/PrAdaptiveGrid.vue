@@ -56,8 +56,7 @@ const ItemSpanStyle = computed(() => {
   }
 })
 
-const mapItemStyle = ref(new Map<string, { x: number; y: number }>())
-const mapItemInnerStyle = ref(new Map<string, { width: number; height: number }>())
+const mapItemStyle = ref(new Map<string, { x: number; y: number; width: number; height: number }>())
 
 const ItemStyle = computed(() => {
   return (id: string) => {
@@ -72,7 +71,7 @@ const ItemStyle = computed(() => {
 
 const ItemInnerStyle = computed(() => {
   return (id: string) => {
-    const config = mapItemInnerStyle.value.get(id)
+    const config = mapItemStyle.value.get(id)
     if (!config) return {}
     const { width, height } = config
     return {
@@ -82,7 +81,7 @@ const ItemInnerStyle = computed(() => {
   }
 })
 
-const getItemsLayout = async () => {
+const syncItemsLayout = async () => {
   await nextTick()
   if (!pr_adaptive_grid_content_ref.value) return
   for (const item of Items.value) {
@@ -91,14 +90,13 @@ const getItemsLayout = async () => {
     const itemSpan = pr_adaptive_grid_content_ref.value.querySelector(`[${selector}]`)
     if (!itemSpan) continue
     const { x, y, width, height } = itemSpan.getBoundingClientRect()
-    mapItemStyle.value.set(id, { x, y })
-    mapItemInnerStyle.value.set(id, { width, height })
+    mapItemStyle.value.set(id, { x, y, width, height })
   }
 }
 
 watch(
   () => props.layout,
-  () => getItemsLayout(),
+  () => syncItemsLayout(),
   {
     immediate: true
   }
@@ -111,11 +109,14 @@ const init = () => {}
 const syncSize = async () => {
   await nextTick()
   if (!pr_adaptive_grid_content_ref.value) return
+  console.log('\x1b[38;2;0;151;255m%c%s\x1b[0m', 'color:#0097ff;', `------->Breathe: pr_adaptive_grid_content_ref.value.getBoundingClientRect()`, pr_adaptive_grid_content_ref.value.getBoundingClientRect())
   const { x, y, height, width } = pr_adaptive_grid_content_ref.value.getBoundingClientRect()
+  console.log('\x1b[38;2;0;151;255m%c%s\x1b[0m', 'color:#0097ff;', `------->Breathe: x, y`, x, y)
   size.x = x
   size.y = y
   size.height = height
   size.width = width
+  syncItemsLayout()
 }
 
 let observer: ResizeObserver
