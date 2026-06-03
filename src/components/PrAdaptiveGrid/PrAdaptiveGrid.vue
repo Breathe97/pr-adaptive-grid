@@ -3,7 +3,7 @@
     <div ref="pr_adaptive_grid_content_ref" class="pr-adaptive-grid-content" :style="ContainerStyle">
       <div v-for="item in Items" :key="`span-${item.id}`" class="pr-adaptive-grid-item-span" :data-item-id="item.id" :style="ItemSpanStyle(item)">{{ item.id }}</div>
       <div v-for="item in Items" :key="`item-${item.id}`" class="pr-adaptive-grid-item" :class="[itemClass(item.id)]" :style="ItemStyle(item.id)">
-        <div class="pr-adaptive-grid-item-inner" :class="[innerClass(item.id)]" :style="ItemInnerStyle(item.id)" @transitionend="(e) => animationend(e, item.id)">
+        <div class="pr-adaptive-grid-item-inner" :class="[innerClass(item.id)]" :style="ItemInnerStyle(item.id)">
           <slot :item="item" />
         </div>
       </div>
@@ -125,8 +125,6 @@ const syncItemsLayout = async () => {
 
 const onScroll = () => {}
 
-const init = () => {}
-
 const syncSize = async () => {
   await nextTick()
   if (!pr_adaptive_grid_content_ref.value) return
@@ -143,11 +141,9 @@ const itemClass = (id: string) => ({
   'pr-adaptive-grid-item-no-transition': layoutReady.value === false
 })
 
-const innerClass = () => ({
+const innerClass = (id: string) => ({
   'pr-adaptive-grid-item-no-transition': layoutReady.value === false
 })
-
-const animationend = (e: TransitionEvent, id: string) => {}
 
 watch(
   () => props.layout.items.map((i) => i.id).join(','),
@@ -183,7 +179,6 @@ onBeforeUnmount(() => {
   --ag-duration-size: 500ms;
   --ag-duration-enter: 220ms;
   --ag-duration-exit: 180ms;
-  --ag-duration-enter-size: 320ms;
   --ag-ease-position: cubic-bezier(0.22, 1, 0.36, 1);
   --ag-ease-size: ease;
   --ag-ease-fade: ease-out;
