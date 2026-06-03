@@ -395,6 +395,7 @@ const getLayoutModel2 = (ids: string[]): Layout => {
           layout.items = [
             //
             { id: mainIds[0], x: 1, y: 1, w: 9, h: 1 },
+            //
             { id: mainIds[1], x: 10, y: 1, w: 3, h: 1 }
           ]
         }
@@ -406,6 +407,7 @@ const getLayoutModel2 = (ids: string[]): Layout => {
           layout.items = [
             //
             { id: mainIds[0], x: 1, y: 1, w: 9, h: 2 },
+            //
             { id: mainIds[1], x: 10, y: 1, w: 3, h: 1 },
             { id: mainIds[2], x: 10, y: 2, w: 3, h: 1 }
           ]
@@ -413,15 +415,15 @@ const getLayoutModel2 = (ids: string[]): Layout => {
         break
       case 4:
         {
-          layout.cols = 2
-          layout.rows = 2
+          layout.cols = 12
+          layout.rows = 3
           layout.items = [
             //
-            { id: mainIds[0], x: 1, y: 1, w: 1, h: 1 },
-            { id: mainIds[1], x: 2, y: 1, w: 1, h: 1 },
-
-            { id: mainIds[2], x: 1, y: 2, w: 1, h: 1 },
-            { id: mainIds[3], x: 2, y: 2, w: 1, h: 1 }
+            { id: mainIds[0], x: 1, y: 1, w: 9, h: 3 },
+            //
+            { id: mainIds[1], x: 10, y: 1, w: 3, h: 1 },
+            { id: mainIds[2], x: 10, y: 2, w: 3, h: 1 },
+            { id: mainIds[3], x: 10, y: 3, w: 3, h: 1 }
           ]
         }
         break

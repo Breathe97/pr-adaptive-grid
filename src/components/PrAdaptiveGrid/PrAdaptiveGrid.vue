@@ -60,13 +60,14 @@ const ItemHeight = computed(() => {
 /** 占位 span 在 Grid 中的位置与高度 */
 const ItemSpanStyle = computed(() => {
   return (item: LayoutItem) => {
+    const { gap } = props.layout
     const { x, y, w, h } = item
     return {
       'grid-column-start': x,
       'grid-column-end': x + w,
       'grid-row-start': y,
       'grid-row-end': y + h,
-      height: `${ItemHeight.value}px`
+      height: `${h * ItemHeight.value + (h - 1) * gap}px`
     }
   }
 })
