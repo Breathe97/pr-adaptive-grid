@@ -129,7 +129,7 @@ const setPin = async (target: GridSlotItem) => {
     }
     layoutMode.value = 1
     await nextTick()
-    initGrid()
+    await initGrid()
     return
   }
 
@@ -142,7 +142,7 @@ const setPin = async (target: GridSlotItem) => {
 
   layoutMode.value = 2
   await nextTick()
-  initGrid()
+  await initGrid()
 }
 
 /** Fisher-Yates 打乱 ids 后按当前 mode 重排 */
@@ -158,17 +158,17 @@ const shuffleItems = () => {
   }
 
   shuffleIds()
-  initGrid()
+  void initGrid()
 }
 
-/** 按 ids 顺序用 setItem 同步 index 与 sticky */
-const initGrid = () => {
+/** 按 ids 顺序一次性同步；Pin 时先清 sticky 再只钉 index 0 */
+const initGrid = async () => {
   if (!gridRef.value) return
-  for (let i = ids.length - 1; i >= 0; i--) {
-    gridRef.value.setItem(ids[i], {
-      index: i,
-      sticky: layoutMode.value === 2 && i === 0
-    })
+  gridRef.value.setItems(ids, { sticky: false })
+  await gridRef.value.syncLayout()
+  if (layoutMode.value === 2 && ids.length > 0) {
+    gridRef.value.setItem(ids[0], { sticky: true })
+    await gridRef.value.syncLayout()
   }
 }
 
