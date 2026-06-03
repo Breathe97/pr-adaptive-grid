@@ -62,6 +62,7 @@ const userCount = ref(DEFAULT_USER_COUNT) // 工具栏显示的数量
 const tileColorMap = ref(new Map<string, string>()) // 每个 id 对应的 tile 背景色
 
 const ids: string[] = [] // 业务侧 id 顺序，与 gridItems 下标一致
+const pinnedSwapIndex = ref<number | null>(null) // Pin 时与 index 0 互换的下标，取消时换回
 
 /** 高饱和度随机色，亮度偏高以对比黑色背景 */
 const pickContrastColor = (): string => {
@@ -107,29 +108,41 @@ const changeUserCount = (delta: number) => {
   userCount.value -= 1
 }
 
-/** 切换 Pin：先改 mode，再用 setItem 调整 index / sticky */
+/** 交换 ids 中两个下标的 id（应用层换位） */
+const swapIdsAt = (a: number, b: number) => {
+  if (a === b || a < 0 || b < 0 || a >= ids.length || b >= ids.length) return
+  const tmp = ids[a]
+  ids[a] = ids[b]
+  ids[b] = tmp
+}
+
+/** 切换 Pin：与 index 0 互换槽位；先改 ids 再改 mode，最后 initGrid 一次性同步 */
 const setPin = async (target: GridSlotItem) => {
   const targetId = target.id
   const index = ids.indexOf(targetId)
+  if (index < 0) return
+
   if (target.sticky === true) {
+    if (pinnedSwapIndex.value != null) {
+      swapIdsAt(0, pinnedSwapIndex.value)
+      pinnedSwapIndex.value = null
+    }
     layoutMode.value = 1
     await nextTick()
-    ids.forEach((id) => gridRef.value!.setItem(id, { sticky: false }))
+    initGrid()
     return
   }
-  if (index < 0) return
+
+  if (index !== 0) {
+    swapIdsAt(0, index)
+    pinnedSwapIndex.value = index
+  } else {
+    pinnedSwapIndex.value = null
+  }
+
   layoutMode.value = 2
   await nextTick()
-  gridRef.value!.setItem(targetId, { index: 0, sticky: true })
-  if (index !== 0) {
-    const prevFirstId = ids[0]
-    ids[0] = targetId // 与组件内 index 0 对齐
-    ids[index] = prevFirstId
-  }
-  ids.forEach((id) => {
-    if (id !== targetId) gridRef.value!.setItem(id, { sticky: false })
-  })
-  await nextTick()
+  initGrid()
 }
 
 /** Fisher-Yates 打乱 ids 后按当前 mode 重排 */
