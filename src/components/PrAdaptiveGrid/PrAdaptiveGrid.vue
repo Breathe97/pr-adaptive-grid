@@ -1,7 +1,7 @@
 <template>
   <div ref="pr_adaptive_grid_ref" class="pr-adaptive-grid" @scroll="onScroll">
     <div ref="pr_adaptive_grid_content_ref" class="pr-adaptive-grid-content" :style="ContainerStyle">
-      <div v-for="item in Items" :key="`span-${item.id}`" class="pr-adaptive-grid-item-span" :data-item-id="item.id" :style="ItemSpanStyle(item)" />
+      <div v-for="(item, index) in layout.items" :key="index" class="pr-adaptive-grid-item-span" :data-item-index="index" :style="ItemSpanStyle(item)" />
       <div v-for="row in RenderItems" :key="row._leaving ? `leaving-${row.id}` : `item-${row.id}`" class="pr-adaptive-grid-item" :class="itemClass(row)" :style="ItemStyle(row)">
         <div class="pr-adaptive-grid-item-inner" :class="itemInnerClass(row)" :style="ItemInnerStyle(row)" @animationend.self="(e) => onInnerAnimationEnd(e, row)">
           <slot :item="row.item" />
@@ -24,7 +24,9 @@ type RenderRow = { id: string; item: LayoutItem; _leaving: boolean } // 模板 v
 const props = defineProps({
   getLayout: { type: Function as PropType<GetLayoutFn>, default: undefined } // 自定义布局函数，默认内置 getLayout
 })
+
 const layout = ref<Layout>({ gap: 8, cols: 1, rows: 1, items: [] }) // 组件内部布局状态
+
 const itemIds = ref<string[]>([]) // 当前 item 顺序，与 layout.items 下标对应
 const resolveGetLayout = (): GetLayoutFn => props.getLayout ?? defaultGetLayout
 const collectItemIds = (items: LayoutItem[]) => items.map((i) => i.id).filter((id): id is string => id != null)
