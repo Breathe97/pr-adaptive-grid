@@ -2,10 +2,9 @@
   <div class="pr-adaptive-grid" @scroll="onScroll">
     <div ref="pr_adaptive_grid_content_ref" class="pr-adaptive-grid-content" :style="ContainerStyle">
       <div v-for="item in Items" :key="`span-${item.id}`" class="pr-adaptive-grid-item-span" :data-item-id="item.id" :style="ItemSpanStyle(item)" />
-      <div v-for="row in RenderItems" :key="`item-${row.id}`" class="pr-adaptive-grid-item" :class="itemClass(row.id, row._leaving)" :style="ItemStyle(row.id, row._leaving)">
-        <div class="pr-adaptive-grid-item-inner" :class="innerClass(row.id, row._leaving)" :style="ItemInnerStyle(row.id, row._leaving)" @animationend="(e) => onInnerAnimationEnd(e, row.id, row._leaving)">
+      <div v-for="row in RenderItems" :key="row._leaving ? `leaving-${row.id}` : `item-${row.id}`" class="pr-adaptive-grid-item" :class="itemClass(row.id, row._leaving)" :style="ItemStyle(row.id, row._leaving)">
+        <div class="pr-adaptive-grid-item-inner" :class="innerClass(row.id, row._leaving)" :style="ItemInnerStyle(row.id, row._leaving)" @animationend.self="(e) => onInnerAnimationEnd(e, row.id, row._leaving)">
           <slot :item="row.item" />
-          <!-- {{ innerClass(row.id, row._leaving) }} -->
         </div>
       </div>
     </div>
@@ -126,12 +125,11 @@ const onItemLeave = (id: string) => {
 
 /** 入场/离场 animation 结束时清理对应状态 */
 const onInnerAnimationEnd = (e: AnimationEvent, id: string, isLeaving: boolean) => {
-  if (e.target !== e.currentTarget) return
-  if (!isLeaving && e.animationName === 'ag-inner-enter') {
+  if (!isLeaving && e.animationName.includes('ag-inner-enter')) {
     cancelEnter(id)
     return
   }
-  if (isLeaving && e.animationName === 'ag-inner-leave') {
+  if (isLeaving && e.animationName.includes('ag-inner-leave')) {
     cancelLeave(id)
   }
 }
@@ -258,9 +256,10 @@ const applyLayoutWatch = async () => {
 
   const { added, removed } = diffIds(prevIds.value, nextIds)
   for (const id of removed) onItemLeave(id)
-  for (const id of added) onItemEnter(id)
-
   await nextTick()
+
+  await new Promise<void>((r) => requestAnimationFrame(() => r()))
+  for (const id of added) onItemEnter(id)
   await syncSize()
 
   prevIds.value = nextIds
