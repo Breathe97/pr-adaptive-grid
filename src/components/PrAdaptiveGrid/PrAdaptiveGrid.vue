@@ -84,14 +84,20 @@ const ItemInnerStyle = computed(() => {
 const syncItemsLayout = async () => {
   await nextTick()
   if (!pr_adaptive_grid_content_ref.value) return
+
+  const next = new Map<string, { x: number; y: number; width: number; height: number }>()
+
   for (const item of Items.value) {
     const { id } = item
     const selector = `data-item-id="${id}"`
     const itemSpan = pr_adaptive_grid_content_ref.value.querySelector(`[${selector}]`)
     if (!itemSpan) continue
     const { x, y, width, height } = itemSpan.getBoundingClientRect()
-    mapItemStyle.value.set(id, { x: x - size.x, y: y - size.y, width, height })
+    next.set(id, { x: x - size.x, y: y - size.y, width, height })
   }
+
+  console.log('\x1b[38;2;0;151;255m%c%s\x1b[0m', 'color:#0097ff;', `------->Breathe: syncItemsLayout`, next)
+  mapItemStyle.value = next
 }
 
 const onScroll = () => {}
@@ -111,10 +117,7 @@ const syncSize = async () => {
 
 watch(
   () => props.layout,
-  () => syncSize(),
-  {
-    immediate: true
-  }
+  () => syncSize()
 )
 
 let observer: ResizeObserver
