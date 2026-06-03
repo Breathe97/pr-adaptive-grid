@@ -172,22 +172,22 @@ const calcPositionDurationMs = (prev: ItemRect | undefined, next: ItemRect): num
 
 /** 外层 item 中心定位的 transform */
 const ItemStyle = computed(() => {
+  // 依赖 scrollOffset，滚动时触发重新渲染
+  const { x: scrollX, y: scrollY } = scrollOffset
   return (row: RenderRow) => {
     const { id, _leaving, item } = row
     const config = getRect(id, _leaving)
     if (!config) return {}
     const { x, y, width, height } = config
-    const isSticky = _leaving === false && item.sticky === true
-
     const cx = x + width / 2
     const cy = y + height / 2
-
-    const ox = isSticky ? scrollOffset.x : 0
-    const oy = isSticky ? scrollOffset.y : 0
-
-    const durationMs = mapItemPositionDuration.value.get(id) ?? POSITION_DURATION_MIN
+    const isSticky = _leaving === false && item.sticky === true
+    const px = isSticky ? cx + scrollX : cx
+    const py = isSticky ? cy + scrollY : cy
+    const layoutDurationMs = mapItemPositionDuration.value.get(id) ?? POSITION_DURATION_MIN
+    const durationMs = isSticky ? 0 : layoutDurationMs
     return {
-      transform: `translate3d(${cx + ox}px, ${cy + oy}px, 0) translate(-50%, -50%)`,
+      transform: `translate3d(${px}px, ${py}px, 0) translate(-50%, -50%)`,
       '--ag-duration-position': `${durationMs}ms`
     }
   }
