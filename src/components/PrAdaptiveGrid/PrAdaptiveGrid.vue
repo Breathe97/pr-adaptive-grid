@@ -2,9 +2,10 @@
   <div class="pr-adaptive-grid" @scroll="onScroll">
     <div ref="pr_adaptive_grid_content_ref" class="pr-adaptive-grid-content" :style="ContainerStyle">
       <div v-for="item in Items" :key="`span-${item.id}`" class="pr-adaptive-grid-item-span" :data-item-id="item.id" :style="ItemSpanStyle(item)" />
-      <div v-for="row in RenderItems" :key="row._leaving ? `leaving-${row.id}` : `item-${row.id}`" class="pr-adaptive-grid-item" :class="itemClass(row.id, row._leaving)" :style="ItemStyle(row.id, row._leaving)">
+      <div v-for="row in RenderItems" :key="`item-${row.id}`" class="pr-adaptive-grid-item" :class="itemClass(row.id, row._leaving)" :style="ItemStyle(row.id, row._leaving)">
         <div class="pr-adaptive-grid-item-inner" :class="innerClass(row.id, row._leaving)" :style="ItemInnerStyle(row.id, row._leaving)" @animationend="(e) => onInnerAnimationEnd(e, row.id, row._leaving)">
           <slot :item="row.item" />
+          <!-- {{ innerClass(row.id, row._leaving) }} -->
         </div>
       </div>
     </div>
@@ -353,6 +354,7 @@ onBeforeUnmount(() => {
   z-index: 1;
   box-sizing: border-box;
   will-change: transform;
+  background-color: rgb(26, 26, 26);
 }
 .pr-adaptive-grid-item-leaving {
   z-index: 15;

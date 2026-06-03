@@ -81,8 +81,6 @@ const setPin = (item: GridItem) => {}
 
 const setFixed = (item: GridItem) => {}
 
-const layout = ref<Layout>({ gap: 8, cols: 1, rows: 1, items: [] })
-
 const createIds = (count: number = 8) => {
   const ids = []
   for (let index = 1; index <= count; index++) {
@@ -92,20 +90,29 @@ const createIds = (count: number = 8) => {
   return ids.reverse()
 }
 
+const ids = createIds(userCount.value)
+
+const layout = ref<Layout>({ gap: 8, cols: 1, rows: 1, items: [] })
+
 const changeUserCount = (delta: number) => {
   if (delta === 1) {
-    userCount.value += 1
+    if (ids.length < 1) return
+    const [_id] = ids
+    ids.unshift(`${Number(_id) + 1}`)
   }
   if (delta === -1) {
-    userCount.value -= 1
+    if (ids.length === 1) return
+    const index = Math.ceil(Math.random() * ids.length - 1)
+    ids.splice(index, 1)
   }
+  userCount.value += delta
   initGrid()
 }
 
 const shuffleItems = () => {}
 
 const initGrid = () => {
-  const ids = createIds(userCount.value)
+  console.log('\x1b[38;2;0;151;255m%c%s\x1b[0m', 'color:#0097ff;', `------->Breathe: ids`, ids)
   layout.value = getLayout('1', ids)
 }
 
