@@ -304,6 +304,13 @@ onBeforeUnmount(() => {
   observer?.disconnect()
   if (resizeTimer) clearTimeout(resizeTimer)
 })
+
+/** 供外部主动触发测量（与 resize 后内部 syncSize 相同） */
+const syncLayout = () => syncSize()
+
+defineExpose({
+  syncLayout
+})
 </script>
 
 <style scoped>

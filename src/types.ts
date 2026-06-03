@@ -21,3 +21,8 @@ export interface Layout {
   cols: number
   items: LayoutItem[]
 }
+
+/** PrAdaptiveGrid 组件 expose 的方法 */
+export type PrAdaptiveGridExpose = {
+  syncLayout: () => Promise<void>
+}

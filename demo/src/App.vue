@@ -48,7 +48,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { PrAdaptiveGrid, getLayout } from '../../src/index.ts'
-import type { Layout } from '../../src/index.ts'
+import type { Layout, PrAdaptiveGridExpose } from '../../src/index.ts'
 
 const DEFAULT_USER_COUNT = 2
 
@@ -118,7 +118,9 @@ const initGrid = () => {
   layout.value = getLayout('1', ids)
 }
 
-const syncGrid = () => {}
+const syncGrid = () => {
+  void gridRef.value?.syncLayout()
+}
 
 onMounted(() => {
   initGrid()
