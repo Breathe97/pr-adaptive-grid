@@ -26,7 +26,7 @@ export type GridSlotItem = GridItem & LayoutCell
 /** 布局计算函数；mode 由应用层在闭包内决定，组件只传 length */
 export type GetLayoutFn = (length: number) => Layout
 
-/** setItem 可选参数（除 id 外）；已存在 id 时未传的字段保留原值 */
+/** setItem / setItems 可选参数（除 id 外）；已存在 id 时未传的字段保留原值 */
 export type GridItemOptions = Partial<Pick<GridItem, 'sticky' | 'fixed'>> & {
   index?: number
 }
@@ -35,5 +35,6 @@ export type GridItemOptions = Partial<Pick<GridItem, 'sticky' | 'fixed'>> & {
 export type PrAdaptiveGridExpose = {
   syncLayout: () => Promise<void>
   setItem: (id: string, option?: GridItemOptions) => void
+  setItems: (ids: string[], option?: GridItemOptions) => void
   removeItems: (ids: string[]) => void
 }

@@ -413,6 +413,18 @@ const setItem = (id: string, option?: GridItemOptions) => {
   applyLayoutFromIds(idList, optionById)
 }
 
+/** 按 ids 顺序一次性设置全部 item，共用 option 作为各 id 默认值（index 以数组下标为准） */
+const setItems = (idList: string[], option?: GridItemOptions) => {
+  const optionById = new Map<string, GridItemOptions>()
+  if (option) {
+    const { index: _index, ...shared } = option
+    for (const id of idList) {
+      optionById.set(id, shared)
+    }
+  }
+  applyLayoutFromIds(idList, optionById)
+}
+
 /** 移除 item 并重算布局 */
 const removeItems = (removeIds: string[]) => {
   if (removeIds.length === 0) return
@@ -427,6 +439,7 @@ const syncLayout = () => syncSize()
 defineExpose({
   syncLayout,
   setItem,
+  setItems,
   removeItems
 })
 </script>

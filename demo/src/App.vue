@@ -164,15 +164,17 @@ const syncGrid = () => {
   void gridRef.value?.syncLayout()
 }
 
-/** 倒序 setItem 初始化演示数据 */
+/** 一次性 setItems 初始化演示数据 */
 onMounted(async () => {
   await nextTick()
+  const initialIds: string[] = []
   for (let index = DEFAULT_USER_COUNT; index >= 1; index--) {
     const id = `${index}`
     ensureTileColor(id)
-    gridRef.value?.setItem(id)
-    ids.push(id)
+    initialIds.push(id)
   }
+  ids.push(...initialIds)
+  gridRef.value?.setItems(initialIds)
   userCount.value = DEFAULT_USER_COUNT
 })
 </script>

@@ -4,7 +4,7 @@ export const getLayout = (length: number): Layout => {
   const COLS = 5 // 设计列数
   const ROWS = 3 // 设计行数
 
-  let itemsNum = COLS * ROWS // 主区可容纳的 item 数
+  let itemsNum = Math.min(length, COLS * ROWS) // 主区可容纳的 item 数
 
   let surplusItemsNum = Math.max(0, length - itemsNum) // 超出主区的 item 数
 
@@ -15,8 +15,8 @@ export const getLayout = (length: number): Layout => {
     surplusItemsNum += 1
   }
 
-  // console.log('\x1b[38;2;0;151;255m%c%s\x1b[0m', 'color:#0097ff;', `------->Breathe: mainIds`, mainIds)
-  // console.log('\x1b[38;2;0;151;255m%c%s\x1b[0m', 'color:#0097ff;', `------->Breathe: surplusIds`, surplusIds)
+  // console.log('\x1b[38;2;0;151;255m%c%s\x1b[0m', 'color:#0097ff;', `------->Breathe: itemsNum`, itemsNum)
+  // console.log('\x1b[38;2;0;151;255m%c%s\x1b[0m', 'color:#0097ff;', `------->Breathe: surplusItemsNum`, surplusItemsNum)
 
   const layout: Layout = { gap: 8, cols: 1, rows: 1, items: [] }
 
@@ -26,9 +26,7 @@ export const getLayout = (length: number): Layout => {
         {
           layout.cols = 1
           layout.rows = 1
-          layout.items = [
-            { x: 1, y: 1, w: 1, h: 1 }
-          ]
+          layout.items = [{ x: 1, y: 1, w: 1, h: 1 }]
         }
         break
       case 2:
@@ -325,5 +323,6 @@ export const getLayout = (length: number): Layout => {
 
   createSurplus()
 
+  console.log('\x1b[38;2;0;151;255m%c%s\x1b[0m', 'color:#0097ff;', `------->Breathe: layout`, layout)
   return layout
 }
