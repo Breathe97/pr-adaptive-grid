@@ -49,6 +49,7 @@
 import { ref, onMounted } from 'vue'
 import { PrAdaptiveGrid, getLayout } from '../../src/index.ts'
 import type { Layout, LayoutItem, PrAdaptiveGridExpose } from '../../src/index.ts'
+import { GridItem } from '../../dist/src/types'
 
 const DEFAULT_USER_COUNT = 5
 
@@ -76,11 +77,6 @@ const getTileColor = (id: string): string => tileColorMap.value.get(id) ?? 'hsl(
 const createUserIds = (count: number) => Array.from({ length: count }, (_, i) => `${i + 1}`)
 
 const getDefaultIds = () => createUserIds(DEFAULT_USER_COUNT)
-
-const setPin = (item: LayoutItem) => {
-  const items = layout.value.items.map((i) => (i.id === item.id ? { ...i, sticky: !i.sticky } : i))
-  layout.value = { ...layout.value, items }
-}
 
 const setFixed = (item: GridItem) => {}
 
@@ -115,6 +111,21 @@ const changeUserCount = (delta: number) => {
   initGrid()
 }
 
+const setPin = (item: LayoutItem) => {
+  const { id } = item
+
+  const pinItem = ids.pop()
+
+  // 将当前pin的视口进行交换
+  if (pinItem) {
+    const index = ids.findIndex((item) => item === id) // 需要pin的下标
+    ids.splice(index, 1)
+    ids.splice(index, 0, pinItem)
+    ids.unshift(id)
+    layout.value = getLayout('2', ids)
+  }
+}
+
 const shuffleItems = () => {
   if (ids.length <= 1) return
   const shuffleIds = () => {
@@ -133,7 +144,7 @@ const shuffleItems = () => {
 const initGrid = () => {
   // console.log('\x1b[38;2;0;151;255m%c%s\x1b[0m', 'color:#0097ff;', `------->Breathe: ids`, ids)
   layout.value = getLayout('2', ids)
-  console.log('\x1b[38;2;0;151;255m%c%s\x1b[0m', 'color:#0097ff;', `------->Breathe: layout.value`, layout.value);
+  console.log('\x1b[38;2;0;151;255m%c%s\x1b[0m', 'color:#0097ff;', `------->Breathe: layout.value`, layout.value)
 }
 
 const syncGrid = () => {
