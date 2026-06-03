@@ -182,15 +182,16 @@ export const getLayout = (length: number): Layout => {
         x = 12
         y++
       }
+
       let w = 2
-      if (surplusItemsNum === 0) {
+      if (surplusItemsNum === 1 && x === 12) {
         w = 4
         x = 12
       }
       const item = { x, y, w, h: 1 }
       layout.items.push(item)
-      x += 2
       surplusItemsNum -= 1
+      x += 2
     }
   }
 
