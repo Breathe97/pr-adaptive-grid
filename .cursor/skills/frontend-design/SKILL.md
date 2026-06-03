@@ -48,3 +48,5 @@ Interpret creatively and make unexpected choices that feel genuinely designed fo
 **IMPORTANT**: Match implementation complexity to the aesthetic vision. Maximalist designs need elaborate code with extensive animations and effects. Minimalist or refined designs need restraint, precision, and careful attention to spacing, typography, and subtle details. Elegance comes from executing the vision well.
 
 Remember: commit fully to a distinctive vision and show what can truly be created when thinking outside the box.
+
+不要主动改代码，只有我主动要求时才修改，否则只告诉我应该如何修改。

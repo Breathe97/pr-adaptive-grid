@@ -218,12 +218,14 @@ const syncItemsLayout = async () => {
   }
 
   layoutAnimIds.value = new Set(Items.value.map((i) => i.id))
+
   mapItemStyle.value = next
   lastRectById.value = new Map(next)
 
   if (layoutReady.value === false) {
     await nextTick()
     await new Promise((r) => requestAnimationFrame(r))
+
     layoutReady.value = true
   }
 }
