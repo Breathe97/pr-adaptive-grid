@@ -64,7 +64,7 @@ const ItemStyle = computed(() => {
     if (!config) return {}
     const { x, y } = config
     return {
-      transform: `translate3d(${x - size.x}px,${y - size.y}px,0)`
+      transform: `translate3d(${x}px,${y}px,0)`
     }
   }
 })
@@ -90,17 +90,9 @@ const syncItemsLayout = async () => {
     const itemSpan = pr_adaptive_grid_content_ref.value.querySelector(`[${selector}]`)
     if (!itemSpan) continue
     const { x, y, width, height } = itemSpan.getBoundingClientRect()
-    mapItemStyle.value.set(id, { x, y, width, height })
+    mapItemStyle.value.set(id, { x: x - size.x, y: y - size.y, width, height })
   }
 }
-
-watch(
-  () => props.layout,
-  () => syncItemsLayout(),
-  {
-    immediate: true
-  }
-)
 
 const onScroll = () => {}
 
@@ -109,15 +101,21 @@ const init = () => {}
 const syncSize = async () => {
   await nextTick()
   if (!pr_adaptive_grid_content_ref.value) return
-  console.log('\x1b[38;2;0;151;255m%c%s\x1b[0m', 'color:#0097ff;', `------->Breathe: pr_adaptive_grid_content_ref.value.getBoundingClientRect()`, pr_adaptive_grid_content_ref.value.getBoundingClientRect())
   const { x, y, height, width } = pr_adaptive_grid_content_ref.value.getBoundingClientRect()
-  console.log('\x1b[38;2;0;151;255m%c%s\x1b[0m', 'color:#0097ff;', `------->Breathe: x, y`, x, y)
   size.x = x
   size.y = y
   size.height = height
   size.width = width
-  syncItemsLayout()
+  await syncItemsLayout()
 }
+
+watch(
+  () => props.layout,
+  () => syncSize(),
+  {
+    immediate: true
+  }
+)
 
 let observer: ResizeObserver
 
