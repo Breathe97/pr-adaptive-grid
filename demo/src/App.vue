@@ -98,8 +98,8 @@ const changeUserCount = (delta: number) => {
   if (delta === 1) {
     if (ids.length < 1) return
     const [_id] = ids
-    const id = `${Number(_id) + 1}`
-    ids.unshift(id)
+    const id = `${Math.max(...Array.from(ids, (id) => Number(id))) + 1}`
+    ids.splice(2, 0, id)
     ensureTileColor(id)
   }
   if (delta === -1) {
@@ -111,10 +111,23 @@ const changeUserCount = (delta: number) => {
   initGrid()
 }
 
-const shuffleItems = () => {}
+const shuffleItems = () => {
+  if (ids.length <= 1) return
+  const shuffleIds = () => {
+    for (let i = ids.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1))
+      const tmp = ids[i]
+      ids[i] = ids[j]
+      ids[j] = tmp
+    }
+  }
+
+  shuffleIds()
+  initGrid()
+}
 
 const initGrid = () => {
-  // console.log('\x1b[38;2;0;151;255m%c%s\x1b[0m', 'color:#0097ff;', `------->Breathe: ids`, ids)
+  console.log('\x1b[38;2;0;151;255m%c%s\x1b[0m', 'color:#0097ff;', `------->Breathe: ids`, ids)
   layout.value = getLayout('1', ids)
 }
 
