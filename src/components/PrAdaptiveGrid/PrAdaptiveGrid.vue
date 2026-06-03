@@ -2,7 +2,7 @@
   <div class="pr-adaptive-grid" @scroll="onScroll">
     <div ref="pr_adaptive_grid_content_ref" class="pr-adaptive-grid-content" :style="ContainerStyle">
       <div v-for="item in Items" :key="`span-${item.id}`" class="pr-adaptive-grid-item-span" :data-item-id="item.id" :style="ItemSpanStyle(item)">{{ item.id }}</div>
-      <div v-for="item in Items" :key="`item-${item.id}`" class="pr-adaptive-grid-item" :class="[{ 'pr-adaptive-grid-item-no-transition': layoutReady === false }]" :style="ItemStyle(item.id)">
+      <div v-for="item in Items" :key="`item-${item.id}`" class="pr-adaptive-grid-item" :class="[itemClass(item.id), { 'pr-adaptive-grid-item-no-transition': layoutReady === false }]" :style="ItemStyle(item.id)">
         <div class="pr-adaptive-grid-item-inner" :class="[{ 'pr-adaptive-grid-item-no-transition': layoutReady === false }]" :style="ItemInnerStyle(item.id)">
           <!-- <slot :item="item" /> -->
         </div>
@@ -83,6 +83,13 @@ const ItemInnerStyle = computed(() => {
   }
 })
 
+const layoutAnimIds = ref(new Set<string>())
+
+const itemClass = (id: string) => ({
+  'pr-adaptive-grid-item-layout-anim': layoutAnimIds.value.has(id),
+  'pr-adaptive-grid-item-no-transition': layoutReady.value === false
+})
+
 const syncItemsLayout = async () => {
   await nextTick()
   if (!pr_adaptive_grid_content_ref.value) return
@@ -98,6 +105,7 @@ const syncItemsLayout = async () => {
     next.set(id, { x: x - size.x, y: y - size.y, width, height })
   }
 
+  layoutAnimIds.value = new Set(Items.value.map((i) => i.id)) // 标记需要执行动画
   console.log('\x1b[38;2;0;151;255m%c%s\x1b[0m', 'color:#0097ff;', `------->Breathe: syncItemsLayout`, next)
   mapItemStyle.value = next
 
@@ -142,14 +150,14 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .pr-adaptive-grid {
-  --ag-duration-position: 500ms;
-  --ag-duration-size: 280ms;
+  --ag-duration-position: 5000ms;
+  --ag-duration-size: 500ms;
   --ag-duration-enter: 220ms;
   --ag-duration-exit: 180ms;
   --ag-duration-enter-size: 320ms;
   --ag-ease-position: cubic-bezier(0.22, 1, 0.36, 1);
-  --ag-ease-size: cubic-bezier(0.22, 1, 0.36, 1);
-  --ag-ease-fade: cubic-bezier(0.4, 0, 0.2, 1);
+  --ag-ease-size: ease;
+  --ag-ease-fade: ease-out;
 
   position: relative;
   width: 100%;
@@ -202,6 +210,16 @@ onBeforeUnmount(() => {
   transition:
     transform var(--ag-duration-position) var(--ag-ease-fade),
     opacity var(--ag-duration-position) var(--ag-ease-fade);
+}
+
+.pr-adaptive-grid-item-layout-anim {
+  transition: transform var(--ag-duration-position) var(--ag-ease-position);
+}
+
+.pr-adaptive-grid-item-layout-anim .pr-adaptive-grid-item-inner {
+  transition:
+    width var(--ag-duration-size) var(--ag-ease-size),
+    height var(--ag-duration-size) var(--ag-ease-size);
 }
 
 .pr-adaptive-grid-item-no-transition {
