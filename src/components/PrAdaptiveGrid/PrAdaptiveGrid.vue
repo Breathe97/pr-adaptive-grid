@@ -21,8 +21,7 @@ type LeavingRow = { id: string; index: number; rect: ItemRect; item: GridItem } 
 type RenderRow = { id: string; index: number; item: GridItem; slotItem: GridSlotItem; _leaving: false } | { id: string; index: number; item: GridItem; slotItem: GridSlotItem; _leaving: true } // 模板 v-for 的一行数据
 
 const props = defineProps({
-  mode: { type: Number, default: 1 }, // 应用层布局模式，变更时重载 getLayout
-  getLayout: { type: Function as PropType<GetLayoutFn>, required: true } // 应用层注册，按 mode 返回 span 几何
+  getLayout: { type: Function as PropType<GetLayoutFn>, required: true } // 应用层注册，内部自行读取 mode 等状态
 })
 
 const layout = ref<Layout>({ gap: 8, cols: 1, rows: 1, items: [] }) // 仅 span 占位几何
@@ -341,19 +340,6 @@ watch(
   }
 )
 
-/** 应用层 mode 变化时重载 span 几何（不改动 gridItems 顺序与标记） */
-watch(
-  () => props.mode,
-  () => {
-    if (gridItems.value.length === 0) return
-    layoutWatchChain = layoutWatchChain
-      .then(() => {
-        applyLayoutFromIds(gridItems.value.map((g) => g.id))
-      })
-      .catch((err) => console.error('[PrAdaptiveGrid] mode watch failed', err))
-  }
-)
-
 let resizeTimer: ReturnType<typeof setTimeout> | undefined // resize debounce 定时器
 
 /** 窗口/容器尺寸变化时 debounce 后重新测量 */
@@ -397,7 +383,7 @@ const mergeItemOptions = (id: string, prev: GridItem | undefined, option?: GridI
 
 /** 按 id 顺序重算 span 几何并同步 gridItems */
 const applyLayoutFromIds = (idList: string[], optionById?: Map<string, GridItemOptions>) => {
-  const geo = props.getLayout(props.mode, idList.length)
+  const geo = props.getLayout(idList.length)
   const prevById = new Map(gridItems.value.map((g) => [g.id, g]))
   layout.value = geo
   gridItems.value = idList.map((id) => mergeItemOptions(id, prevById.get(id), optionById?.get(id)))

@@ -1,7 +1,7 @@
 <template>
   <div class="demo">
     <div class="grid-wrap">
-      <PrAdaptiveGrid ref="gridRef" :mode="layoutMode" :get-layout="resolveLayout">
+      <PrAdaptiveGrid ref="gridRef" :get-layout="resolveLayout">
         <template #default="{ item }">
           <div class="tile" :class="{ 'is-pinned': item.sticky, 'is-fixed': item.fixed }" :style="{ backgroundColor: getTileColor(item.id) }">
             <div v-if="item.sticky || item.fixed" class="tile-badges">
@@ -52,13 +52,14 @@ import type { GetLayoutFn, GridSlotItem, PrAdaptiveGridExpose } from '../../src/
 
 const DEFAULT_USER_COUNT = 10 // 演示初始 item 数量
 
-/** 按 mode 选择布局：1 默认，2 讲座（Pin） */
-const resolveLayout: GetLayoutFn = (mode, length) => (mode === 2 ? getLectureLayout(length) : getLayout(length))
+const layoutMode = ref(1) // 应用层布局模式：1 默认，2 讲座（Pin）
+
+/** 闭包读取 layoutMode，组件只传 length */
+const resolveLayout: GetLayoutFn = (length) => (layoutMode.value === 2 ? getLectureLayout(length) : getLayout(length))
 
 const gridRef = ref<PrAdaptiveGridExpose>() // 网格组件实例
 const userCount = ref(DEFAULT_USER_COUNT) // 工具栏显示的数量
 const tileColorMap = ref(new Map<string, string>()) // 每个 id 对应的 tile 背景色
-const layoutMode = ref(1) // 应用层布局模式：1 默认，2 讲座（Pin）
 
 const ids: string[] = [] // 业务侧 id 顺序，与 gridItems 下标一致
 

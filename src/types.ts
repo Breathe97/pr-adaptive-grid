@@ -23,8 +23,8 @@ export interface GridItem {
 /** 插槽数据：业务字段 + 当前 index 对应格子的几何 */
 export type GridSlotItem = GridItem & LayoutCell
 
-/** 布局计算函数：mode 1 默认，mode 2 讲座（Pin）等 */
-export type GetLayoutFn = (mode: number, length: number) => Layout
+/** 布局计算函数；mode 由应用层在闭包内决定，组件只传 length */
+export type GetLayoutFn = (length: number) => Layout
 
 /** setItem 可选参数（除 id 外）；已存在 id 时未传的字段保留原值 */
 export type GridItemOptions = Partial<Pick<GridItem, 'sticky' | 'fixed'>> & {
