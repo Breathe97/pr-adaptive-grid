@@ -92,6 +92,15 @@ const itemClass = (id: string) => ({
   'pr-adaptive-grid-item-no-transition': layoutReady.value === false
 })
 
+const prevIds = ref<string[]>([])
+const diffIds = (prev: string[], next: string[]) => {
+  const prevSet = new Set(prev)
+  const nextSet = new Set(next)
+  const added = next.filter((id) => !prevSet.has(id))
+  const removed = prev.filter((id) => !nextSet.has(id))
+  return { added, removed }
+}
+
 const syncItemsLayout = async () => {
   await nextTick()
   if (!pr_adaptive_grid_content_ref.value) return
@@ -113,6 +122,7 @@ const syncItemsLayout = async () => {
 
   if (layoutReady.value === false) {
     await new Promise((r) => requestAnimationFrame(r)) // 可选，更稳
+    prevIds.value = Items.value.map((i) => i.id)
     layoutReady.value = true
   }
 }
@@ -133,8 +143,15 @@ const syncSize = async () => {
 }
 
 watch(
-  () => props.layout,
-  () => syncSize()
+  () => props.layout.items.map((i) => i.id).join(','),
+  async () => {
+    const nextIds = props.layout.items.map((i) => i.id)
+    const { added, removed } = diffIds(prevIds.value, nextIds)
+    for (const id of removed) onItemLeave(id) // 第 6 步再实现
+    for (const id of added) onItemEnter(id) // 第 5 步再实现
+    prevIds.value = nextIds
+    await syncSize()
+  }
 )
 
 let observer: ResizeObserver
