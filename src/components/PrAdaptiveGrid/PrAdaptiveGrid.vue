@@ -33,7 +33,8 @@ const pr_adaptive_grid_content_ref = ref<HTMLElement>() // Grid 内容容器 DOM
 const layoutReady = ref(false) // 首屏布局是否已就绪（就绪前禁用 transition）
 const size = reactive({ x: 0, y: 0, width: 0, height: 0 }) // content 在视口中的位置与尺寸
 const scrollOffset = reactive({ x: 0, y: 0 }) // .pr-adaptive-grid 的 scrollLeft/Top
-const pinScrollAnchorById = ref(new Map<string, { vx: number; vy: number }>()) // 各 id Pin 时中心点在视口中的坐标
+const pinScrollAnchorById = ref(new Map<string, { sx: number; sy: number; oy: number }>()) // Pin 时 scroll + 垂直布局补偿
+const pinLayoutOriginById = ref(new Map<string, { cy: number }>()) // 开启 Pin 前（layout 变更前）的垂直中心
 const pendingPinAnchorIds = ref(new Set<string>()) // 待测量完成后记录锚点的 id
 const prevIds = ref<string[]>([]) // 上一轮 layout 的 id 列表，用于 diff
 const lastItemById = ref(new Map<string, GridItem>()) // 上一轮 item 数据，供离场时 slot 使用
@@ -185,7 +186,7 @@ const calcPositionDurationMs = (prev: ItemRect | undefined, next: ItemRect): num
 
 /** 外层 item 中心定位的 transform */
 const ItemStyle = computed(() => {
-  const { x: contentX, y: contentY } = size // Pin 时依赖 content 视口位置，滚动后须同步更新
+  readScrollOffset() // 每次渲染读 DOM scroll，保证 sticky 平移及时
   return (row: RenderRow) => {
     const { id, index, _leaving } = row
     const config = getRect(index, _leaving, id)
@@ -195,8 +196,20 @@ const ItemStyle = computed(() => {
     const cy = y + height / 2
     const isSticky = _leaving === false && row.item.sticky === true
     const anchor = pinScrollAnchorById.value.get(id)
-    const px = isSticky && anchor ? anchor.vx - contentX : cx
-    const py = isSticky && anchor ? anchor.vy - contentY : cy
+    const origin = pinLayoutOriginById.value.get(id)
+    const scrollX = scrollOffset.x
+    const scrollY = scrollOffset.y
+    let px = cx
+    let py = cy
+    if (isSticky) {
+      const sx = anchor?.sx ?? scrollX
+      const sy = anchor?.sy ?? scrollY
+      let oy = anchor?.oy ?? 0
+      if (!anchor && origin) oy = origin.cy - cy
+      // 水平对齐新 span；仅垂直保留 Pin 前视口位置（避免不同列 Pin 后左边距不一致）
+      px = cx + (scrollX - sx)
+      py = cy + (scrollY - sy) + oy
+    }
     const layoutDurationMs = mapItemPositionDuration.value.get(id) ?? POSITION_DURATION_MIN
     return {
       transform: `translate3d(${px}px, ${py}px, 0) translate(-50%, -50%)`,
@@ -280,7 +293,7 @@ const syncItemsLayout = async () => {
   mapRectById.value = rectById
   lastRectById.value = rectById
 
-  flushPendingPinAnchors()
+  flushPendingPinAnchors(rectById)
 
   if (layoutReady.value === false) {
     await nextTick()
@@ -299,7 +312,6 @@ const syncSize = async () => {
   size.y = y
   size.height = height
   size.width = width
-  syncContentViewportSize()
   await syncItemsLayout()
 }
 
@@ -335,7 +347,6 @@ const layoutGeometryKey = () => [layout.value.gap, layout.value.cols, layout.val
 /** 仅几何变化时重新测量（不触发 enter/leave） */
 watch(layoutGeometryKey, () => {
   if (gridItems.value.length === 0) return
-  queueStickyPinAnchorRefresh()
   layoutWatchChain = layoutWatchChain.then(() => syncSize()).catch((err) => console.error('[PrAdaptiveGrid] geometry watch failed', err))
 })
 
@@ -365,33 +376,35 @@ const readScrollOffset = () => {
   return { x: el.scrollLeft, y: el.scrollTop }
 }
 
-/** 同步 content 在视口中的位置（滚动后 Pin 依赖此项） */
-const syncContentViewportSize = () => {
-  const el = pr_adaptive_grid_content_ref.value
-  if (!el) return
-  const { x, y, width, height } = el.getBoundingClientRect()
-  size.x = x
-  size.y = y
-  size.width = width
-  size.height = height
-}
-
 /** 测量完成后记录 Pin 锚点（必须在 syncItemsLayout 之后） */
-const capturePinScrollAnchor = (id: string) => {
-  syncContentViewportSize()
-  const rect = mapRectById.value.get(id)
-  if (!rect) return
+const capturePinScrollAnchor = (id: string, rectById: Map<string, ItemRect>) => {
+  const { x: sx, y: sy } = readScrollOffset()
+  scrollOffset.x = sx
+  scrollOffset.y = sy
+  const origin = pinLayoutOriginById.value.get(id)
+  const rect = rectById.get(id)
+  let oy = 0
+  if (origin && rect) {
+    oy = origin.cy - (rect.y + rect.height / 2)
+  }
   const next = new Map(pinScrollAnchorById.value)
-  next.set(id, {
-    vx: size.x + rect.x + rect.width / 2,
-    vy: size.y + rect.y + rect.height / 2
-  })
+  next.set(id, { sx, sy, oy })
   pinScrollAnchorById.value = next
+  if (pinLayoutOriginById.value.has(id)) {
+    const origins = new Map(pinLayoutOriginById.value)
+    origins.delete(id)
+    pinLayoutOriginById.value = origins
+  }
 }
 
 /** 取消 Pin 时移除锚点 */
 const clearPinScrollAnchor = (id: string) => {
   pendingPinAnchorIds.value.delete(id)
+  if (pinLayoutOriginById.value.has(id)) {
+    const origins = new Map(pinLayoutOriginById.value)
+    origins.delete(id)
+    pinLayoutOriginById.value = origins
+  }
   if (!pinScrollAnchorById.value.has(id)) return
   const next = new Map(pinScrollAnchorById.value)
   next.delete(id)
@@ -399,27 +412,26 @@ const clearPinScrollAnchor = (id: string) => {
 }
 
 /** 刷新待记录的 Pin 锚点 */
-const flushPendingPinAnchors = () => {
+const flushPendingPinAnchors = (rectById: Map<string, ItemRect>) => {
   if (pendingPinAnchorIds.value.size === 0) return
-  pendingPinAnchorIds.value.forEach((id) => capturePinScrollAnchor(id))
+  pendingPinAnchorIds.value.forEach((id) => capturePinScrollAnchor(id, rectById))
   pendingPinAnchorIds.value = new Set()
 }
 
-/** layout 几何变化时，已 Pin 的 item 需在重测后刷新锚点 */
-const queueStickyPinAnchorRefresh = () => {
-  const next = new Set(pendingPinAnchorIds.value)
-  gridItems.value.forEach((g) => {
-    if (g.sticky === true) next.add(g.id)
-  })
-  pendingPinAnchorIds.value = next
+/** 开启 Pin 前记下中心（此时 mapRectById 仍是旧布局测量值） */
+const snapshotPinLayoutOrigin = (id: string) => {
+  const rect = mapRectById.value.get(id) ?? lastRectById.value.get(id)
+  if (!rect) return
+  const next = new Map(pinLayoutOriginById.value)
+  next.set(id, { cy: rect.y + rect.height / 2 })
+  pinLayoutOriginById.value = next
 }
 
-/** 记录滚动偏移，并同步 content 视口坐标供 Pin 使用 */
+/** 记录滚动偏移，供 sticky 抵消位移 */
 const onScroll = () => {
   const { x, y } = readScrollOffset()
   scrollOffset.x = x
   scrollOffset.y = y
-  syncContentViewportSize()
 }
 
 let observer: ResizeObserver // 监听 content 容器尺寸变化
@@ -459,7 +471,10 @@ const applyLayoutFromIds = (idList: string[], optionById?: Map<string, GridItemO
   const pending = new Set(pendingPinAnchorIds.value)
   gridItems.value.forEach((g) => {
     const wasSticky = prevById.get(g.id)?.sticky === true
-    if (g.sticky === true && !wasSticky) pending.add(g.id)
+    if (g.sticky === true && !wasSticky) {
+      pending.add(g.id)
+      snapshotPinLayoutOrigin(g.id)
+    }
     if (g.sticky !== true && wasSticky) clearPinScrollAnchor(g.id)
   })
   pendingPinAnchorIds.value = pending
@@ -489,13 +504,18 @@ const setItem = (id: string, option?: GridItemOptions) => {
   applyLayoutFromIds(idList, optionById)
 }
 
-/** 按 ids 顺序一次性设置全部 item，共用 option 作为各 id 默认值（index 以数组下标为准） */
-const setItems = (idList: string[], option?: GridItemOptions) => {
+/** 按 ids 一次性设置；option 为默认，optionsById 按 id 覆盖 */
+const setItems = (idList: string[], option?: GridItemOptions, optionsById?: Map<string, GridItemOptions>) => {
   const optionById = new Map<string, GridItemOptions>()
   if (option) {
     const { index: _index, ...shared } = option
     for (const id of idList) {
       optionById.set(id, shared)
+    }
+  }
+  if (optionsById) {
+    for (const [id, perId] of optionsById) {
+      optionById.set(id, { ...optionById.get(id), ...perId })
     }
   }
   applyLayoutFromIds(idList, optionById)
@@ -509,8 +529,11 @@ const removeItems = (removeIds: string[]) => {
   applyLayoutFromIds(nextIds)
 }
 
-/** 供外部主动触发测量（与 resize 后内部 syncSize 相同） */
-const syncLayout = () => syncSize()
+/** 等待 watch 链路与 span 测量完成 */
+const syncLayout = async () => {
+  layoutWatchChain = layoutWatchChain.then(() => syncSize())
+  await layoutWatchChain
+}
 
 defineExpose({
   syncLayout,

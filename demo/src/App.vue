@@ -161,15 +161,14 @@ const shuffleItems = () => {
   void initGrid()
 }
 
-/** 按 ids 顺序一次性同步；Pin 时先清 sticky 再只钉 index 0 */
+/** 一次 setItems + 一次 syncLayout；讲座模式与 sticky 同帧提交 */
 const initGrid = async () => {
   if (!gridRef.value) return
-  gridRef.value.setItems(ids, { sticky: false })
+  const byId = new Map<string, { sticky?: boolean }>()
+  ids.forEach((id) => byId.set(id, { sticky: false }))
+  if (layoutMode.value === 2 && ids.length > 0) byId.set(ids[0], { sticky: true })
+  gridRef.value.setItems(ids, undefined, byId)
   await gridRef.value.syncLayout()
-  if (layoutMode.value === 2 && ids.length > 0) {
-    gridRef.value.setItem(ids[0], { sticky: true })
-    await gridRef.value.syncLayout()
-  }
 }
 
 /** 主动触发组件重新测量 span 与绝对定位 */

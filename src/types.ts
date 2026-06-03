@@ -35,6 +35,6 @@ export type GridItemOptions = Partial<Pick<GridItem, 'sticky' | 'fixed'>> & {
 export type PrAdaptiveGridExpose = {
   syncLayout: () => Promise<void>
   setItem: (id: string, option?: GridItemOptions) => void
-  setItems: (ids: string[], option?: GridItemOptions) => void
+  setItems: (ids: string[], option?: GridItemOptions, optionsById?: Map<string, GridItemOptions>) => void
   removeItems: (ids: string[]) => void
 }
