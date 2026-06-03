@@ -256,7 +256,6 @@ const applyLayoutWatch = async () => {
 
   const { added, removed } = diffIds(prevIds.value, nextIds)
   for (const id of removed) onItemLeave(id)
-  await nextTick()
 
   await new Promise<void>((r) => requestAnimationFrame(() => r()))
   for (const id of added) onItemEnter(id)
@@ -311,9 +310,9 @@ onBeforeUnmount(() => {
 .pr-adaptive-grid {
   --ag-duration-position: 800ms;
   --ag-duration-size: 500ms;
-  --ag-duration-enter: 220ms;
-  --ag-duration-exit: 180ms;
-  --ag-enter-scale: 0.5;
+  --ag-duration-enter: 500ms;
+  --ag-duration-exit: 500ms;
+  --ag-enter-scale: 0;
   --ag-ease-position: cubic-bezier(0.22, 1, 0.36, 1);
   --ag-ease-size: ease;
   --ag-ease-fade: ease-out;
@@ -356,7 +355,7 @@ onBeforeUnmount(() => {
   background-color: rgb(26, 26, 26);
 }
 .pr-adaptive-grid-item-leaving {
-  z-index: 15;
+  z-index: 0;
 }
 .pr-adaptive-grid-item-inner {
   width: 100%;
@@ -367,7 +366,7 @@ onBeforeUnmount(() => {
   touch-action: none;
 }
 .pr-adaptive-grid-item-layout-anim {
-  transition: transform var(--ag-duration-position) var(--ag-ease-position);
+  transition: transform var(--ag-duration-position) var(--ag-ease-position) 200ms;
 }
 .pr-adaptive-grid-item-layout-anim .pr-adaptive-grid-item-inner {
   transition:
@@ -377,7 +376,7 @@ onBeforeUnmount(() => {
 @keyframes ag-inner-enter {
   from {
     opacity: 0;
-    transform: scale(var(--ag-enter-scale, 0.5));
+    transform: scale(0.3);
   }
   to {
     opacity: 1;
@@ -391,7 +390,7 @@ onBeforeUnmount(() => {
   }
   to {
     opacity: 0;
-    transform: scale(var(--ag-enter-scale, 0.5));
+    transform: scale(0.3);
   }
 }
 .pr-adaptive-grid-item-inner.ag-inner-enter {

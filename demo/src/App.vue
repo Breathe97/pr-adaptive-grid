@@ -98,7 +98,9 @@ const changeUserCount = (delta: number) => {
   if (delta === 1) {
     if (ids.length < 1) return
     const [_id] = ids
-    ids.unshift(`${Number(_id) + 1}`)
+    const id = `${Number(_id) + 1}`
+    ids.unshift(id)
+    ensureTileColor(id)
   }
   if (delta === -1) {
     if (ids.length === 1) return
@@ -112,7 +114,7 @@ const changeUserCount = (delta: number) => {
 const shuffleItems = () => {}
 
 const initGrid = () => {
-  console.log('\x1b[38;2;0;151;255m%c%s\x1b[0m', 'color:#0097ff;', `------->Breathe: ids`, ids)
+  // console.log('\x1b[38;2;0;151;255m%c%s\x1b[0m', 'color:#0097ff;', `------->Breathe: ids`, ids)
   layout.value = getLayout('1', ids)
 }
 
