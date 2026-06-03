@@ -370,12 +370,12 @@ defineExpose({
 
 <style scoped>
 .pr-adaptive-grid {
-  --ag-duration-position: 700ms;
-  --ag-duration-size: 500ms;
-  --ag-duration-enter: 500ms;
-  --ag-duration-exit: 500ms;
+  --ag-duration-position: 500ms;
+  --ag-duration-size: 300ms;
+  --ag-duration-enter: 300ms;
+  --ag-duration-exit: 300ms;
   --ag-enter-scale: 0;
-  --ag-ease-position: cubic-bezier(0.22, 1, 0.36, 1);
+  --ag-ease-position: cubic-bezier(0.22, 1, 0.44, 1);
   --ag-ease-size: ease;
   --ag-ease-fade: ease-out;
 
@@ -427,7 +427,7 @@ defineExpose({
   touch-action: none;
 }
 .pr-adaptive-grid-item-layout-anim {
-  transition: transform var(--ag-duration-position, 700ms) var(--ag-ease-position) 50ms;
+  transition: transform var(--ag-duration-position, 700ms) var(--ag-ease-position);
 }
 .pr-adaptive-grid-item-layout-anim .pr-adaptive-grid-item-inner {
   transition:

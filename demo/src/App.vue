@@ -57,6 +57,8 @@ const gridRef = ref<PrAdaptiveGridExpose>()
 const userCount = ref(DEFAULT_USER_COUNT)
 const tileColorMap = ref(new Map<string, string>())
 
+const layoutMode = ref<'1' | '2'>('1')
+
 /** 高饱和度随机色，亮度偏高以对比黑色背景 */
 const pickContrastColor = (): string => {
   const hue = Math.floor(Math.random() * 360)
@@ -115,7 +117,8 @@ const setPin = async (target: LayoutItem) => {
   const targetId = target.id
   const index = ids.indexOf(targetId)
   if (target.sticky === true) {
-    layout.value = getLayout('1', ids)
+    layoutMode.value = '1'
+    layout.value = getLayout(layoutMode.value, ids)
     return
   }
   if (index < 0) return
@@ -125,7 +128,8 @@ const setPin = async (target: LayoutItem) => {
     ids[0] = targetId
     ids[index] = prevFirstId
   }
-  layout.value = getLayout('2', ids)
+  layoutMode.value = '2'
+  layout.value = getLayout(layoutMode.value, ids)
   await nextTick()
   layout.value.items[0].sticky = true
 }
@@ -147,7 +151,10 @@ const shuffleItems = () => {
 
 const initGrid = () => {
   // console.log('\x1b[38;2;0;151;255m%c%s\x1b[0m', 'color:#0097ff;', `------->Breathe: ids`, ids)
-  layout.value = getLayout('2', ids)
+  layout.value = getLayout(layoutMode.value, ids)
+  if (layoutMode.value === '2') {
+    layout.value.items[0].sticky = true
+  }
   console.log('\x1b[38;2;0;151;255m%c%s\x1b[0m', 'color:#0097ff;', `------->Breathe: layout.value`, layout.value)
 }
 
