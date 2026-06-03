@@ -152,6 +152,22 @@ const RenderItems = computed((): RenderRow[] => {
   return [...active, ...leaving]
 })
 
+const POSITION_DURATION_MIN = 600 // 位移过渡最短 ms
+const POSITION_DURATION_MAX = 1200 // 位移过渡最长 ms
+const mapItemPositionDuration = ref(new Map<string, number>()) // 每个 id 本次位移的 transition 时长
+/** 根据中心点移动距离映射到 [POSITION_DURATION_MIN, POSITION_DURATION_MAX] */
+const calcPositionDurationMs = (prev: ItemRect | undefined, next: ItemRect): number => {
+  if (!prev) return POSITION_DURATION_MIN
+  const pcx = prev.x + prev.width / 2
+  const pcy = prev.y + prev.height / 2
+  const ncx = next.x + next.width / 2
+  const ncy = next.y + next.height / 2
+  const dist = Math.hypot(ncx - pcx, ncy - pcy)
+  const maxDist = Math.hypot(size.width, size.height) || 1
+  const t = Math.min(1, dist / maxDist)
+  return Math.round(POSITION_DURATION_MIN + t * (POSITION_DURATION_MAX - POSITION_DURATION_MIN))
+}
+
 /** 外层 item 中心定位的 transform */
 const ItemStyle = computed(() => {
   return (id: string, isLeaving: boolean) => {
@@ -160,8 +176,10 @@ const ItemStyle = computed(() => {
     const { x, y, width, height } = config
     const cx = x + width / 2
     const cy = y + height / 2
+    const durationMs = mapItemPositionDuration.value.get(id) ?? POSITION_DURATION_MIN
     return {
-      transform: `translate3d(${cx}px, ${cy}px, 0) translate(-50%, -50%)`
+      transform: `translate3d(${cx}px, ${cy}px, 0) translate(-50%, -50%)`,
+      '--ag-duration-position': `${durationMs}ms`
     }
   }
 })
@@ -217,6 +235,19 @@ const syncItemsLayout = async () => {
   }
 
   layoutAnimIds.value = new Set(Items.value.map((i) => i.id))
+
+  // 记录当前位置到目标位置的距离
+  {
+    const prev = mapItemStyle.value
+    const durationNext = new Map<string, number>()
+    for (const item of Items.value) {
+      const id = item.id
+      const rect = next.get(id)
+      if (!rect) continue
+      durationNext.set(id, calcPositionDurationMs(prev.get(id), rect))
+    }
+    mapItemPositionDuration.value = durationNext
+  }
 
   mapItemStyle.value = next
   lastRectById.value = new Map(next)
@@ -359,7 +390,6 @@ defineExpose({
   z-index: 1;
   box-sizing: border-box;
   will-change: transform;
-  background-color: rgb(26, 26, 26);
 }
 .pr-adaptive-grid-item-leaving {
   z-index: 0;
@@ -373,7 +403,7 @@ defineExpose({
   touch-action: none;
 }
 .pr-adaptive-grid-item-layout-anim {
-  transition: transform var(--ag-duration-position) var(--ag-ease-position) 50ms;
+  transition: transform var(--ag-duration-position, 700ms) var(--ag-ease-position) 50ms;
 }
 .pr-adaptive-grid-item-layout-anim .pr-adaptive-grid-item-inner {
   transition:
