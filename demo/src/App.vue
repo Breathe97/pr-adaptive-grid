@@ -88,7 +88,7 @@ const createIds = (count: number = 8) => {
   for (let index = 1; index <= count; index++) {
     ids.push(`${index}`)
   }
-  return ids
+  return ids.reverse()
 }
 
 const changeUserCount = (delta: number) => {

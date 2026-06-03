@@ -135,6 +135,15 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .pr-adaptive-grid {
+  --ag-duration-position: 500ms;
+  --ag-duration-size: 280ms;
+  --ag-duration-enter: 220ms;
+  --ag-duration-exit: 180ms;
+  --ag-duration-enter-size: 320ms;
+  --ag-ease-position: cubic-bezier(0.22, 1, 0.36, 1);
+  --ag-ease-size: cubic-bezier(0.22, 1, 0.36, 1);
+  --ag-ease-fade: cubic-bezier(0.4, 0, 0.2, 1);
+
   position: relative;
   width: 100%;
   height: 100%;
@@ -171,10 +180,7 @@ onBeforeUnmount(() => {
   top: 0;
   z-index: 1;
   box-sizing: border-box;
-  transition:
-    transform var(--ag-duration-position) var(--ag-ease-position),
-    width var(--ag-duration-size) var(--ag-ease-size),
-    height var(--ag-duration-size) var(--ag-ease-size);
+  transition: transform var(--ag-duration-position) var(--ag-ease-position);
   will-change: transform;
 }
 
@@ -185,7 +191,7 @@ onBeforeUnmount(() => {
   transform-origin: center center;
   cursor: grab;
   touch-action: none;
-  background-color: rgba(0, 151, 255, 0.7);
+  background-color: rgba(0, 151, 255, 0.9);
   transition:
     transform var(--ag-duration-position) var(--ag-ease-fade),
     opacity var(--ag-duration-position) var(--ag-ease-fade);
