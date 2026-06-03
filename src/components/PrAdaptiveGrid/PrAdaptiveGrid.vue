@@ -1,7 +1,7 @@
 <template>
   <div class="pr-adaptive-grid" @scroll="onScroll">
     <div ref="pr_adaptive_grid_content_ref" class="pr-adaptive-grid-content" :style="ContainerStyle">
-      <div v-for="item in Items" :key="`span-${item.id}`" class="pr-adaptive-grid-item-span" :data-item-id="item.id" :style="ItemSpanStyle(item)">{{ item.id }}</div>
+      <div v-for="item in Items" :key="`span-${item.id}`" class="pr-adaptive-grid-item-span" :data-item-id="item.id" :style="ItemSpanStyle(item)"></div>
       <div v-for="row in RenderItems" :key="row._leaving ? `leaving-${row.id}` : `item-${row.id}`" class="pr-adaptive-grid-item" :class="[itemClass(row.id, row._leaving)]" :style="ItemStyle(row.id, row._leaving)">
         <div class="pr-adaptive-grid-item-inner" :class="[innerClass(row.id, row._leaving)]" :style="ItemInnerStyle(row.id, row._leaving)" @animationend="(e) => onInnerAnimationEnd(e, row.id, row._leaving)">
           <slot :item="row.item" />
@@ -190,18 +190,12 @@ const onItemLeave = (id: string) => {
 }
 
 const onInnerAnimationEnd = (e: AnimationEvent, id: string, isLeaving: boolean) => {
-  if (e.target !== e.currentTarget) return
   if (!isLeaving && e.animationName === 'ag-inner-enter') {
-    const next = new Set(enterAnimIds.value)
-    next.delete(id)
-    enterAnimIds.value = next
+    cancelEnter(id)
     return
   }
   if (isLeaving && e.animationName === 'ag-inner-leave') {
-    leavingItems.value = leavingItems.value.filter((l) => l.id !== id)
-    const next = new Set(leaveAnimIds.value)
-    next.delete(id)
-    leaveAnimIds.value = next
+    cancelLeave(id)
   }
 }
 
@@ -247,9 +241,9 @@ const applyLayoutWatch = async () => {
 let layoutWatchChain: Promise<void> = Promise.resolve()
 
 watch(
-  () => props.layout.items.map((i) => i.id).join(','),
+  () => props.layout.items.map((i) => `${i.id}:${i.x},${i.y},${i.w},${i.h}`).join('|'),
   () => {
-    layoutWatchChain = layoutWatchChain.then(() => applyLayoutWatch())
+    layoutWatchChain = layoutWatchChain.then(() => applyLayoutWatch()).catch((err) => console.error('[PrAdaptiveGrid] layout watch failed', err))
   }
 )
 
