@@ -1,7 +1,7 @@
 <template>
   <div class="demo">
     <div class="grid-wrap">
-      <PrAdaptiveGrid ref="gridRef" :get-layout="activeGetLayout">
+      <PrAdaptiveGrid ref="gridRef" :mode="layoutMode" :get-layout="resolveLayout">
         <template #default="{ item }">
           <div class="tile" :class="{ 'is-pinned': item.sticky, 'is-fixed': item.fixed }" :style="{ backgroundColor: getTileColor(item.id) }">
             <div v-if="item.sticky || item.fixed" class="tile-badges">
@@ -52,10 +52,13 @@ import type { GetLayoutFn, GridSlotItem, PrAdaptiveGridExpose } from '../../src/
 
 const DEFAULT_USER_COUNT = 10 // 演示初始 item 数量
 
+/** 按 mode 选择布局：1 默认，2 讲座（Pin） */
+const resolveLayout: GetLayoutFn = (mode, length) => (mode === 2 ? getLectureLayout(length) : getLayout(length))
+
 const gridRef = ref<PrAdaptiveGridExpose>() // 网格组件实例
 const userCount = ref(DEFAULT_USER_COUNT) // 工具栏显示的数量
 const tileColorMap = ref(new Map<string, string>()) // 每个 id 对应的 tile 背景色
-const activeGetLayout = ref<GetLayoutFn>(getLayout) // 当前布局函数，Pin 时切 getLectureLayout
+const layoutMode = ref(1) // 应用层布局模式：1 默认，2 讲座（Pin）
 
 const ids: string[] = [] // 业务侧 id 顺序，与 gridItems 下标一致
 
@@ -81,54 +84,54 @@ const getTileColor = (id: string): string => tileColorMap.value.get(id) ?? 'hsl(
 /** Fixed 演示占位（后续步骤实现） */
 const setFixed = (_item: GridSlotItem) => {}
 
-/** 读取组件内真实 item 列表 */
-const gridItems = () => gridRef.value?.getGridItems() ?? []
-
 /** 增减 item：+1 插入新 id，-1 随机移除一个 */
 const changeUserCount = (delta: number) => {
   if (delta === 1) {
     if (userCount.value < 1) return
-    const id = `${Math.max(...gridItems().map((it) => Number(it.id)), 0) + 1}` // 递增数字 id
+    const id = `${Math.max(...ids.map(Number), 0) + 1}` // 递增数字 id
     let index = 0 // 插入下标，Pin 时避开首位
-    if (gridItems()[0]?.sticky === true) index = 1
+    if (layoutMode.value === 2) index = 1
     ensureTileColor(id)
-    gridRef.value?.addItem(id, { index })
+    gridRef.value?.setItem(id, { index })
     ids.splice(index, 0, id)
     userCount.value += 1
     return
   }
   if (userCount.value <= 1) return
-  const index = Math.ceil(Math.random() * (gridItems().length - 1))
-  const removeId = gridItems()[index]?.id
+  const index = Math.ceil(Math.random() * (ids.length - 1))
+  const removeId = ids[index]
   if (!removeId) return
   gridRef.value?.removeItems([removeId])
   ids.splice(ids.indexOf(removeId), 1)
   userCount.value -= 1
 }
 
-/** 切换 Pin：取消时恢复 default 布局，开启时切 lecture 并将目标换到首位 */
+/** 切换 Pin：先改 mode，再用 setItem 调整 index / sticky */
 const setPin = async (target: GridSlotItem) => {
   const targetId = target.id
   const index = ids.indexOf(targetId)
   if (target.sticky === true) {
-    activeGetLayout.value = getLayout
-    gridRef.value!.setLayoutGeometry(gridRef.value!.getLayout(ids.length))
-    gridRef.value!.setGridItems(ids.map((id) => ({ id, sticky: false })))
+    layoutMode.value = 1
+    await nextTick()
+    ids.forEach((id) => gridRef.value!.setItem(id, { sticky: false }))
     return
   }
   if (index < 0) return
+  layoutMode.value = 2
+  await nextTick()
+  gridRef.value!.setItem(targetId, { index: 0, sticky: true })
   if (index !== 0) {
     const prevFirstId = ids[0]
-    ids[0] = targetId // Pin 目标占 index 0，对应 lecture 主区大格
+    ids[0] = targetId // 与组件内 index 0 对齐
     ids[index] = prevFirstId
   }
-  activeGetLayout.value = getLectureLayout
-  gridRef.value!.setLayoutGeometry(gridRef.value!.getLayout(ids.length))
-  gridRef.value!.setGridItems(ids.map((id, i) => ({ id, sticky: i === 0 })))
+  ids.forEach((id) => {
+    if (id !== targetId) gridRef.value!.setItem(id, { sticky: false })
+  })
   await nextTick()
 }
 
-/** Fisher-Yates 打乱 ids 后按当前布局函数重排 */
+/** Fisher-Yates 打乱 ids 后按当前 mode 重排 */
 const shuffleItems = () => {
   if (ids.length <= 1) return
   const shuffleIds = () => {
@@ -144,16 +147,15 @@ const shuffleItems = () => {
   initGrid()
 }
 
-/** 按 ids 顺序写入 span 几何与 gridItems（lecture 时首位 sticky） */
+/** 按 ids 顺序用 setItem 同步 index 与 sticky */
 const initGrid = () => {
   if (!gridRef.value) return
-  gridRef.value.setLayoutGeometry(gridRef.value.getLayout(ids.length))
-  gridRef.value.setGridItems(
-    ids.map((id, i) => ({
-      id,
-      sticky: activeGetLayout.value === getLectureLayout && i === 0
-    }))
-  )
+  for (let i = ids.length - 1; i >= 0; i--) {
+    gridRef.value.setItem(ids[i], {
+      index: i,
+      sticky: layoutMode.value === 2 && i === 0
+    })
+  }
 }
 
 /** 主动触发组件重新测量 span 与绝对定位 */
@@ -161,13 +163,13 @@ const syncGrid = () => {
   void gridRef.value?.syncLayout()
 }
 
-/** 倒序 addItem 初始化演示数据 */
+/** 倒序 setItem 初始化演示数据 */
 onMounted(async () => {
   await nextTick()
   for (let index = DEFAULT_USER_COUNT; index >= 1; index--) {
     const id = `${index}`
     ensureTileColor(id)
-    gridRef.value?.addItem(id)
+    gridRef.value?.setItem(id)
     ids.push(id)
   }
   userCount.value = DEFAULT_USER_COUNT

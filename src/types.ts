@@ -23,10 +23,10 @@ export interface GridItem {
 /** 插槽数据：业务字段 + 当前 index 对应格子的几何 */
 export type GridSlotItem = GridItem & LayoutCell
 
-/** 布局计算函数，默认使用 layout.default */
-export type GetLayoutFn = (length: number) => Layout
+/** 布局计算函数：mode 1 默认，mode 2 讲座（Pin）等 */
+export type GetLayoutFn = (mode: number, length: number) => Layout
 
-/** addItem 可选参数（除 id 外） */
+/** setItem 可选参数（除 id 外）；已存在 id 时未传的字段保留原值 */
 export type GridItemOptions = Partial<Pick<GridItem, 'sticky' | 'fixed'>> & {
   index?: number
 }
@@ -34,11 +34,6 @@ export type GridItemOptions = Partial<Pick<GridItem, 'sticky' | 'fixed'>> & {
 /** PrAdaptiveGrid 组件 expose 的方法 */
 export type PrAdaptiveGridExpose = {
   syncLayout: () => Promise<void>
-  getLayout: (length: number) => Layout
-  setLayoutGeometry: (layout: Layout) => void
-  setGridItems: (items: GridItem[]) => void
-  getLayoutState: () => Layout
-  getGridItems: () => GridItem[]
-  addItem: (id: string, option?: GridItemOptions) => void
+  setItem: (id: string, option?: GridItemOptions) => void
   removeItems: (ids: string[]) => void
 }

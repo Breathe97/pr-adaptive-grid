@@ -14,22 +14,19 @@
 <script lang="ts" setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, reactive, watch } from 'vue'
 import type { PropType } from 'vue'
-import { getLayout as defaultGetLayout } from '../../layouts/layout.default'
 import type { GetLayoutFn, GridItem, GridItemOptions, GridSlotItem, Layout, LayoutCell } from '../../types'
 
 type ItemRect = { x: number; y: number; width: number; height: number } // 相对 content 的像素矩形
 type LeavingRow = { id: string; index: number; rect: ItemRect; item: GridItem } // 离场中的 item 快照
-type RenderRow =
-  | { id: string; index: number; item: GridItem; slotItem: GridSlotItem; _leaving: false }
-  | { id: string; index: number; item: GridItem; slotItem: GridSlotItem; _leaving: true } // 模板 v-for 的一行数据
+type RenderRow = { id: string; index: number; item: GridItem; slotItem: GridSlotItem; _leaving: false } | { id: string; index: number; item: GridItem; slotItem: GridSlotItem; _leaving: true } // 模板 v-for 的一行数据
 
 const props = defineProps({
-  getLayout: { type: Function as PropType<GetLayoutFn>, default: undefined } // 自定义布局函数，默认内置 getLayout
+  mode: { type: Number, default: 1 }, // 应用层布局模式，变更时重载 getLayout
+  getLayout: { type: Function as PropType<GetLayoutFn>, required: true } // 应用层注册，按 mode 返回 span 几何
 })
 
 const layout = ref<Layout>({ gap: 8, cols: 1, rows: 1, items: [] }) // 仅 span 占位几何
 const gridItems = ref<GridItem[]>([]) // 真实 item，下标与 layout.items 一一对应
-const resolveGetLayout = (): GetLayoutFn => props.getLayout ?? defaultGetLayout
 
 const pr_adaptive_grid_ref = ref<HTMLElement>()
 const pr_adaptive_grid_content_ref = ref<HTMLElement>() // Grid 内容容器 DOM
@@ -344,6 +341,19 @@ watch(
   }
 )
 
+/** 应用层 mode 变化时重载 span 几何（不改动 gridItems 顺序与标记） */
+watch(
+  () => props.mode,
+  () => {
+    if (gridItems.value.length === 0) return
+    layoutWatchChain = layoutWatchChain
+      .then(() => {
+        applyLayoutFromIds(gridItems.value.map((g) => g.id))
+      })
+      .catch((err) => console.error('[PrAdaptiveGrid] mode watch failed', err))
+  }
+)
+
 let resizeTimer: ReturnType<typeof setTimeout> | undefined // resize debounce 定时器
 
 /** 窗口/容器尺寸变化时 debounce 后重新测量 */
@@ -378,31 +388,43 @@ onBeforeUnmount(() => {
   if (resizeTimer) clearTimeout(resizeTimer)
 })
 
+/** 合并已有 item 与本次传入的 options（未传字段保留原值） */
+const mergeItemOptions = (id: string, prev: GridItem | undefined, option?: GridItemOptions): GridItem => ({
+  id,
+  sticky: option && 'sticky' in option ? option.sticky : prev?.sticky,
+  fixed: option && 'fixed' in option ? option.fixed : prev?.fixed
+})
+
 /** 按 id 顺序重算 span 几何并同步 gridItems */
 const applyLayoutFromIds = (idList: string[], optionById?: Map<string, GridItemOptions>) => {
-  const geo = resolveGetLayout()(idList.length)
+  const geo = props.getLayout(props.mode, idList.length)
   const prevById = new Map(gridItems.value.map((g) => [g.id, g]))
   layout.value = geo
-  gridItems.value = idList.map((id) => {
-    const p = prevById.get(id)
-    const opt = optionById?.get(id)
-    return {
-      id,
-      sticky: opt?.sticky ?? p?.sticky,
-      fixed: opt?.fixed ?? p?.fixed
-    }
-  })
+  gridItems.value = idList.map((id) => mergeItemOptions(id, prevById.get(id), optionById?.get(id)))
 }
 
-/** 新增 item 并重算布局 */
-const addItem = (id: string, option?: GridItemOptions) => {
-  if (gridItems.value.some((g) => g.id === id)) return
+/** 新增或更新 item；id 已存在时仅合并传入的 options */
+const setItem = (id: string, option?: GridItemOptions) => {
+  const existingIndex = gridItems.value.findIndex((g) => g.id === id)
+  if (existingIndex >= 0) {
+    const prev = gridItems.value[existingIndex]
+    const merged = mergeItemOptions(id, prev, option)
+    let idList = gridItems.value.map((g) => g.id)
+    if (option?.index !== undefined && option.index !== existingIndex) {
+      idList.splice(existingIndex, 1)
+      idList.splice(option.index, 0, id)
+    }
+    const optionById = new Map<string, GridItemOptions>()
+    optionById.set(id, { sticky: merged.sticky, fixed: merged.fixed })
+    applyLayoutFromIds(idList, optionById)
+    return
+  }
   const index = option?.index ?? gridItems.value.length
-  const nextIds = gridItems.value.map((g) => g.id)
-  nextIds.splice(index, 0, id)
+  const idList = gridItems.value.map((g) => g.id)
+  idList.splice(index, 0, id)
   const optionById = new Map<string, GridItemOptions>()
   if (option) optionById.set(id, option)
-  applyLayoutFromIds(nextIds, optionById)
+  applyLayoutFromIds(idList, optionById)
 }
 
 /** 移除 item 并重算布局 */
@@ -413,36 +435,12 @@ const removeItems = (removeIds: string[]) => {
   applyLayoutFromIds(nextIds)
 }
 
-/** 计算布局（不写入组件，使用 props.getLayout 或内置 layout.default） */
-const getLayoutExpose = (length: number) => resolveGetLayout()(length)
-
-/** 仅写入 span 占位几何 */
-const setLayoutGeometry = (next: Layout) => {
-  layout.value = next
-}
-
-/** 写入真实 item 列表（下标与 layout.items 对应） */
-const setGridItems = (items: GridItem[]) => {
-  gridItems.value = items.map((g) => ({ ...g }))
-}
-
-/** 读取当前 span 布局 */
-const getLayoutState = () => layout.value
-
-/** 读取当前真实 item 列表 */
-const getGridItems = () => gridItems.value.map((g) => ({ ...g }))
-
 /** 供外部主动触发测量（与 resize 后内部 syncSize 相同） */
 const syncLayout = () => syncSize()
 
 defineExpose({
   syncLayout,
-  getLayout: getLayoutExpose,
-  setLayoutGeometry,
-  setGridItems,
-  getLayoutState,
-  getGridItems,
-  addItem,
+  setItem,
   removeItems
 })
 </script>
