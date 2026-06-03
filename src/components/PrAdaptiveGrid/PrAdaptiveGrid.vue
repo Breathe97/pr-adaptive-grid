@@ -33,6 +33,7 @@ const pr_adaptive_grid_content_ref = ref<HTMLElement>() // Grid 内容容器 DOM
 const layoutReady = ref(false) // 首屏布局是否已就绪（就绪前禁用 transition）
 const size = reactive({ x: 0, y: 0, width: 0, height: 0 }) // content 在视口中的位置与尺寸
 const scrollOffset = reactive({ x: 0, y: 0 }) // .pr-adaptive-grid 的 scrollLeft/Top
+const pinScrollAnchorById = ref(new Map<string, { x: number; y: number }>()) // 各 id 开启 sticky 时的 scroll 锚点
 const prevIds = ref<string[]>([]) // 上一轮 layout 的 id 列表，用于 diff
 const lastItemById = ref(new Map<string, GridItem>()) // 上一轮 item 数据，供离场时 slot 使用
 const mapRectById = ref(new Map<string, ItemRect>()) // 各 id 当前帧矩形（驱动绝对定位）
@@ -183,7 +184,6 @@ const calcPositionDurationMs = (prev: ItemRect | undefined, next: ItemRect): num
 
 /** 外层 item 中心定位的 transform */
 const ItemStyle = computed(() => {
-  // 依赖 scrollOffset，滚动时触发重新渲染
   const { x: scrollX, y: scrollY } = scrollOffset
   return (row: RenderRow) => {
     const { id, index, _leaving } = row
@@ -193,10 +193,10 @@ const ItemStyle = computed(() => {
     const cx = x + width / 2
     const cy = y + height / 2
     const isSticky = _leaving === false && row.item.sticky === true
-    const px = isSticky ? cx + scrollX : cx
-    const py = isSticky ? cy + scrollY : cy
+    const anchor = pinScrollAnchorById.value.get(id)
+    const px = isSticky ? cx + scrollX - (anchor?.x ?? 0) : cx
+    const py = isSticky ? cy + scrollY - (anchor?.y ?? 0) : cy
     const layoutDurationMs = mapItemPositionDuration.value.get(id) ?? POSITION_DURATION_MIN
-    // const durationMs = isSticky ? 0 : layoutDurationMs
     return {
       transform: `translate3d(${px}px, ${py}px, 0) translate(-50%, -50%)`,
       '--ag-duration-position': `${layoutDurationMs}ms`
@@ -353,6 +353,20 @@ const scheduleResizeSync = () => {
   }, 32)
 }
 
+/** 记录某 id 开启 Pin 时的滚动位置 */
+const capturePinScrollAnchor = (id: string) => {
+  const next = new Map(pinScrollAnchorById.value)
+  next.set(id, { x: scrollOffset.x, y: scrollOffset.y })
+  pinScrollAnchorById.value = next
+}
+/** 取消 Pin 时移除锚点 */
+const clearPinScrollAnchor = (id: string) => {
+  if (!pinScrollAnchorById.value.has(id)) return
+  const next = new Map(pinScrollAnchorById.value)
+  next.delete(id)
+  pinScrollAnchorById.value = next
+}
+
 /** 记录滚动偏移，供 sticky item 抵消位移 */
 const onScroll = () => {
   const el = pr_adaptive_grid_ref.value
@@ -389,6 +403,11 @@ const applyLayoutFromIds = (idList: string[], optionById?: Map<string, GridItemO
   const prevById = new Map(gridItems.value.map((g) => [g.id, g]))
   layout.value = geo
   gridItems.value = idList.map((id) => mergeItemOptions(id, prevById.get(id), optionById?.get(id)))
+  gridItems.value.forEach((g) => {
+    const wasSticky = prevById.get(g.id)?.sticky === true
+    if (g.sticky === true && !wasSticky) capturePinScrollAnchor(g.id)
+    if (g.sticky !== true && wasSticky) clearPinScrollAnchor(g.id)
+  })
 }
 
 /** 新增或更新 item；id 已存在时仅合并传入的 options */
@@ -542,6 +561,10 @@ defineExpose({
 
 .pr-adaptive-grid-item-pinned {
   z-index: 20;
+}
+
+.pr-adaptive-grid-item-pinned:not(.pr-adaptive-grid-item-layout-anim) {
+  transition: none !important;
 }
 
 .pr-adaptive-grid-item-no-transition {
