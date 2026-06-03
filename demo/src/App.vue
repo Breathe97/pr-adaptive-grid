@@ -1,9 +1,9 @@
 <template>
   <div class="demo">
     <div class="grid-wrap">
-      <PrAdaptiveGrid ref="gridRef" v-model:layout="layout">
+      <PrAdaptiveGrid ref="gridRef" :get-layout="activeGetLayout">
         <template #default="{ item }">
-          <div class="tile" :class="{ 'is-pinned': item.sticky, 'is-fixed': item.fixed }" :style="{ backgroundColor: getTileColor(item.id) }">
+          <div class="tile" :class="{ 'is-pinned': item.sticky, 'is-fixed': item.fixed }" :style="{ backgroundColor: getTileColor(item.id!) }">
             <div v-if="item.sticky || item.fixed" class="tile-badges">
               <span v-if="item.sticky" class="badge badge-pin">📌 Pin</span>
               <span v-if="item.fixed" class="badge badge-fixed">🔒 Fixed</span>
@@ -47,17 +47,14 @@
 
 <script setup lang="ts">
 import { ref, onMounted, nextTick } from 'vue'
-import { PrAdaptiveGrid, getLayout } from '../../src/index.ts'
-import type { Layout, LayoutItem, PrAdaptiveGridExpose } from '../../src/index.ts'
-import { GridItem } from '../../dist/src/types'
-
+import { PrAdaptiveGrid, getLayout, getLectureLayout } from '../../src/index.ts'
+import type { GetLayoutFn, Layout, LayoutItem, PrAdaptiveGridExpose } from '../../src/index.ts'
 const DEFAULT_USER_COUNT = 10
 
 const gridRef = ref<PrAdaptiveGridExpose>()
 const userCount = ref(DEFAULT_USER_COUNT)
 const tileColorMap = ref(new Map<string, string>())
-
-const layoutMode = ref<'1' | '2'>('1')
+const activeGetLayout = ref<GetLayoutFn>(getLayout) // 默认 layout.default，Pin 时切 lecture
 
 /** 高饱和度随机色，亮度偏高以对比黑色背景 */
 const pickContrastColor = (): string => {
@@ -76,71 +73,64 @@ const ensureTileColor = (id: string) => {
 
 const getTileColor = (id: string): string => tileColorMap.value.get(id) ?? 'hsl(210 95% 72%)'
 
-const createUserIds = (count: number) => Array.from({ length: count }, (_, i) => `${i + 1}`)
+const setFixed = (_item: LayoutItem) => {}
 
-const getDefaultIds = () => createUserIds(DEFAULT_USER_COUNT)
+const ids: string[] = []
 
-const setFixed = (item: GridItem) => {}
+const layoutItems = () => gridRef.value?.getLayoutState()?.items ?? []
 
-const createIds = (count: number = 8) => {
-  const ids = []
-  for (let index = 1; index <= count; index++) {
-    ids.push(`${index}`)
-    ensureTileColor(`${index}`)
-  }
-  return ids.reverse()
-}
-
-const ids = createIds(userCount.value)
-
-const layout = ref<Layout>({ gap: 8, cols: 1, rows: 1, items: [] })
+/** 将 getLayout 几何与 ids 顺序合并为完整 layout */
+const mergeLayoutItems = (geo: Layout, idList: string[]) => ({
+  ...geo,
+  items: geo.items.map((cell, i) => ({ ...cell, id: idList[i] }))
+})
 
 const changeUserCount = (delta: number) => {
   if (delta === 1) {
-    if (ids.length < 1) return
-    const [_id] = ids
-    const id = `${Math.max(...Array.from(ids, (id) => Number(id))) + 1}`
-
-    // const index = Math.ceil(Math.random() * ids.length - 1)
+    if (userCount.value < 1) return
+    const id = `${Math.max(...layoutItems().map((it) => Number(it.id)), 0) + 1}`
     let index = 0
-    if (layout.value.items[0].sticky === true) {
-      index = 1
-    }
-    ids.splice(index, 0, id)
+    if (layoutItems()[0]?.sticky === true) index = 1
     ensureTileColor(id)
+    gridRef.value?.addItem(id, { index })
+    ids.splice(index, 0, id)
+    userCount.value += 1
+    return
   }
-  if (delta === -1) {
-    if (ids.length === 1) return
-    const index = Math.ceil(Math.random() * ids.length - 1)
-    ids.splice(index, 1)
-  }
-  userCount.value += delta
-  initGrid()
+  if (userCount.value <= 1) return
+  const index = Math.ceil(Math.random() * (layoutItems().length - 1))
+  const removeId = layoutItems()[index]?.id
+  if (!removeId) return
+  gridRef.value?.removeItems([removeId])
+  ids.splice(ids.indexOf(removeId), 1)
+  userCount.value -= 1
 }
 
 const setPin = async (target: LayoutItem) => {
   const targetId = target.id
+  if (!targetId) return
   const index = ids.indexOf(targetId)
   if (target.sticky === true) {
-    layoutMode.value = '1'
-    layout.value = getLayout('1', ids)
-    layout.value = {
-      ...layout.value,
-      items: layout.value.items.map((it) => ({ ...it, sticky: false }))
-    }
+    activeGetLayout.value = getLayout
+    const geo = gridRef.value!.getLayout(ids.length)
+    const merged = mergeLayoutItems(geo, ids)
+    gridRef.value!.setLayout({ ...merged, items: merged.items.map((it) => ({ ...it, sticky: false })) })
     return
   }
   if (index < 0) return
-  const nextSticky = !target.sticky
-  if (nextSticky && index !== 0) {
+  if (index !== 0) {
     const prevFirstId = ids[0]
     ids[0] = targetId
     ids[index] = prevFirstId
   }
-  layoutMode.value = '2'
-  layout.value = getLayout(layoutMode.value, ids)
+  activeGetLayout.value = getLectureLayout
+  const geo = gridRef.value!.getLayout(ids.length)
+  const merged = mergeLayoutItems(geo, ids)
+  gridRef.value!.setLayout({
+    ...merged,
+    items: merged.items.map((it, i) => ({ ...it, sticky: i === 0 }))
+  })
   await nextTick()
-  layout.value.items[0].sticky = true
 }
 
 const shuffleItems = () => {
@@ -159,20 +149,28 @@ const shuffleItems = () => {
 }
 
 const initGrid = () => {
-  // console.log('\x1b[38;2;0;151;255m%c%s\x1b[0m', 'color:#0097ff;', `------->Breathe: ids`, ids)
-  layout.value = getLayout(layoutMode.value, ids)
-  if (layoutMode.value === '2') {
-    layout.value.items[0].sticky = true
-  }
-  console.log('\x1b[38;2;0;151;255m%c%s\x1b[0m', 'color:#0097ff;', `------->Breathe: layout.value`, layout.value)
+  if (!gridRef.value) return
+  const geo = gridRef.value.getLayout(ids.length)
+  const merged = mergeLayoutItems(geo, ids)
+  gridRef.value.setLayout({
+    ...merged,
+    items: merged.items.map((it, i) => ({ ...it, sticky: activeGetLayout.value === getLectureLayout && i === 0 }))
+  })
 }
 
 const syncGrid = () => {
   void gridRef.value?.syncLayout()
 }
 
-onMounted(() => {
-  initGrid()
+onMounted(async () => {
+  await nextTick()
+  for (let index = DEFAULT_USER_COUNT; index >= 1; index--) {
+    const id = `${index}`
+    ensureTileColor(id)
+    gridRef.value?.addItem(id)
+    ids.push(id)
+  }
+  userCount.value = DEFAULT_USER_COUNT
 })
 </script>
 

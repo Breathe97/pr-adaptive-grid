@@ -13,13 +13,21 @@
 
 <script lang="ts" setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, reactive, watch } from 'vue'
-import type { Layout, LayoutItem } from '../../types'
+import type { PropType } from 'vue'
+import { getLayout as defaultGetLayout } from '../../layouts/layout.default'
+import type { GetLayoutFn, Layout, LayoutItem, LayoutItemOptions } from '../../types'
 
 type ItemRect = { x: number; y: number; width: number; height: number } // 相对 content 的像素矩形
 type LeavingRow = { id: string; rect: ItemRect; item: LayoutItem } // 离场中的 item 快照
 type RenderRow = { id: string; item: LayoutItem; _leaving: boolean } // 模板 v-for 的一行数据
 
-const layout = defineModel<Layout>('layout', { required: true }) // v-model:layout
+const props = defineProps({
+  getLayout: { type: Function as PropType<GetLayoutFn>, default: undefined } // 自定义布局函数，默认内置 getLayout
+})
+const layout = ref<Layout>({ gap: 8, cols: 1, rows: 1, items: [] }) // 组件内部布局状态
+const itemIds = ref<string[]>([]) // 当前 item 顺序，与 layout.items 下标对应
+const resolveGetLayout = (): GetLayoutFn => props.getLayout ?? defaultGetLayout
+const collectItemIds = (items: LayoutItem[]) => items.map((i) => i.id).filter((id): id is string => id != null)
 
 const pr_adaptive_grid_ref = ref<HTMLElement>()
 const pr_adaptive_grid_content_ref = ref<HTMLElement>() // Grid 内容容器 DOM
@@ -135,9 +143,9 @@ const onInnerAnimationEnd = (e: AnimationEvent, row: RenderRow) => {
 const RenderItems = computed((): RenderRow[] => {
   const leavingIdSet = new Set(leavingItems.value.map((l) => l.id))
   const active = Items.value
-    .filter((item) => !leavingIdSet.has(item.id))
+    .filter((item) => item.id != null && !leavingIdSet.has(item.id))
     .map((item) => ({
-      id: item.id,
+      id: item.id as string,
       item,
       _leaving: false as const
     }))
@@ -239,14 +247,15 @@ const syncItemsLayout = async () => {
 
   const next = new Map<string, ItemRect>()
   for (const item of Items.value) {
-    const { id } = item
+    const id = item.id
+    if (!id) continue
     const itemSpan = pr_adaptive_grid_content_ref.value.querySelector(`[data-item-id="${id}"]`)
     if (!itemSpan) continue
     const { x, y, width, height } = itemSpan.getBoundingClientRect()
     next.set(id, { x: x - size.x, y: y - size.y, width, height })
   }
 
-  layoutAnimIds.value = new Set(Items.value.map((i) => i.id))
+  layoutAnimIds.value = new Set(collectItemIds(Items.value))
 
   // 记录当前位置到目标位置的距离
   {
@@ -254,6 +263,7 @@ const syncItemsLayout = async () => {
     const durationNext = new Map<string, number>()
     for (const item of Items.value) {
       const id = item.id
+      if (!id) continue
       const rect = next.get(id)
       if (!rect) continue
       durationNext.set(id, calcPositionDurationMs(prev.get(id), rect))
@@ -286,13 +296,13 @@ const syncSize = async () => {
 
 /** layout 变更时的完整同步流程（diff、动画、测量） */
 const applyLayoutWatch = async () => {
-  const nextIds = layout.value.items.map((i) => i.id)
+  const nextIds = collectItemIds(layout.value.items)
   const layoutIdSet = new Set(nextIds)
 
   if (prevIds.value.length === 0) {
     await syncSize()
     prevIds.value = nextIds
-    lastItemById.value = new Map(Items.value.map((i) => [i.id, i]))
+    lastItemById.value = new Map(Items.value.filter((i) => i.id != null).map((i) => [i.id as string, i]))
     pruneAnimState(layoutIdSet)
     return
   }
@@ -305,7 +315,7 @@ const applyLayoutWatch = async () => {
   await syncSize()
 
   prevIds.value = nextIds
-  lastItemById.value = new Map(Items.value.map((i) => [i.id, i]))
+  lastItemById.value = new Map(Items.value.filter((i) => i.id != null).map((i) => [i.id as string, i]))
   pruneAnimState(layoutIdSet)
 }
 
@@ -353,11 +363,69 @@ onBeforeUnmount(() => {
   if (resizeTimer) clearTimeout(resizeTimer)
 })
 
+/** 按 itemIds 顺序合并 getLayout 几何与 id / 标记 */
+const applyLayoutFromIds = (idList: string[], optionById?: Map<string, LayoutItemOptions>) => {
+  const geo = resolveGetLayout()(idList.length)
+  const prev = new Map(layout.value.items.map((it) => [it.id, it]))
+  layout.value = {
+    ...geo,
+    items: geo.items.map((cell, i) => {
+      const id = idList[i]
+      const p = prev.get(id)
+      const opt = optionById?.get(id)
+      return {
+        ...cell,
+        id,
+        sticky: opt?.sticky ?? p?.sticky,
+        fixed: opt?.fixed ?? p?.fixed
+      }
+    })
+  }
+}
+
+/** 新增 item 并重算布局 */
+const addItem = (id: string, option?: LayoutItemOptions) => {
+  if (itemIds.value.includes(id)) return
+  const index = option?.index ?? itemIds.value.length
+  const next = [...itemIds.value]
+  next.splice(index, 0, id)
+  itemIds.value = next
+  const optionById = new Map<string, LayoutItemOptions>()
+  if (option) optionById.set(id, option)
+  applyLayoutFromIds(next, optionById)
+}
+
+/** 移除 item 并重算布局 */
+const removeItems = (removeIds: string[]) => {
+  if (removeIds.length === 0) return
+  const removeSet = new Set(removeIds)
+  const next = itemIds.value.filter((id) => !removeSet.has(id))
+  itemIds.value = next
+  applyLayoutFromIds(next)
+}
+
+/** 计算布局（不写入组件，使用 props.getLayout 或内置 layout.default） */
+const getLayoutExpose = (length: number) => resolveGetLayout()(length)
+
+/** 写入布局并同步 itemIds */
+const setLayout = (next: Layout) => {
+  layout.value = next
+  itemIds.value = next.items.map((it) => it.id).filter((id): id is string => id != null)
+}
+
+/** 读取当前布局 */
+const getLayoutState = () => layout.value
+
 /** 供外部主动触发测量（与 resize 后内部 syncSize 相同） */
 const syncLayout = () => syncSize()
 
 defineExpose({
-  syncLayout
+  syncLayout,
+  getLayout: getLayoutExpose,
+  setLayout,
+  getLayoutState,
+  addItem,
+  removeItems
 })
 </script>
 
