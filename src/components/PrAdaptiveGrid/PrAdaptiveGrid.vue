@@ -308,7 +308,7 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .pr-adaptive-grid {
-  --ag-duration-position: 800ms;
+  --ag-duration-position: 700ms;
   --ag-duration-size: 500ms;
   --ag-duration-enter: 500ms;
   --ag-duration-exit: 500ms;
@@ -366,7 +366,7 @@ onBeforeUnmount(() => {
   touch-action: none;
 }
 .pr-adaptive-grid-item-layout-anim {
-  transition: transform var(--ag-duration-position) var(--ag-ease-position) 200ms;
+  transition: transform var(--ag-duration-position) var(--ag-ease-position) 50ms;
 }
 .pr-adaptive-grid-item-layout-anim .pr-adaptive-grid-item-inner {
   transition:
