@@ -2,9 +2,9 @@
   <div class="pr-adaptive-grid" @scroll="onScroll">
     <div ref="pr_adaptive_grid_content_ref" class="pr-adaptive-grid-content" :style="ContainerStyle">
       <div v-for="item in Items" :key="`span-${item.id}`" class="pr-adaptive-grid-item-span" :data-item-id="item.id" :style="ItemSpanStyle(item)">{{ item.id }}</div>
-      <div v-for="item in RenderItems" :key="`item-${item.id}`" class="pr-adaptive-grid-item" :class="[itemClass(item.id, item._leaving)]" :style="ItemStyle(item.id, item._leaving)">
-        <div class="pr-adaptive-grid-item-inner" :class="[innerClass(item.id, item._leaving)]" :style="ItemInnerStyle(item.id, item._leaving)" @animationend="(e) => onInnerAnimationEnd(e, item.id, item._leaving)">
-          <slot :item="item" />
+      <div v-for="row in RenderItems" :key="row._leaving ? `leaving-${row.id}` : `item-${row.id}`" class="pr-adaptive-grid-item" :class="[itemClass(row.id, row._leaving)]" :style="ItemStyle(row.id, row._leaving)">
+        <div class="pr-adaptive-grid-item-inner" :class="[innerClass(row.id, row._leaving)]" :style="ItemInnerStyle(row.id, row._leaving)" @animationend="(e) => onInnerAnimationEnd(e, row.id, row._leaving)">
+          <slot :item="row.item" />
         </div>
       </div>
     </div>
@@ -184,18 +184,22 @@ const onInnerAnimationEnd = (e: AnimationEvent, id: string, isLeaving: boolean) 
 
 const Items = computed(() => props.layout.items)
 
-const RenderItems = computed((): RenderRow[] => [
-  ...Items.value.map((item) => ({
-    id: item.id,
-    item,
-    _leaving: false as const
-  })),
-  ...leavingItems.value.map((l) => ({
+const RenderItems = computed((): RenderRow[] => {
+  const leavingIdSet = new Set(leavingItems.value.map((l) => l.id))
+  const active = Items.value
+    .filter((item) => !leavingIdSet.has(item.id))
+    .map((item) => ({
+      id: item.id,
+      item,
+      _leaving: false as const
+    }))
+  const leaving = leavingItems.value.map((l) => ({
     id: l.id,
     item: l.item,
     _leaving: true as const
   }))
-])
+  return [...active, ...leaving]
+})
 
 watch(
   () => props.layout.items.map((i) => i.id).join(','),
