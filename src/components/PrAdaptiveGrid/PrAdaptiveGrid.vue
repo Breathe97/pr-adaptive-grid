@@ -185,7 +185,7 @@ onBeforeUnmount(() => {
   min-height: 0;
   grid-auto-flow: row dense;
   z-index: 2;
-  box-shadow: 0 0 0 1px red inset;
+  /* box-shadow: 0 0 0 1px red inset; */
   color: red;
   display: flex;
   align-items: center;
@@ -197,7 +197,6 @@ onBeforeUnmount(() => {
   top: 0;
   z-index: 1;
   box-sizing: border-box;
-  transition: transform var(--ag-duration-position) var(--ag-ease-position) 300ms;
   will-change: transform;
 }
 
@@ -208,21 +207,17 @@ onBeforeUnmount(() => {
   transform-origin: center center;
   cursor: grab;
   touch-action: none;
-  transition:
-    width var(--ag-duration-size) var(--ag-ease-size),
-    height var(--ag-duration-size) var(--ag-ease-size),
-    opacity var(--ag-duration-position) var(--ag-ease-fade);
 }
 
 .pr-adaptive-grid-item-layout-anim {
-  transition: transform var(--ag-duration-position) var(--ag-ease-position) 300ms;
+  transition: transform var(--ag-duration-position) var(--ag-ease-position);
 }
 
-/* .pr-adaptive-grid-item-layout-anim .pr-adaptive-grid-item-inner {
+.pr-adaptive-grid-item-layout-anim .pr-adaptive-grid-item-inner {
   transition:
     width var(--ag-duration-size) var(--ag-ease-size),
     height var(--ag-duration-size) var(--ag-ease-size);
-} */
+}
 
 .pr-adaptive-grid-item-no-transition {
   transition: none !important;
