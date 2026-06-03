@@ -370,10 +370,10 @@ defineExpose({
 
 <style scoped>
 .pr-adaptive-grid {
-  --ag-duration-position: 500ms;
-  --ag-duration-size: 300ms;
-  --ag-duration-enter: 300ms;
-  --ag-duration-exit: 300ms;
+  --ag-duration-position: 700ms;
+  --ag-duration-size: 500ms;
+  --ag-duration-enter: 500ms;
+  --ag-duration-exit: 500ms;
   --ag-enter-scale: 0;
   --ag-ease-position: cubic-bezier(0.22, 1, 0.44, 1);
   --ag-ease-size: ease;
@@ -455,7 +455,7 @@ defineExpose({
   }
 }
 .pr-adaptive-grid-item-inner.ag-inner-enter {
-  animation: ag-inner-enter var(--ag-duration-enter) var(--ag-ease-fade) both;
+  animation: ag-inner-enter var(--ag-duration-enter) var(--ag-ease-fade) 100ms both;
 }
 .pr-adaptive-grid-item-inner.ag-inner-leave {
   animation: ag-inner-leave var(--ag-duration-exit) var(--ag-ease-fade) both;

@@ -100,8 +100,13 @@ const changeUserCount = (delta: number) => {
     if (ids.length < 1) return
     const [_id] = ids
     const id = `${Math.max(...Array.from(ids, (id) => Number(id))) + 1}`
+
     // const index = Math.ceil(Math.random() * ids.length - 1)
-    ids.splice(0, 0, id)
+    let index = 0
+    if (layout.value.items[0].sticky === true) {
+      index = 1
+    }
+    ids.splice(index, 0, id)
     ensureTileColor(id)
   }
   if (delta === -1) {

@@ -354,8 +354,8 @@ const getLayoutModel1 = (ids: string[]): Layout => {
 // 布局二
 const getLayoutModel2 = (ids: string[]): Layout => {
   const COLS = 2 // 最大列
-  const ROWS = 7 // 最大行
-  const itemsNum = COLS * ROWS // 首屏最大数量item
+  const ROWS = 5 // 最大行
+  const itemsNum = COLS * ROWS + 1 // 首屏最大数量item
 
   const length = ids.length
 
@@ -370,9 +370,6 @@ const getLayoutModel2 = (ids: string[]): Layout => {
     if (!id) break
     surplusIds.unshift(id)
   }
-
-  // console.log('\x1b[38;2;0;151;255m%c%s\x1b[0m', 'color:#0097ff;', `------->Breathe: mainIds`, mainIds)
-  // console.log('\x1b[38;2;0;151;255m%c%s\x1b[0m', 'color:#0097ff;', `------->Breathe: surplusIds`, surplusIds)
 
   const layout: Layout = { gap: 8, cols: 1, rows: 1, items: [] }
 
@@ -568,104 +565,6 @@ const getLayoutModel2 = (ids: string[]): Layout => {
           ]
         }
         break
-      case 12:
-        {
-          layout.cols = 20
-          layout.rows = 3
-          layout.items = [
-            //
-            { id: mainIds[0], x: 1, y: 1, w: 5, h: 1 },
-            { id: mainIds[1], x: 6, y: 1, w: 5, h: 1 },
-            { id: mainIds[2], x: 11, y: 1, w: 5, h: 1 },
-            { id: mainIds[3], x: 16, y: 1, w: 5, h: 1 },
-
-            { id: mainIds[4], x: 1, y: 2, w: 5, h: 1 },
-            { id: mainIds[5], x: 6, y: 2, w: 5, h: 1 },
-            { id: mainIds[6], x: 11, y: 2, w: 5, h: 1 },
-            { id: mainIds[7], x: 16, y: 2, w: 5, h: 1 },
-
-            { id: mainIds[8], x: 1, y: 3, w: 5, h: 1 },
-            { id: mainIds[9], x: 6, y: 3, w: 5, h: 1 },
-            { id: mainIds[10], x: 11, y: 3, w: 5, h: 1 },
-            { id: mainIds[11], x: 16, y: 3, w: 5, h: 1 }
-          ]
-        }
-        break
-      case 13:
-        {
-          layout.cols = 20
-          layout.rows = 3
-          layout.items = [
-            //
-            { id: mainIds[0], x: 1, y: 1, w: 5, h: 1 },
-            { id: mainIds[1], x: 6, y: 1, w: 5, h: 1 },
-            { id: mainIds[2], x: 11, y: 1, w: 5, h: 1 },
-            { id: mainIds[3], x: 16, y: 1, w: 5, h: 1 },
-
-            { id: mainIds[4], x: 1, y: 2, w: 5, h: 1 },
-            { id: mainIds[5], x: 6, y: 2, w: 5, h: 1 },
-            { id: mainIds[6], x: 11, y: 2, w: 5, h: 1 },
-            { id: mainIds[7], x: 16, y: 2, w: 5, h: 1 },
-
-            { id: mainIds[8], x: 1, y: 3, w: 4, h: 1 },
-            { id: mainIds[9], x: 5, y: 3, w: 4, h: 1 },
-            { id: mainIds[10], x: 9, y: 3, w: 4, h: 1 },
-            { id: mainIds[11], x: 13, y: 3, w: 4, h: 1 },
-            { id: mainIds[12], x: 17, y: 3, w: 4, h: 1 }
-          ]
-        }
-        break
-      case 14:
-        {
-          layout.cols = 20
-          layout.rows = 3
-          layout.items = [
-            //
-            { id: mainIds[0], x: 1, y: 1, w: 5, h: 1 },
-            { id: mainIds[1], x: 6, y: 1, w: 5, h: 1 },
-            { id: mainIds[2], x: 11, y: 1, w: 5, h: 1 },
-            { id: mainIds[3], x: 16, y: 1, w: 5, h: 1 },
-
-            { id: mainIds[4], x: 1, y: 2, w: 4, h: 1 },
-            { id: mainIds[5], x: 5, y: 2, w: 4, h: 1 },
-            { id: mainIds[6], x: 9, y: 2, w: 4, h: 1 },
-            { id: mainIds[7], x: 13, y: 2, w: 4, h: 1 },
-            { id: mainIds[8], x: 17, y: 2, w: 4, h: 1 },
-
-            { id: mainIds[9], x: 1, y: 3, w: 4, h: 1 },
-            { id: mainIds[10], x: 5, y: 3, w: 4, h: 1 },
-            { id: mainIds[11], x: 9, y: 3, w: 4, h: 1 },
-            { id: mainIds[12], x: 13, y: 3, w: 4, h: 1 },
-            { id: mainIds[13], x: 17, y: 3, w: 4, h: 1 }
-          ]
-        }
-        break
-      case 15:
-        {
-          layout.cols = 20
-          layout.rows = 3
-          layout.items = [
-            //
-            { id: mainIds[0], x: 1, y: 1, w: 4, h: 1 },
-            { id: mainIds[1], x: 5, y: 1, w: 4, h: 1 },
-            { id: mainIds[2], x: 9, y: 1, w: 4, h: 1 },
-            { id: mainIds[3], x: 13, y: 1, w: 4, h: 1 },
-            { id: mainIds[4], x: 17, y: 1, w: 4, h: 1 },
-
-            { id: mainIds[5], x: 1, y: 2, w: 4, h: 1 },
-            { id: mainIds[6], x: 5, y: 2, w: 4, h: 1 },
-            { id: mainIds[7], x: 9, y: 2, w: 4, h: 1 },
-            { id: mainIds[8], x: 13, y: 2, w: 4, h: 1 },
-            { id: mainIds[9], x: 17, y: 2, w: 4, h: 1 },
-
-            { id: mainIds[10], x: 1, y: 3, w: 4, h: 1 },
-            { id: mainIds[11], x: 5, y: 3, w: 4, h: 1 },
-            { id: mainIds[12], x: 9, y: 3, w: 4, h: 1 },
-            { id: mainIds[13], x: 13, y: 3, w: 4, h: 1 },
-            { id: mainIds[14], x: 17, y: 3, w: 4, h: 1 }
-          ]
-        }
-        break
     }
   }
 
@@ -674,40 +573,25 @@ const getLayoutModel2 = (ids: string[]): Layout => {
   const createSurplus = (surplusIds: string[]) => {
     if (surplusIds.length === 0) return
 
-    if (surplusIds.length % 4 === 0) {
-      let x = 1
-      let y = ROWS + 1
+    let x = 12
+    let y = ROWS + 1
 
-      while (true) {
-        if (surplusIds.length === 0) break
-        if (x === 21) {
-          x = 1
-          y++
-        }
-        const id = surplusIds.shift()
-        if (!id) break
-        const item = { id, x, y, w: 5, h: 1 }
-        layout.items.push(item)
-        x += 5
+    while (true) {
+      if (surplusIds.length === 0) break
+      if (x === 16) {
+        x = 12
+        y++
       }
-    }
-
-    if (surplusIds.length % 5 === 0) {
-      let x = 1
-      let y = ROWS + 1
-
-      while (true) {
-        if (surplusIds.length === 0) break
-        if (x === 21) {
-          x = 1
-          y++
-        }
-        const id = surplusIds.shift()
-        if (!id) break
-        const item = { id, x, y, w: 5, h: 1 }
-        layout.items.push(item)
-        x += 4
+      const id = surplusIds.shift()
+      if (!id) break
+      let w = 2
+      if (surplusIds.length === 0) {
+        w = 4
+        x = 12
       }
+      const item = { id, x, y, w, h: 1 }
+      layout.items.push(item)
+      x += 2
     }
   }
 
