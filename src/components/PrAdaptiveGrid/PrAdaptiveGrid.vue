@@ -3,7 +3,7 @@
     <div ref="pr_adaptive_grid_content_ref" class="pr-adaptive-grid-content" :style="ContainerStyle">
       <div v-for="item in Items" :key="`span-${item.id}`" class="pr-adaptive-grid-item-span" :data-item-id="item.id" :style="ItemSpanStyle(item)">{{ item.id }}</div>
       <div v-for="item in Items" :key="`item-${item.id}`" class="pr-adaptive-grid-item" :class="[itemClass(item.id)]" :style="ItemStyle(item.id)">
-        <div class="pr-adaptive-grid-item-inner" :class="[innerClass(item.id)]" :style="ItemInnerStyle(item.id)" @transitionend="(e) => onInnerTransitionEnd(e, item.id)">
+        <div class="pr-adaptive-grid-item-inner" :class="[innerClass(item.id)]" :style="ItemInnerStyle(item.id)" @transitionend="(e) => animationend(e, item.id)">
           <slot :item="item" />
         </div>
       </div>
@@ -82,16 +82,6 @@ const ItemInnerStyle = computed(() => {
       width: `${width}px`,
       height: `${height}px`
     }
-    if (enterHiddenIds.value.has(id)) {
-      // 首帧：不可见 + 缩小，且无 transition（靠 innerClass）
-      style.opacity = '0'
-      style.transform = 'scale(0.5)'
-    } else if (enterHostIds.value.has(id)) {
-      // Reveal：过渡到正常
-      style.opacity = '1'
-      style.transform = 'scale(1)'
-    }
-    // 平时：不写 opacity / transform，避免影响布局动画
     return style
   }
 })
@@ -106,16 +96,6 @@ const diffIds = (prev: string[], next: string[]) => {
   const removed = prev.filter((id) => !nextSet.has(id))
   return { added, removed }
 }
-
-const enterHostIds = ref(new Set<string>())
-const enterHiddenIds = ref(new Set<string>())
-
-const onItemEnter = (id: string) => {
-  enterHostIds.value = new Set([...enterHostIds.value, id])
-  enterHiddenIds.value = new Set([...enterHiddenIds.value, id])
-}
-
-const onItemLeave = (_id: string) => {}
 
 const syncItemsLayout = async () => {
   await nextTick()
@@ -160,32 +140,14 @@ const syncSize = async () => {
 
 const itemClass = (id: string) => ({
   'pr-adaptive-grid-item-layout-anim': layoutAnimIds.value.has(id),
-  'pr-adaptive-grid-item-enter-host': enterHostIds.value.has(id),
   'pr-adaptive-grid-item-no-transition': layoutReady.value === false
 })
 
-const innerClass = (id: string) => ({
-  'pr-adaptive-grid-item-no-transition': layoutReady.value === false || enterHiddenIds.value.has(id)
+const innerClass = () => ({
+  'pr-adaptive-grid-item-no-transition': layoutReady.value === false
 })
 
-const finishEnter = async (id: string) => {
-  if (!enterHiddenIds.value.has(id)) return
-  await nextTick()
-  await new Promise((r) => requestAnimationFrame(r))
-  void pr_adaptive_grid_content_ref.value?.offsetHeight
-  await new Promise((r) => requestAnimationFrame(r))
-  const hidden = new Set(enterHiddenIds.value)
-  hidden.delete(id)
-  enterHiddenIds.value = hidden
-}
-
-const onInnerTransitionEnd = (e: TransitionEvent, id: string) => {
-  if (e.propertyName !== 'transform') return
-  if (!enterHostIds.value.has(id)) return
-  const hosts = new Set(enterHostIds.value)
-  hosts.delete(id)
-  enterHostIds.value = hosts
-}
+const animationend = (e: TransitionEvent, id: string) => {}
 
 watch(
   () => props.layout.items.map((i) => i.id).join(','),
@@ -197,12 +159,8 @@ watch(
       prevIds.value = nextIds
       return
     }
-    const { added, removed } = diffIds(prevIds.value, nextIds)
-    for (const id of removed) onItemLeave(id)
-    for (const id of added) onItemEnter(id)
     prevIds.value = nextIds
     await syncSize()
-    for (const id of added) await finishEnter(id)
   }
 )
 
@@ -282,21 +240,34 @@ onBeforeUnmount(() => {
   transition: transform var(--ag-duration-position) var(--ag-ease-position);
 }
 
-.pr-adaptive-grid-item-layout-anim .pr-adaptive-grid-item-inner {
-  transition:
-    width var(--ag-duration-size) var(--ag-ease-size),
-    height var(--ag-duration-size) var(--ag-ease-size);
+@keyframes ag-inner-enter {
+  from {
+    opacity: 0;
+    transform: scale(var(--ag-enter-scale, 0.5));
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
-
-.pr-adaptive-grid-item-enter-host .pr-adaptive-grid-item-inner {
-  transition:
-    transform var(--ag-duration-enter) var(--ag-ease-fade) 300ms,
-    opacity var(--ag-duration-enter) var(--ag-ease-fade) 300ms,
-    width var(--ag-duration-enter-size) var(--ag-ease-size) 300ms,
-    height var(--ag-duration-enter-size) var(--ag-ease-size) 300ms;
+@keyframes ag-inner-leave {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(var(--ag-enter-scale, 0.5));
+  }
 }
-
-.pr-adaptive-grid-item-no-transition {
-  transition: none !important;
+.pr-adaptive-grid-item-inner.ag-inner-enter {
+  animation: ag-inner-enter var(--ag-duration-enter) var(--ag-ease-fade) both;
+}
+.pr-adaptive-grid-item-inner.ag-inner-leave {
+  animation: ag-inner-leave var(--ag-duration-exit) var(--ag-ease-fade) both;
+  pointer-events: none;
+}
+.pr-adaptive-grid-item-leaving {
+  z-index: 15;
 }
 </style>
