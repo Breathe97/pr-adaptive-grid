@@ -4,7 +4,7 @@ export const getLayout = (length: number): Layout => {
   const COLS = 2 // 设计列数
   const ROWS = 5 // 设计行数
 
-  const itemsNum = COLS * ROWS + 1 // 主区格子数（含 Pin 大号位）
+  let itemsNum = Math.min(length, COLS * ROWS + 1) // 主区格子数（含 Pin 大号位）
 
   let surplusItemsNum = Math.max(0, length - itemsNum) // 超出主区的 item 数
 
@@ -16,9 +16,7 @@ export const getLayout = (length: number): Layout => {
         {
           layout.cols = 1
           layout.rows = 1
-          layout.items = [
-            { x: 1, y: 1, w: 1, h: 1 }
-          ]
+          layout.items = [{ x: 1, y: 1, w: 1, h: 1 }]
         }
         break
       case 2:
