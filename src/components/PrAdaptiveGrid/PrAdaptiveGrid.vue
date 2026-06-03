@@ -210,8 +210,9 @@ const ItemInnerStyle = computed(() => {
 
 /** 外层 item 的 layout/离场/首屏 class */
 const itemClass = (row: RenderRow) => {
-  const { id, _leaving } = row
+  const { id, _leaving, item } = row
   return {
+    'pr-adaptive-grid-item-pinned': _leaving === false && item.sticky === true,
     'pr-adaptive-grid-item-layout-anim': layoutAnimIds.value.has(id) && _leaving === false,
     'pr-adaptive-grid-item-leaving': _leaving,
     'pr-adaptive-grid-item-no-transition': layoutReady.value === false || enterAnimIds.value.has(id)
@@ -459,6 +460,11 @@ defineExpose({
   animation: ag-inner-leave var(--ag-duration-exit) var(--ag-ease-fade) both;
   pointer-events: none;
 }
+
+.pr-adaptive-grid-item-pinned {
+  z-index: 20;
+}
+
 .pr-adaptive-grid-item-no-transition {
   transition: none !important;
 }
