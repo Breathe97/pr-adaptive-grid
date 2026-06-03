@@ -48,7 +48,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { PrAdaptiveGrid, getLayout } from '../../src/index.ts'
-import type { Layout, PrAdaptiveGridExpose } from '../../src/index.ts'
+import type { Layout, LayoutItem, PrAdaptiveGridExpose } from '../../src/index.ts'
 
 const DEFAULT_USER_COUNT = 2
 
@@ -77,7 +77,10 @@ const createUserIds = (count: number) => Array.from({ length: count }, (_, i) =>
 
 const getDefaultIds = () => createUserIds(DEFAULT_USER_COUNT)
 
-const setPin = (item: GridItem) => {}
+const setPin = (item: LayoutItem) => {
+  const items = layout.value.items.map((i) => (i.id === item.id ? { ...i, sticky: !i.sticky } : i))
+  layout.value = { ...layout.value, items }
+}
 
 const setFixed = (item: GridItem) => {}
 

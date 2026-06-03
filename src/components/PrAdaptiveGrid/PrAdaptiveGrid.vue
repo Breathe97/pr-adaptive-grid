@@ -1,8 +1,8 @@
 <template>
-  <div class="pr-adaptive-grid" @scroll="onScroll">
+  <div ref="pr_adaptive_grid_ref" class="pr-adaptive-grid" @scroll="onScroll">
     <div ref="pr_adaptive_grid_content_ref" class="pr-adaptive-grid-content" :style="ContainerStyle">
       <div v-for="item in Items" :key="`span-${item.id}`" class="pr-adaptive-grid-item-span" :data-item-id="item.id" :style="ItemSpanStyle(item)" />
-      <div v-for="row in RenderItems" :key="row._leaving ? `leaving-${row.id}` : `item-${row.id}`" class="pr-adaptive-grid-item" :class="itemClass(row.id, row._leaving)" :style="ItemStyle(row.id, row._leaving)">
+      <div v-for="row in RenderItems" :key="row._leaving ? `leaving-${row.id}` : `item-${row.id}`" class="pr-adaptive-grid-item" :class="itemClass(row.id, row._leaving)" :style="ItemStyle(row)">
         <div class="pr-adaptive-grid-item-inner" :class="innerClass(row.id, row._leaving)" :style="ItemInnerStyle(row.id, row._leaving)" @animationend.self="(e) => onInnerAnimationEnd(e, row.id, row._leaving)">
           <slot :item="row.item" />
         </div>
@@ -28,10 +28,12 @@ const props = defineProps({
   }
 })
 
+const pr_adaptive_grid_ref = ref<HTMLElement>()
 const pr_adaptive_grid_content_ref = ref<HTMLElement>() // Grid 内容容器 DOM
 
 const layoutReady = ref(false) // 首屏布局是否已就绪（就绪前禁用 transition）
 const size = reactive({ x: 0, y: 0, width: 0, height: 0 }) // content 在视口中的位置与尺寸
+const scrollOffset = reactive({ x: 0, y: 0 }) // .pr-adaptive-grid 的 scrollLeft/Top
 const prevIds = ref<string[]>([]) // 上一轮 layout 的 id 列表，用于 diff
 const lastItemById = ref(new Map<string, LayoutItem>()) // 上一轮 item 数据，供离场时 slot 使用
 const lastRectById = ref(new Map<string, ItemRect>()) // 上一轮测量矩形，leave 时 map 未命中则回退
@@ -170,15 +172,22 @@ const calcPositionDurationMs = (prev: ItemRect | undefined, next: ItemRect): num
 
 /** 外层 item 中心定位的 transform */
 const ItemStyle = computed(() => {
-  return (id: string, isLeaving: boolean) => {
-    const config = getRect(id, isLeaving)
+  return (row: RenderRow) => {
+    const { id, _leaving, item } = row
+    const config = getRect(id, _leaving)
     if (!config) return {}
     const { x, y, width, height } = config
+    const isSticky = _leaving === false && item.sticky === true
+
     const cx = x + width / 2
     const cy = y + height / 2
+
+    const ox = isSticky ? scrollOffset.x : 0
+    const oy = isSticky ? scrollOffset.y : 0
+
     const durationMs = mapItemPositionDuration.value.get(id) ?? POSITION_DURATION_MIN
     return {
-      transform: `translate3d(${cx}px, ${cy}px, 0) translate(-50%, -50%)`,
+      transform: `translate3d(${cx + ox}px, ${cy + oy}px, 0) translate(-50%, -50%)`,
       '--ag-duration-position': `${durationMs}ms`
     }
   }
@@ -318,8 +327,13 @@ const scheduleResizeSync = () => {
   }, 32)
 }
 
-/** 滚动事件（预留） */
-const onScroll = () => {}
+/** 记录滚动偏移，供 sticky item 抵消位移 */
+const onScroll = () => {
+  const el = pr_adaptive_grid_ref.value
+  if (!el) return
+  scrollOffset.x = el.scrollLeft
+  scrollOffset.y = el.scrollTop
+}
 
 let observer: ResizeObserver // 监听 content 容器尺寸变化
 
