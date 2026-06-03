@@ -111,18 +111,25 @@ const changeUserCount = (delta: number) => {
   initGrid()
 }
 
-const setPin = (item: LayoutItem) => {
-  const { id } = item
-
-  const pinItem = ids.pop()
-
-  // 将当前pin的视口进行交换
-  if (pinItem) {
-    const index = ids.findIndex((item) => item === id) // 需要pin的下标
-    ids.splice(index, 1)
-    ids.splice(index, 0, pinItem)
-    ids.unshift(id)
-    layout.value = getLayout('2', ids)
+const setPin = (target: LayoutItem) => {
+  const targetId = target.id
+  const index = ids.indexOf(targetId)
+  if (index < 0) return
+  const nextSticky = !target.sticky
+  // 开启 Pin：与 ids[0] 交换，占 mode=2 主槽（如左侧大格）
+  if (nextSticky && index !== 0) {
+    const prevFirstId = ids[0]
+    ids[0] = targetId
+    ids[index] = prevFirstId
+  }
+  initGrid()
+  // getLayout 会重建 items，需写回 sticky（一次只 Pin 一个可先清空其它的）
+  layout.value = {
+    ...layout.value,
+    items: layout.value.items.map((it) => ({
+      ...it,
+      sticky: nextSticky && it.id === targetId
+    }))
   }
 }
 
