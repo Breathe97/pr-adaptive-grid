@@ -2,14 +2,7 @@
   <div ref="pr_adaptive_grid_ref" class="pr-adaptive-grid" @scroll="onScroll">
     <div ref="pr_adaptive_grid_content_ref" class="pr-adaptive-grid-content" :style="ContainerStyle">
       <div v-for="(item, index) in layout.items" :key="index" class="pr-adaptive-grid-item-span" :data-item-index="index" :style="ItemSpanStyle(item)" />
-      <div
-        v-for="row in RenderItems"
-        :key="row._leaving ? `leaving-${row.id}` : `item-${row.id}`"
-        class="pr-adaptive-grid-item"
-        :class="itemClass(row)"
-        :style="ItemStyle(row)"
-        @transitionend="(e) => onItemTransitionEnd(e, row)"
-      >
+      <div v-for="row in RenderItems" :key="row._leaving ? `leaving-${row.id}` : `item-${row.id}`" class="pr-adaptive-grid-item" :class="itemClass(row)" :style="ItemStyle(row)" @transitionend="(e) => onItemTransitionEnd(e, row)">
         <div class="pr-adaptive-grid-item-inner" :class="itemInnerClass(row)" :style="ItemInnerStyle(row)" @animationend.self="(e) => onInnerAnimationEnd(e, row)">
           <slot :item="row.slotItem" />
         </div>
@@ -38,7 +31,7 @@ const pr_adaptive_grid_ref = ref<HTMLElement>()
 const pr_adaptive_grid_content_ref = ref<HTMLElement>() // Grid 内容容器 DOM
 
 const layoutReady = ref(false) // 首屏布局是否已就绪（就绪前禁用 transition）
-const size = reactive({ x: 0, y: 0, width: 0, height: 0 }) // content 在视口中的位置与尺寸
+const size = reactive({ width: 0, height: 0 }) // content 尺寸（行高与位移动画时长）
 const scrollTop = ref(0) // .pr-adaptive-grid 的 scrollTop，Pin 定位用
 const prevIds = ref<string[]>([]) // 上一轮 layout 的 id 列表，用于 diff
 const lastItemById = ref(new Map<string, GridItem>()) // 上一轮 item 数据，供离场时 slot 使用
@@ -212,24 +205,21 @@ const measureSpanRectByIndex = (index: number): ItemRect | undefined => {
   return { x: x - contentBox.x, y: y - contentBox.y, width, height }
 }
 
-/** Pin 目标格：index 0 的 span 矩形 */
-const measurePinSpanRect = () => measureSpanRectByIndex(0)
-
 /** 外层 item 中心定位的 transform */
 const ItemStyle = computed(() => {
-  void scrollTop.value
+  const scrollY = scrollTop.value
   return (row: RenderRow) => {
     const { id, index, _leaving } = row
     const isSticky = _leaving === false && row.item.sticky === true
     const layoutDurationMs = mapItemPositionDuration.value.get(id) ?? POSITION_DURATION_MIN
 
     if (isSticky) {
-      const rect = measurePinSpanRect()
+      const rect = measureSpanRectByIndex(0)
       if (!rect) return {}
       const cx = rect.x + rect.width / 2
       const cy = rect.y + rect.height / 2
       return {
-        transform: `translate3d(${cx}px, ${cy + scrollTop.value}px, 0) translate(-50%, -50%)`,
+        transform: `translate3d(${cx}px, ${cy + scrollY}px, 0) translate(-50%, -50%)`,
         '--ag-duration-position': `${layoutDurationMs}ms`
       }
     }
@@ -251,7 +241,7 @@ const ItemInnerStyle = computed(() => {
   return (row: RenderRow) => {
     const { id, index, _leaving } = row
     if (_leaving === false && row.item.sticky === true) {
-      const rect = measurePinSpanRect()
+      const rect = measureSpanRectByIndex(0)
       if (rect) return { width: `${rect.width}px`, height: `${rect.height}px` }
     }
     const config = getRect(index, _leaving, id)
@@ -294,7 +284,7 @@ const diffIds = (prev: string[], next: string[]) => {
   return { added, removed }
 }
 
-/** 测量 span 下标位置，按 gridItems 顺序写入 mapRectById / mapRectByIndex */
+/** 测量 span 下标位置，按 gridItems 顺序写入 mapRectById */
 const syncItemsLayout = async () => {
   await nextTick()
   if (!pr_adaptive_grid_content_ref.value) return
@@ -302,8 +292,6 @@ const syncItemsLayout = async () => {
   const next = new Map<number, ItemRect>()
   const spanCount = layout.value.items.length
   for (let index = 0; index < spanCount; index++) {
-    const itemSpan = pr_adaptive_grid_content_ref.value.querySelector(`[data-item-index="${index}"]`)
-    if (!itemSpan) continue
     const rect = measureSpanRectByIndex(index)
     if (!rect) continue
     next.set(index, rect)
@@ -337,9 +325,7 @@ const syncItemsLayout = async () => {
 const syncSize = async () => {
   await nextTick()
   if (!pr_adaptive_grid_content_ref.value) return
-  const { x, y, height, width } = pr_adaptive_grid_content_ref.value.getBoundingClientRect()
-  size.x = x
-  size.y = y
+  const { height, width } = pr_adaptive_grid_content_ref.value.getBoundingClientRect()
   size.height = height
   size.width = width
   await syncItemsLayout()
@@ -447,22 +433,20 @@ const mergeItemOptions = (id: string, prev: GridItem | undefined, option?: GridI
   fixed: option && 'fixed' in option ? option.fixed : prev?.fixed
 })
 
-/** 本次提交是否新开启 sticky（用于分阶段 Pin） */
-const findNewlyStickyId = (idList: string[], prevById: Map<string, GridItem>, optionById?: Map<string, GridItemOptions>) => {
-  for (const id of idList) {
-    const wasSticky = prevById.get(id)?.sticky === true
-    const opt = optionById?.get(id)
-    const nextSticky = opt && 'sticky' in opt ? opt.sticky : prevById.get(id)?.sticky
-    if (nextSticky === true && !wasSticky) return id
-  }
-  return undefined
-}
-
 /** 按 id 顺序重算 span 几何并同步 gridItems */
 const applyLayoutFromIds = (idList: string[], optionById?: Map<string, GridItemOptions>) => {
   const geo = props.getLayout(idList.length)
   const prevById = new Map(gridItems.value.map((g) => [g.id, g]))
-  const newlyStickyId = findNewlyStickyId(idList, prevById, optionById)
+  let newlyStickyId: string | undefined
+  for (const id of idList) {
+    const wasSticky = prevById.get(id)?.sticky === true
+    const opt = optionById?.get(id)
+    const nextSticky = opt && 'sticky' in opt ? opt.sticky : prevById.get(id)?.sticky
+    if (nextSticky === true && !wasSticky) {
+      newlyStickyId = id
+      break
+    }
+  }
 
   layout.value = geo
 
