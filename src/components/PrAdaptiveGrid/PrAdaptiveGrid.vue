@@ -4,7 +4,7 @@
       <div v-for="(item, index) in layout.items" :key="index" class="pr-adaptive-grid-item-span" :data-item-index="index" :style="ItemSpanStyle(item)" />
       <div v-for="row in RenderItems" :key="row._leaving ? `leaving-${row.id}` : `item-${row.id}`" class="pr-adaptive-grid-item" :class="itemClass(row)" :style="ItemStyle(row)">
         <div class="pr-adaptive-grid-item-inner" :class="itemInnerClass(row)" :style="ItemInnerStyle(row)" @animationend.self="(e) => onInnerAnimationEnd(e, row)">
-          <slot :item="row.item" />
+          <slot :item="row.slotItem" />
         </div>
       </div>
     </div>
@@ -15,21 +15,19 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, reactive, watch } from 'vue'
 import type { PropType } from 'vue'
 import { getLayout as defaultGetLayout } from '../../layouts/layout.default'
-import type { GetLayoutFn, Layout, LayoutItem, LayoutItemOptions } from '../../types'
+import type { GetLayoutFn, GridItem, GridItemOptions, GridSlotItem, Layout, LayoutCell } from '../../types'
 
 type ItemRect = { x: number; y: number; width: number; height: number } // 相对 content 的像素矩形
-type LeavingRow = { id: string; rect: ItemRect; item: LayoutItem } // 离场中的 item 快照
-type RenderRow = { id: string; item: LayoutItem; _leaving: boolean } // 模板 v-for 的一行数据
+type LeavingRow = { id: string; index: number; rect: ItemRect; item: GridItem } // 离场中的 item 快照
+type RenderRow = { id: string; index: number; item: GridItem; slotItem: GridSlotItem; _leaving: boolean } // 模板 v-for 的一行数据
 
 const props = defineProps({
   getLayout: { type: Function as PropType<GetLayoutFn>, default: undefined } // 自定义布局函数，默认内置 getLayout
 })
 
-const layout = ref<Layout>({ gap: 8, cols: 1, rows: 1, items: [] }) // 组件内部布局状态
-
-const itemIds = ref<string[]>([]) // 当前 item 顺序，与 layout.items 下标对应
+const layout = ref<Layout>({ gap: 8, cols: 1, rows: 1, items: [] }) // 仅 span 占位几何
+const gridItems = ref<GridItem[]>([]) // 真实 item，下标与 layout.items 一一对应
 const resolveGetLayout = (): GetLayoutFn => props.getLayout ?? defaultGetLayout
-const collectItemIds = (items: LayoutItem[]) => items.map((i) => i.id).filter((id): id is string => id != null)
 
 const pr_adaptive_grid_ref = ref<HTMLElement>()
 const pr_adaptive_grid_content_ref = ref<HTMLElement>() // Grid 内容容器 DOM
@@ -38,11 +36,8 @@ const layoutReady = ref(false) // 首屏布局是否已就绪（就绪前禁用 
 const size = reactive({ x: 0, y: 0, width: 0, height: 0 }) // content 在视口中的位置与尺寸
 const scrollOffset = reactive({ x: 0, y: 0 }) // .pr-adaptive-grid 的 scrollLeft/Top
 const prevIds = ref<string[]>([]) // 上一轮 layout 的 id 列表，用于 diff
-const lastItemById = ref(new Map<string, LayoutItem>()) // 上一轮 item 数据，供离场时 slot 使用
+const lastItemById = ref(new Map<string, GridItem>()) // 上一轮 item 数据，供离场时 slot 使用
 const lastRectById = ref(new Map<string, ItemRect>()) // 上一轮测量矩形，leave 时 map 未命中则回退
-
-/** 当前 layout 项（仅 props，供 span/sync） */
-const Items = computed(() => layout.value.items)
 
 /** Grid 容器的列、行、间距样式 */
 const ContainerStyle = computed(() => {
@@ -62,7 +57,7 @@ const ItemHeight = computed(() => {
 
 /** 占位 span 在 Grid 中的位置与高度 */
 const ItemSpanStyle = computed(() => {
-  return (item: LayoutItem) => {
+  return (item: LayoutCell) => {
     const { gap } = layout.value
     const { x, y, w, h } = item
     return {
@@ -75,13 +70,13 @@ const ItemSpanStyle = computed(() => {
   }
 })
 
-const mapItemStyle = ref(new Map<string, ItemRect>()) // 各 id 相对 content 的测量结果（驱动定位）
+const mapRectByIndex = ref(new Map<number, ItemRect>()) // 各 span 下标相对 content 的测量结果（驱动定位）
 const layoutAnimIds = ref(new Set<string>()) // 需要播放 layout 位移动画的 id
 
-/** 读取 item 相对 content 的像素矩形（正常项用 map，离场项用快照） */
-const getRect = (id: string, isLeaving: boolean): ItemRect | undefined => {
-  if (isLeaving) return leavingItems.value.find((l) => l.id === id)?.rect
-  return mapItemStyle.value.get(id)
+/** 读取 item 相对 content 的像素矩形（正常项按 index 取 span，离场项用快照） */
+const getRect = (index: number, isLeaving: boolean, id?: string): ItemRect | undefined => {
+  if (isLeaving && id) return leavingItems.value.find((l) => l.id === id)?.rect
+  return mapRectByIndex.value.get(index)
 }
 
 const enterAnimIds = ref(new Set<string>()) // 正在播放入场 animation 的 id
@@ -121,11 +116,12 @@ const onItemEnter = (id: string) => {
 /** 删除 item 时写入离场快照并挂离场动画 class */
 const onItemLeave = (id: string) => {
   cancelEnter(id)
-  const rect = mapItemStyle.value.get(id) ?? lastRectById.value.get(id)
+  const rect = lastRectById.value.get(id)
   const item = lastItemById.value.get(id)
-  if (!rect || !item) return
+  const index = prevIds.value.indexOf(id)
+  if (!rect || !item || index < 0) return
   if (leavingItems.value.some((l) => l.id === id)) return
-  leavingItems.value = [...leavingItems.value, { id, rect: { ...rect }, item }]
+  leavingItems.value = [...leavingItems.value, { id, index, rect: { ...rect }, item }]
   leaveAnimIds.value = new Set([...leaveAnimIds.value, id])
 }
 
@@ -141,21 +137,33 @@ const onInnerAnimationEnd = (e: AnimationEvent, row: RenderRow) => {
   }
 }
 
-/** 合并 layout 项与离场项，供模板 v-for */
+/** 合并真实 item 与离场项，供模板 v-for */
 const RenderItems = computed((): RenderRow[] => {
   const leavingIdSet = new Set(leavingItems.value.map((l) => l.id))
-  const active = Items.value
-    .filter((item) => item.id != null && !leavingIdSet.has(item.id))
-    .map((item) => ({
-      id: item.id as string,
-      item,
-      _leaving: false as const
-    }))
-  const leaving = leavingItems.value.map((l) => ({
-    id: l.id,
-    item: l.item,
-    _leaving: true as const
-  }))
+  const cells = layout.value.items
+  const active = gridItems.value
+    .map((item, index) => {
+      const cell = cells[index]
+      if (!cell) return null
+      return {
+        id: item.id,
+        index,
+        item,
+        slotItem: { ...item, ...cell },
+        _leaving: false as const
+      }
+    })
+    .filter((row): row is RenderRow => row != null && !leavingIdSet.has(row.id))
+  const leaving = leavingItems.value.map((l) => {
+    const cell = cells[l.index]
+    return {
+      id: l.id,
+      index: l.index,
+      item: l.item,
+      slotItem: cell ? { ...l.item, ...cell } : { ...l.item, x: 0, y: 0, w: 1, h: 1 },
+      _leaving: true as const
+    }
+  })
   return [...active, ...leaving]
 })
 
@@ -180,13 +188,13 @@ const ItemStyle = computed(() => {
   // 依赖 scrollOffset，滚动时触发重新渲染
   const { x: scrollX, y: scrollY } = scrollOffset
   return (row: RenderRow) => {
-    const { id, _leaving, item } = row
-    const config = getRect(id, _leaving)
+    const { id, index, _leaving } = row
+    const config = getRect(index, _leaving, id)
     if (!config) return {}
     const { x, y, width, height } = config
     const cx = x + width / 2
     const cy = y + height / 2
-    const isSticky = _leaving === false && item.sticky === true
+    const isSticky = _leaving === false && row.item.sticky === true
     const px = isSticky ? cx + scrollX : cx
     const py = isSticky ? cy + scrollY : cy
     const layoutDurationMs = mapItemPositionDuration.value.get(id) ?? POSITION_DURATION_MIN
@@ -201,8 +209,8 @@ const ItemStyle = computed(() => {
 /** inner 的宽高像素值 */
 const ItemInnerStyle = computed(() => {
   return (row: RenderRow) => {
-    const { id, _leaving } = row
-    const config = getRect(id, _leaving)
+    const { id, index, _leaving } = row
+    const config = getRect(index, _leaving, id)
     if (!config) return {}
     const { width, height } = config
     return {
@@ -242,39 +250,35 @@ const diffIds = (prev: string[], next: string[]) => {
   return { added, removed }
 }
 
-/** 测量各 span 位置并写入 mapItemStyle */
+/** 测量各 span 下标位置并写入 mapRectByIndex */
 const syncItemsLayout = async () => {
   await nextTick()
   if (!pr_adaptive_grid_content_ref.value) return
 
-  const next = new Map<string, ItemRect>()
-  for (const item of Items.value) {
-    const id = item.id
-    if (!id) continue
-    const itemSpan = pr_adaptive_grid_content_ref.value.querySelector(`[data-item-id="${id}"]`)
+  const next = new Map<number, ItemRect>()
+  const spanCount = layout.value.items.length
+  for (let index = 0; index < spanCount; index++) {
+    const itemSpan = pr_adaptive_grid_content_ref.value.querySelector(`[data-item-index="${index}"]`)
     if (!itemSpan) continue
     const { x, y, width, height } = itemSpan.getBoundingClientRect()
-    next.set(id, { x: x - size.x, y: y - size.y, width, height })
+    next.set(index, { x: x - size.x, y: y - size.y, width, height })
   }
 
-  layoutAnimIds.value = new Set(collectItemIds(Items.value))
+  layoutAnimIds.value = new Set(gridItems.value.map((g) => g.id))
 
-  // 记录当前位置到目标位置的距离
-  {
-    const prev = mapItemStyle.value
-    const durationNext = new Map<string, number>()
-    for (const item of Items.value) {
-      const id = item.id
-      if (!id) continue
-      const rect = next.get(id)
-      if (!rect) continue
-      durationNext.set(id, calcPositionDurationMs(prev.get(id), rect))
-    }
-    mapItemPositionDuration.value = durationNext
-  }
+  const prev = mapRectByIndex.value
+  const durationNext = new Map<string, number>()
+  const rectById = new Map<string, ItemRect>()
+  gridItems.value.forEach((g, index) => {
+    const rect = next.get(index)
+    if (!rect) return
+    durationNext.set(g.id, calcPositionDurationMs(prev.get(index), rect))
+    rectById.set(g.id, rect)
+  })
+  mapItemPositionDuration.value = durationNext
 
-  mapItemStyle.value = next
-  lastRectById.value = new Map(next)
+  mapRectByIndex.value = next
+  lastRectById.value = rectById
 
   if (layoutReady.value === false) {
     await nextTick()
@@ -296,15 +300,15 @@ const syncSize = async () => {
   await syncItemsLayout()
 }
 
-/** layout 变更时的完整同步流程（diff、动画、测量） */
-const applyLayoutWatch = async () => {
-  const nextIds = collectItemIds(layout.value.items)
+/** gridItems 变更时的完整同步流程（diff、动画、测量） */
+const applyGridWatch = async () => {
+  const nextIds = gridItems.value.map((g) => g.id)
   const layoutIdSet = new Set(nextIds)
 
   if (prevIds.value.length === 0) {
     await syncSize()
     prevIds.value = nextIds
-    lastItemById.value = new Map(Items.value.filter((i) => i.id != null).map((i) => [i.id as string, i]))
+    lastItemById.value = new Map(gridItems.value.map((g) => [g.id, g]))
     pruneAnimState(layoutIdSet)
     return
   }
@@ -317,17 +321,25 @@ const applyLayoutWatch = async () => {
   await syncSize()
 
   prevIds.value = nextIds
-  lastItemById.value = new Map(Items.value.filter((i) => i.id != null).map((i) => [i.id as string, i]))
+  lastItemById.value = new Map(gridItems.value.map((g) => [g.id, g]))
   pruneAnimState(layoutIdSet)
 }
 
-let layoutWatchChain: Promise<void> = Promise.resolve() // layout watch 串行队列，避免并行 sync
+let layoutWatchChain: Promise<void> = Promise.resolve() // watch 串行队列，避免并行 sync
 
-/** 监听 layout 变化，串行执行 applyLayoutWatch */
+const layoutGeometryKey = () => [layout.value.gap, layout.value.cols, layout.value.rows, ...layout.value.items.map((c) => `${c.x},${c.y},${c.w},${c.h}`)].join('|')
+
+/** 仅几何变化时重新测量（不触发 enter/leave） */
+watch(layoutGeometryKey, () => {
+  if (gridItems.value.length === 0) return
+  layoutWatchChain = layoutWatchChain.then(() => syncSize()).catch((err) => console.error('[PrAdaptiveGrid] geometry watch failed', err))
+})
+
+/** 真实 item 列表变化时 diff 与动画 */
 watch(
-  () => layout.value.items.map((i) => `${i.id}:${i.x},${i.y},${i.w},${i.h}`).join('|'),
+  () => gridItems.value.map((g) => `${g.id}:${g.sticky ?? ''}:${g.fixed ?? ''}`).join('|'),
   () => {
-    layoutWatchChain = layoutWatchChain.then(() => applyLayoutWatch()).catch((err) => console.error('[PrAdaptiveGrid] layout watch failed', err))
+    layoutWatchChain = layoutWatchChain.then(() => applyGridWatch()).catch((err) => console.error('[PrAdaptiveGrid] grid watch failed', err))
   }
 )
 
@@ -365,58 +377,59 @@ onBeforeUnmount(() => {
   if (resizeTimer) clearTimeout(resizeTimer)
 })
 
-/** 按 itemIds 顺序合并 getLayout 几何与 id / 标记 */
-const applyLayoutFromIds = (idList: string[], optionById?: Map<string, LayoutItemOptions>) => {
+/** 按 id 顺序重算 span 几何并同步 gridItems */
+const applyLayoutFromIds = (idList: string[], optionById?: Map<string, GridItemOptions>) => {
   const geo = resolveGetLayout()(idList.length)
-  const prev = new Map(layout.value.items.map((it) => [it.id, it]))
-  layout.value = {
-    ...geo,
-    items: geo.items.map((cell, i) => {
-      const id = idList[i]
-      const p = prev.get(id)
-      const opt = optionById?.get(id)
-      return {
-        ...cell,
-        id,
-        sticky: opt?.sticky ?? p?.sticky,
-        fixed: opt?.fixed ?? p?.fixed
-      }
-    })
-  }
+  const prevById = new Map(gridItems.value.map((g) => [g.id, g]))
+  layout.value = geo
+  gridItems.value = idList.map((id) => {
+    const p = prevById.get(id)
+    const opt = optionById?.get(id)
+    return {
+      id,
+      sticky: opt?.sticky ?? p?.sticky,
+      fixed: opt?.fixed ?? p?.fixed
+    }
+  })
 }
 
 /** 新增 item 并重算布局 */
-const addItem = (id: string, option?: LayoutItemOptions) => {
-  if (itemIds.value.includes(id)) return
-  const index = option?.index ?? itemIds.value.length
-  const next = [...itemIds.value]
-  next.splice(index, 0, id)
-  itemIds.value = next
-  const optionById = new Map<string, LayoutItemOptions>()
+const addItem = (id: string, option?: GridItemOptions) => {
+  if (gridItems.value.some((g) => g.id === id)) return
+  const index = option?.index ?? gridItems.value.length
+  const nextIds = gridItems.value.map((g) => g.id)
+  nextIds.splice(index, 0, id)
+  const optionById = new Map<string, GridItemOptions>()
   if (option) optionById.set(id, option)
-  applyLayoutFromIds(next, optionById)
+  applyLayoutFromIds(nextIds, optionById)
 }
 
 /** 移除 item 并重算布局 */
 const removeItems = (removeIds: string[]) => {
   if (removeIds.length === 0) return
   const removeSet = new Set(removeIds)
-  const next = itemIds.value.filter((id) => !removeSet.has(id))
-  itemIds.value = next
-  applyLayoutFromIds(next)
+  const nextIds = gridItems.value.filter((g) => !removeSet.has(g.id)).map((g) => g.id)
+  applyLayoutFromIds(nextIds)
 }
 
 /** 计算布局（不写入组件，使用 props.getLayout 或内置 layout.default） */
 const getLayoutExpose = (length: number) => resolveGetLayout()(length)
 
-/** 写入布局并同步 itemIds */
-const setLayout = (next: Layout) => {
+/** 仅写入 span 占位几何 */
+const setLayoutGeometry = (next: Layout) => {
   layout.value = next
-  itemIds.value = next.items.map((it) => it.id).filter((id): id is string => id != null)
 }
 
-/** 读取当前布局 */
+/** 写入真实 item 列表（下标与 layout.items 对应） */
+const setGridItems = (items: GridItem[]) => {
+  gridItems.value = items.map((g) => ({ ...g }))
+}
+
+/** 读取当前 span 布局 */
 const getLayoutState = () => layout.value
+
+/** 读取当前真实 item 列表 */
+const getGridItems = () => gridItems.value.map((g) => ({ ...g }))
 
 /** 供外部主动触发测量（与 resize 后内部 syncSize 相同） */
 const syncLayout = () => syncSize()
@@ -424,8 +437,10 @@ const syncLayout = () => syncSize()
 defineExpose({
   syncLayout,
   getLayout: getLayoutExpose,
-  setLayout,
+  setLayoutGeometry,
+  setGridItems,
   getLayoutState,
+  getGridItems,
   addItem,
   removeItems
 })

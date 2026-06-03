@@ -3,7 +3,7 @@
     <div class="grid-wrap">
       <PrAdaptiveGrid ref="gridRef" :get-layout="activeGetLayout">
         <template #default="{ item }">
-          <div class="tile" :class="{ 'is-pinned': item.sticky, 'is-fixed': item.fixed }" :style="{ backgroundColor: getTileColor(item.id!) }">
+          <div class="tile" :class="{ 'is-pinned': item.sticky, 'is-fixed': item.fixed }" :style="{ backgroundColor: getTileColor(item.id) }">
             <div v-if="item.sticky || item.fixed" class="tile-badges">
               <span v-if="item.sticky" class="badge badge-pin">📌 Pin</span>
               <span v-if="item.fixed" class="badge badge-fixed">🔒 Fixed</span>
@@ -48,7 +48,7 @@
 <script setup lang="ts">
 import { ref, onMounted, nextTick } from 'vue'
 import { PrAdaptiveGrid, getLayout, getLectureLayout } from '../../src/index.ts'
-import type { GetLayoutFn, Layout, LayoutItem, PrAdaptiveGridExpose } from '../../src/index.ts'
+import type { GetLayoutFn, GridSlotItem, PrAdaptiveGridExpose } from '../../src/index.ts'
 const DEFAULT_USER_COUNT = 10
 
 const gridRef = ref<PrAdaptiveGridExpose>()
@@ -73,24 +73,18 @@ const ensureTileColor = (id: string) => {
 
 const getTileColor = (id: string): string => tileColorMap.value.get(id) ?? 'hsl(210 95% 72%)'
 
-const setFixed = (_item: LayoutItem) => {}
+const setFixed = (_item: GridSlotItem) => {}
 
 const ids: string[] = []
 
-const layoutItems = () => gridRef.value?.getLayoutState()?.items ?? []
-
-/** 将 getLayout 几何与 ids 顺序合并为完整 layout */
-const mergeLayoutItems = (geo: Layout, idList: string[]) => ({
-  ...geo,
-  items: geo.items.map((cell, i) => ({ ...cell, id: idList[i] }))
-})
+const gridItems = () => gridRef.value?.getGridItems() ?? []
 
 const changeUserCount = (delta: number) => {
   if (delta === 1) {
     if (userCount.value < 1) return
-    const id = `${Math.max(...layoutItems().map((it) => Number(it.id)), 0) + 1}`
+    const id = `${Math.max(...gridItems().map((it) => Number(it.id)), 0) + 1}`
     let index = 0
-    if (layoutItems()[0]?.sticky === true) index = 1
+    if (gridItems()[0]?.sticky === true) index = 1
     ensureTileColor(id)
     gridRef.value?.addItem(id, { index })
     ids.splice(index, 0, id)
@@ -98,23 +92,21 @@ const changeUserCount = (delta: number) => {
     return
   }
   if (userCount.value <= 1) return
-  const index = Math.ceil(Math.random() * (layoutItems().length - 1))
-  const removeId = layoutItems()[index]?.id
+  const index = Math.ceil(Math.random() * (gridItems().length - 1))
+  const removeId = gridItems()[index]?.id
   if (!removeId) return
   gridRef.value?.removeItems([removeId])
   ids.splice(ids.indexOf(removeId), 1)
   userCount.value -= 1
 }
 
-const setPin = async (target: LayoutItem) => {
+const setPin = async (target: GridSlotItem) => {
   const targetId = target.id
-  if (!targetId) return
   const index = ids.indexOf(targetId)
   if (target.sticky === true) {
     activeGetLayout.value = getLayout
-    const geo = gridRef.value!.getLayout(ids.length)
-    const merged = mergeLayoutItems(geo, ids)
-    gridRef.value!.setLayout({ ...merged, items: merged.items.map((it) => ({ ...it, sticky: false })) })
+    gridRef.value!.setLayoutGeometry(gridRef.value!.getLayout(ids.length))
+    gridRef.value!.setGridItems(ids.map((id) => ({ id, sticky: false })))
     return
   }
   if (index < 0) return
@@ -124,12 +116,8 @@ const setPin = async (target: LayoutItem) => {
     ids[index] = prevFirstId
   }
   activeGetLayout.value = getLectureLayout
-  const geo = gridRef.value!.getLayout(ids.length)
-  const merged = mergeLayoutItems(geo, ids)
-  gridRef.value!.setLayout({
-    ...merged,
-    items: merged.items.map((it, i) => ({ ...it, sticky: i === 0 }))
-  })
+  gridRef.value!.setLayoutGeometry(gridRef.value!.getLayout(ids.length))
+  gridRef.value!.setGridItems(ids.map((id, i) => ({ id, sticky: i === 0 })))
   await nextTick()
 }
 
@@ -150,12 +138,13 @@ const shuffleItems = () => {
 
 const initGrid = () => {
   if (!gridRef.value) return
-  const geo = gridRef.value.getLayout(ids.length)
-  const merged = mergeLayoutItems(geo, ids)
-  gridRef.value.setLayout({
-    ...merged,
-    items: merged.items.map((it, i) => ({ ...it, sticky: activeGetLayout.value === getLectureLayout && i === 0 }))
-  })
+  gridRef.value.setLayoutGeometry(gridRef.value.getLayout(ids.length))
+  gridRef.value.setGridItems(
+    ids.map((id, i) => ({
+      id,
+      sticky: activeGetLayout.value === getLectureLayout && i === 0
+    }))
+  )
 }
 
 const syncGrid = () => {
