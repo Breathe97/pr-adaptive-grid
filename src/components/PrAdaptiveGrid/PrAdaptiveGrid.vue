@@ -2,8 +2,8 @@
   <div ref="pr_adaptive_grid_ref" class="pr-adaptive-grid" @scroll="onScroll">
     <div ref="pr_adaptive_grid_content_ref" class="pr-adaptive-grid-content" :style="ContainerStyle">
       <div v-for="item in Items" :key="`span-${item.id}`" class="pr-adaptive-grid-item-span" :data-item-id="item.id" :style="ItemSpanStyle(item)" />
-      <div v-for="row in RenderItems" :key="row._leaving ? `leaving-${row.id}` : `item-${row.id}`" class="pr-adaptive-grid-item" :class="itemClass(row.id, row._leaving)" :style="ItemStyle(row)">
-        <div class="pr-adaptive-grid-item-inner" :class="innerClass(row.id, row._leaving)" :style="ItemInnerStyle(row.id, row._leaving)" @animationend.self="(e) => onInnerAnimationEnd(e, row.id, row._leaving)">
+      <div v-for="row in RenderItems" :key="row._leaving ? `leaving-${row.id}` : `item-${row.id}`" class="pr-adaptive-grid-item" :class="itemClass(row)" :style="ItemStyle(row)">
+        <div class="pr-adaptive-grid-item-inner" :class="itemInnerClass(row)" :style="ItemInnerStyle(row)" @animationend.self="(e) => onInnerAnimationEnd(e, row)">
           <slot :item="row.item" />
         </div>
       </div>
@@ -126,12 +126,13 @@ const onItemLeave = (id: string) => {
 }
 
 /** 入场/离场 animation 结束时清理对应状态 */
-const onInnerAnimationEnd = (e: AnimationEvent, id: string, isLeaving: boolean) => {
-  if (!isLeaving && e.animationName.includes('ag-inner-enter')) {
+const onInnerAnimationEnd = (e: AnimationEvent, row: RenderRow) => {
+  const { id, _leaving } = row
+  if (_leaving === false && e.animationName.includes('ag-inner-enter')) {
     cancelEnter(id)
     return
   }
-  if (isLeaving && e.animationName.includes('ag-inner-leave')) {
+  if (_leaving === true && e.animationName.includes('ag-inner-leave')) {
     cancelLeave(id)
   }
 }
@@ -195,8 +196,9 @@ const ItemStyle = computed(() => {
 
 /** inner 的宽高像素值 */
 const ItemInnerStyle = computed(() => {
-  return (id: string, isLeaving: boolean) => {
-    const config = getRect(id, isLeaving)
+  return (row: RenderRow) => {
+    const { id, _leaving } = row
+    const config = getRect(id, _leaving)
     if (!config) return {}
     const { width, height } = config
     return {
@@ -207,18 +209,24 @@ const ItemInnerStyle = computed(() => {
 })
 
 /** 外层 item 的 layout/离场/首屏 class */
-const itemClass = (id: string, isLeaving: boolean) => ({
-  'pr-adaptive-grid-item-layout-anim': layoutAnimIds.value.has(id) && !isLeaving,
-  'pr-adaptive-grid-item-leaving': isLeaving,
-  'pr-adaptive-grid-item-no-transition': layoutReady.value === false || enterAnimIds.value.has(id)
-})
+const itemClass = (row: RenderRow) => {
+  const { id, _leaving } = row
+  return {
+    'pr-adaptive-grid-item-layout-anim': layoutAnimIds.value.has(id) && _leaving === false,
+    'pr-adaptive-grid-item-leaving': _leaving,
+    'pr-adaptive-grid-item-no-transition': layoutReady.value === false || enterAnimIds.value.has(id)
+  }
+}
 
 /** inner 的入场/离场/首屏 class */
-const innerClass = (id: string, isLeaving: boolean) => ({
-  'pr-adaptive-grid-item-no-transition': layoutReady.value === false || enterAnimIds.value.has(id) || leaveAnimIds.value.has(id),
-  'ag-inner-enter': !isLeaving && enterAnimIds.value.has(id),
-  'ag-inner-leave': isLeaving && leaveAnimIds.value.has(id)
-})
+const itemInnerClass = (row: RenderRow) => {
+  const { id, _leaving } = row
+  return {
+    'pr-adaptive-grid-item-no-transition': layoutReady.value === false || enterAnimIds.value.has(id) || leaveAnimIds.value.has(id),
+    'ag-inner-enter': _leaving === false && enterAnimIds.value.has(id),
+    'ag-inner-leave': _leaving && leaveAnimIds.value.has(id)
+  }
+}
 
 /** 对比前后 id 列表，得到新增与删除的 id */
 const diffIds = (prev: string[], next: string[]) => {
