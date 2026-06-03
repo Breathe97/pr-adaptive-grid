@@ -2,8 +2,8 @@
   <div class="pr-adaptive-grid" @scroll="onScroll">
     <div ref="pr_adaptive_grid_content_ref" class="pr-adaptive-grid-content" :style="ContainerStyle">
       <div v-for="item in Items" :key="`span-${item.id}`" class="pr-adaptive-grid-item-span" :data-item-id="item.id" :style="ItemSpanStyle(item)">{{ item.id }}</div>
-      <div v-for="item in Items" :key="`item-${item.id}`" class="pr-adaptive-grid-item" :class="[itemClass(item.id)]" :style="ItemStyle(item.id)">
-        <div class="pr-adaptive-grid-item-inner" :class="[innerClass(item.id)]" :style="ItemInnerStyle(item.id)">
+      <div v-for="item in RenderItems" :key="`item-${item.id}`" class="pr-adaptive-grid-item" :class="[itemClass(item.id, item._leaving)]" :style="ItemStyle(item.id, item._leaving)">
+        <div class="pr-adaptive-grid-item-inner" :class="[innerClass(item.id, item._leaving)]" :style="ItemInnerStyle(item.id, item._leaving)" @animationend="(e) => onInnerAnimationEnd(e, item.id, item._leaving)">
           <slot :item="item" />
         </div>
       </div>
@@ -15,6 +15,10 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, reactive, watch } from 'vue'
 import type { PropType } from 'vue'
 import type { Layout, LayoutItem } from '../../types'
+
+type ItemRect = { x: number; y: number; width: number; height: number }
+type LeavingRow = { id: string; rect: ItemRect; item: LayoutItem }
+type RenderRow = { id: string; item: LayoutItem; _leaving: boolean }
 
 const props = defineProps({
   layout: {
@@ -28,8 +32,6 @@ const pr_adaptive_grid_content_ref = ref<HTMLElement>()
 const layoutReady = ref(false)
 
 const size = reactive({ x: 0, y: 0, width: 0, height: 0 })
-
-const Items = computed(() => props.layout.items)
 
 const ContainerStyle = computed(() => {
   const { gap, cols, rows } = props.layout
@@ -61,8 +63,8 @@ const ItemSpanStyle = computed(() => {
 const mapItemStyle = ref(new Map<string, { x: number; y: number; width: number; height: number }>())
 
 const ItemStyle = computed(() => {
-  return (id: string) => {
-    const config = mapItemStyle.value.get(id)
+  return (id: string, isLeaving: boolean) => {
+    const config = getRect(id, isLeaving)
     if (!config) return {}
     const { x, y, width, height } = config
     const cx = x + width / 2
@@ -74,15 +76,14 @@ const ItemStyle = computed(() => {
 })
 
 const ItemInnerStyle = computed(() => {
-  return (id: string) => {
-    const config = mapItemStyle.value.get(id)
+  return (id: string, isLeaving: boolean) => {
+    const config = getRect(id, isLeaving)
     if (!config) return {}
     const { width, height } = config
-    const style: Record<string, string> = {
+    return {
       width: `${width}px`,
       height: `${height}px`
     }
-    return style
   }
 })
 
@@ -100,25 +101,19 @@ const diffIds = (prev: string[], next: string[]) => {
 const syncItemsLayout = async () => {
   await nextTick()
   if (!pr_adaptive_grid_content_ref.value) return
-
-  const next = new Map<string, { x: number; y: number; width: number; height: number }>()
-
+  const next = new Map<string, ItemRect>()
   for (const item of Items.value) {
     const { id } = item
-    const selector = `data-item-id="${id}"`
-    const itemSpan = pr_adaptive_grid_content_ref.value.querySelector(`[${selector}]`)
+    const itemSpan = pr_adaptive_grid_content_ref.value.querySelector(`[data-item-id="${id}"]`)
     if (!itemSpan) continue
     const { x, y, width, height } = itemSpan.getBoundingClientRect()
     next.set(id, { x: x - size.x, y: y - size.y, width, height })
   }
-
-  layoutAnimIds.value = new Set(Items.value.map((i) => i.id)) // 标记需要执行动画
-  console.log('\x1b[38;2;0;151;255m%c%s\x1b[0m', 'color:#0097ff;', `------->Breathe: syncItemsLayout`, next)
+  layoutAnimIds.value = new Set(Items.value.map((i) => i.id))
   mapItemStyle.value = next
-
   if (layoutReady.value === false) {
-    await new Promise((r) => requestAnimationFrame(r)) // 可选，更稳
-    prevIds.value = Items.value.map((i) => i.id)
+    await nextTick()
+    await new Promise((r) => requestAnimationFrame(r))
     layoutReady.value = true
   }
 }
@@ -136,27 +131,88 @@ const syncSize = async () => {
   await syncItemsLayout()
 }
 
-const itemClass = (id: string) => ({
-  'pr-adaptive-grid-item-layout-anim': layoutAnimIds.value.has(id),
+const enterAnimIds = ref(new Set<string>())
+const leaveAnimIds = ref(new Set<string>())
+const leavingItems = ref<LeavingRow[]>([])
+const lastItemById = ref(new Map<string, LayoutItem>())
+
+const getRect = (id: string, isLeaving: boolean): ItemRect | undefined => {
+  if (isLeaving) return leavingItems.value.find((l) => l.id === id)?.rect
+  return mapItemStyle.value.get(id)
+}
+
+const itemClass = (id: string, isLeaving: boolean) => ({
+  'pr-adaptive-grid-item-layout-anim': layoutAnimIds.value.has(id) && !isLeaving,
+  'pr-adaptive-grid-item-leaving': isLeaving,
   'pr-adaptive-grid-item-no-transition': layoutReady.value === false
 })
 
-const innerClass = (id: string) => ({
-  'pr-adaptive-grid-item-no-transition': layoutReady.value === false
+const innerClass = (id: string, isLeaving: boolean) => ({
+  'pr-adaptive-grid-item-no-transition': layoutReady.value === false || enterAnimIds.value.has(id) || leaveAnimIds.value.has(id),
+  'ag-inner-enter': !isLeaving && enterAnimIds.value.has(id),
+  'ag-inner-leave': isLeaving && leaveAnimIds.value.has(id)
 })
+
+const onItemEnter = (id: string) => {
+  enterAnimIds.value = new Set([...enterAnimIds.value, id])
+}
+
+const onItemLeave = (id: string) => {
+  const rect = mapItemStyle.value.get(id)
+  const item = lastItemById.value.get(id)
+  if (!rect || !item) return
+  if (leavingItems.value.some((l) => l.id === id)) return
+  leavingItems.value = [...leavingItems.value, { id, rect: { ...rect }, item }]
+  leaveAnimIds.value = new Set([...leaveAnimIds.value, id])
+}
+
+const onInnerAnimationEnd = (e: AnimationEvent, id: string, isLeaving: boolean) => {
+  if (e.target !== e.currentTarget) return
+  if (!isLeaving && e.animationName === 'ag-inner-enter') {
+    const next = new Set(enterAnimIds.value)
+    next.delete(id)
+    enterAnimIds.value = next
+    return
+  }
+  if (isLeaving && e.animationName === 'ag-inner-leave') {
+    leavingItems.value = leavingItems.value.filter((l) => l.id !== id)
+    const next = new Set(leaveAnimIds.value)
+    next.delete(id)
+    leaveAnimIds.value = next
+  }
+}
+
+const Items = computed(() => props.layout.items)
+
+const RenderItems = computed((): RenderRow[] => [
+  ...Items.value.map((item) => ({
+    id: item.id,
+    item,
+    _leaving: false as const
+  })),
+  ...leavingItems.value.map((l) => ({
+    id: l.id,
+    item: l.item,
+    _leaving: true as const
+  }))
+])
 
 watch(
   () => props.layout.items.map((i) => i.id).join(','),
   async () => {
     const nextIds = props.layout.items.map((i) => i.id)
-    // 首屏：不要对全部 id 做 enter
     if (prevIds.value.length === 0) {
       await syncSize()
       prevIds.value = nextIds
+      lastItemById.value = new Map(Items.value.map((i) => [i.id, i]))
       return
     }
+    const { added, removed } = diffIds(prevIds.value, nextIds)
+    for (const id of removed) onItemLeave(id)
+    for (const id of added) onItemEnter(id)
     prevIds.value = nextIds
     await syncSize()
+    lastItemById.value = new Map(Items.value.map((i) => [i.id, i]))
   }
 )
 
@@ -179,6 +235,7 @@ onBeforeUnmount(() => {
   --ag-duration-size: 500ms;
   --ag-duration-enter: 220ms;
   --ag-duration-exit: 180ms;
+  --ag-enter-scale: 0.5;
   --ag-ease-position: cubic-bezier(0.22, 1, 0.36, 1);
   --ag-ease-size: ease;
   --ag-ease-fade: ease-out;
@@ -235,6 +292,12 @@ onBeforeUnmount(() => {
   transition: transform var(--ag-duration-position) var(--ag-ease-position);
 }
 
+.pr-adaptive-grid-item-layout-anim .pr-adaptive-grid-item-inner {
+  transition:
+    width var(--ag-duration-size) var(--ag-ease-size),
+    height var(--ag-duration-size) var(--ag-ease-size);
+}
+
 @keyframes ag-inner-enter {
   from {
     opacity: 0;
@@ -264,5 +327,9 @@ onBeforeUnmount(() => {
 }
 .pr-adaptive-grid-item-leaving {
   z-index: 15;
+}
+
+.pr-adaptive-grid-item-no-transition {
+  transition: none !important;
 }
 </style>
