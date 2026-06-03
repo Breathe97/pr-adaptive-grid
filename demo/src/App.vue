@@ -46,7 +46,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, nextTick } from 'vue'
 import { PrAdaptiveGrid, getLayout } from '../../src/index.ts'
 import type { Layout, LayoutItem, PrAdaptiveGridExpose } from '../../src/index.ts'
 import { GridItem } from '../../dist/src/types'
@@ -111,26 +111,23 @@ const changeUserCount = (delta: number) => {
   initGrid()
 }
 
-const setPin = (target: LayoutItem) => {
+const setPin = async (target: LayoutItem) => {
   const targetId = target.id
   const index = ids.indexOf(targetId)
+  if (target.sticky === true) {
+    layout.value = getLayout('1', ids)
+    return
+  }
   if (index < 0) return
   const nextSticky = !target.sticky
-  // 开启 Pin：与 ids[0] 交换，占 mode=2 主槽（如左侧大格）
   if (nextSticky && index !== 0) {
     const prevFirstId = ids[0]
     ids[0] = targetId
     ids[index] = prevFirstId
   }
-  initGrid()
-  // getLayout 会重建 items，需写回 sticky（一次只 Pin 一个可先清空其它的）
-  layout.value = {
-    ...layout.value,
-    items: layout.value.items.map((it) => ({
-      ...it,
-      sticky: nextSticky && it.id === targetId
-    }))
-  }
+  layout.value = getLayout('2', ids)
+  await nextTick()
+  layout.value.items[0].sticky = true
 }
 
 const shuffleItems = () => {

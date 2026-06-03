@@ -187,10 +187,10 @@ const ItemStyle = computed(() => {
     const px = isSticky ? cx + scrollX : cx
     const py = isSticky ? cy + scrollY : cy
     const layoutDurationMs = mapItemPositionDuration.value.get(id) ?? POSITION_DURATION_MIN
-    const durationMs = isSticky ? 0 : layoutDurationMs
+    // const durationMs = isSticky ? 0 : layoutDurationMs
     return {
       transform: `translate3d(${px}px, ${py}px, 0) translate(-50%, -50%)`,
-      '--ag-duration-position': `${durationMs}ms`
+      '--ag-duration-position': `${layoutDurationMs}ms`
     }
   }
 })
