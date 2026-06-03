@@ -2,8 +2,8 @@
   <div class="pr-adaptive-grid" @scroll="onScroll">
     <div ref="pr_adaptive_grid_content_ref" class="pr-adaptive-grid-content" :style="ContainerStyle">
       <div v-for="item in Items" :key="`span-${item.id}`" class="pr-adaptive-grid-item-span" :data-item-id="item.id" :style="ItemSpanStyle(item)">{{ item.id }}</div>
-      <div v-for="item in Items" :key="`item-${item.id}`" class="pr-adaptive-grid-item" :class="[itemClass(item.id), { 'pr-adaptive-grid-item-no-transition': layoutReady === false }]" :style="ItemStyle(item.id)">
-        <div class="pr-adaptive-grid-item-inner" :class="[{ 'pr-adaptive-grid-item-no-transition': layoutReady === false }]" :style="ItemInnerStyle(item.id)">
+      <div v-for="item in Items" :key="`item-${item.id}`" class="pr-adaptive-grid-item" :class="[itemClass(item.id)]" :style="ItemStyle(item.id)">
+        <div class="pr-adaptive-grid-item-inner" :class="[innerClass(item.id)]" :style="ItemInnerStyle(item.id)" @transitionend="(e) => onInnerTransitionEnd(e, item.id)">
           <slot :item="item" />
         </div>
       </div>
@@ -78,19 +78,16 @@ const ItemInnerStyle = computed(() => {
     const config = mapItemStyle.value.get(id)
     if (!config) return {}
     const { width, height } = config
-    return {
+    const style: Record<string, string> = {
       width: `${width}px`,
       height: `${height}px`
     }
+    if (enterHiddenIds.value.has(id)) style.opacity = '0'
+    return style
   }
 })
 
 const layoutAnimIds = ref(new Set<string>())
-
-const itemClass = (id: string) => ({
-  'pr-adaptive-grid-item-layout-anim': layoutAnimIds.value.has(id),
-  'pr-adaptive-grid-item-no-transition': layoutReady.value === false
-})
 
 const prevIds = ref<string[]>([])
 const diffIds = (prev: string[], next: string[]) => {
@@ -100,6 +97,16 @@ const diffIds = (prev: string[], next: string[]) => {
   const removed = prev.filter((id) => !nextSet.has(id))
   return { added, removed }
 }
+
+const enterHostIds = ref(new Set<string>())
+const enterHiddenIds = ref(new Set<string>())
+
+const onItemEnter = (id: string) => {
+  enterHostIds.value = new Set([...enterHostIds.value, id])
+  enterHiddenIds.value = new Set([...enterHiddenIds.value, id])
+}
+
+const onItemLeave = (_id: string) => {}
 
 const syncItemsLayout = async () => {
   await nextTick()
@@ -142,15 +149,50 @@ const syncSize = async () => {
   await syncItemsLayout()
 }
 
+const itemClass = (id: string) => ({
+  'pr-adaptive-grid-item-layout-anim': layoutAnimIds.value.has(id),
+  'pr-adaptive-grid-item-enter-host': enterHostIds.value.has(id),
+  'pr-adaptive-grid-item-no-transition': layoutReady.value === false
+})
+
+const innerClass = (id: string) => ({
+  'pr-adaptive-grid-item-no-transition': layoutReady.value === false || enterHiddenIds.value.has(id)
+})
+
+const finishEnter = async (id: string) => {
+  if (!enterHiddenIds.value.has(id)) return
+  await nextTick()
+  await new Promise((r) => requestAnimationFrame(r))
+  void pr_adaptive_grid_content_ref.value?.offsetHeight
+  await new Promise((r) => requestAnimationFrame(r))
+  const hidden = new Set(enterHiddenIds.value)
+  hidden.delete(id)
+  enterHiddenIds.value = hidden
+}
+const onInnerTransitionEnd = (e: TransitionEvent, id: string) => {
+  if (e.propertyName !== 'opacity') return
+  if (!enterHostIds.value.has(id)) return
+  const hosts = new Set(enterHostIds.value)
+  hosts.delete(id)
+  enterHostIds.value = hosts
+}
+
 watch(
   () => props.layout.items.map((i) => i.id).join(','),
   async () => {
     const nextIds = props.layout.items.map((i) => i.id)
+    // 首屏：不要对全部 id 做 enter
+    if (prevIds.value.length === 0) {
+      await syncSize()
+      prevIds.value = nextIds
+      return
+    }
     const { added, removed } = diffIds(prevIds.value, nextIds)
-    for (const id of removed) onItemLeave(id) // 第 6 步再实现
-    for (const id of added) onItemEnter(id) // 第 5 步再实现
+    for (const id of removed) onItemLeave(id)
+    for (const id of added) onItemEnter(id)
     prevIds.value = nextIds
     await syncSize()
+    for (const id of added) await finishEnter(id)
   }
 )
 
@@ -234,6 +276,13 @@ onBeforeUnmount(() => {
   transition:
     width var(--ag-duration-size) var(--ag-ease-size),
     height var(--ag-duration-size) var(--ag-ease-size);
+}
+
+.pr-adaptive-grid-item-enter-host .pr-adaptive-grid-item-inner {
+  transition:
+    opacity var(--ag-duration-enter) var(--ag-ease-fade) 300ms,
+    width var(--ag-duration-enter-size) var(--ag-ease-size) 300ms,
+    height var(--ag-duration-enter-size) var(--ag-ease-size) 300ms;
 }
 
 .pr-adaptive-grid-item-no-transition {
