@@ -82,7 +82,16 @@ const ItemInnerStyle = computed(() => {
       width: `${width}px`,
       height: `${height}px`
     }
-    if (enterHiddenIds.value.has(id)) style.opacity = '0'
+    if (enterHiddenIds.value.has(id)) {
+      // 首帧：不可见 + 缩小，且无 transition（靠 innerClass）
+      style.opacity = '0'
+      style.transform = 'scale(0.5)'
+    } else if (enterHostIds.value.has(id)) {
+      // Reveal：过渡到正常
+      style.opacity = '1'
+      style.transform = 'scale(1)'
+    }
+    // 平时：不写 opacity / transform，避免影响布局动画
     return style
   }
 })
@@ -169,8 +178,9 @@ const finishEnter = async (id: string) => {
   hidden.delete(id)
   enterHiddenIds.value = hidden
 }
+
 const onInnerTransitionEnd = (e: TransitionEvent, id: string) => {
-  if (e.propertyName !== 'opacity') return
+  if (e.propertyName !== 'transform') return
   if (!enterHostIds.value.has(id)) return
   const hosts = new Set(enterHostIds.value)
   hosts.delete(id)
@@ -280,6 +290,7 @@ onBeforeUnmount(() => {
 
 .pr-adaptive-grid-item-enter-host .pr-adaptive-grid-item-inner {
   transition:
+    transform var(--ag-duration-enter) var(--ag-ease-fade) 300ms,
     opacity var(--ag-duration-enter) var(--ag-ease-fade) 300ms,
     width var(--ag-duration-enter-size) var(--ag-ease-size) 300ms,
     height var(--ag-duration-enter-size) var(--ag-ease-size) 300ms;
