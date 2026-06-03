@@ -2,7 +2,14 @@
   <div ref="pr_adaptive_grid_ref" class="pr-adaptive-grid" @scroll="onScroll">
     <div ref="pr_adaptive_grid_content_ref" class="pr-adaptive-grid-content" :style="ContainerStyle">
       <div v-for="(item, index) in layout.items" :key="index" class="pr-adaptive-grid-item-span" :data-item-index="index" :style="ItemSpanStyle(item)" />
-      <div v-for="row in RenderItems" :key="row._leaving ? `leaving-${row.id}` : `item-${row.id}`" class="pr-adaptive-grid-item" :class="itemClass(row)" :style="ItemStyle(row)">
+      <div
+        v-for="row in RenderItems"
+        :key="row._leaving ? `leaving-${row.id}` : `item-${row.id}`"
+        class="pr-adaptive-grid-item"
+        :class="itemClass(row)"
+        :style="ItemStyle(row)"
+        @transitionend="(e) => onItemTransitionEnd(e, row)"
+      >
         <div class="pr-adaptive-grid-item-inner" :class="itemInnerClass(row)" :style="ItemInnerStyle(row)" @animationend.self="(e) => onInnerAnimationEnd(e, row)">
           <slot :item="row.slotItem" />
         </div>
@@ -81,6 +88,20 @@ const getRect = (_index: number, isLeaving: boolean, id: string): ItemRect | und
 const enterAnimIds = ref(new Set<string>()) // 正在播放入场 animation 的 id
 const leaveAnimIds = ref(new Set<string>()) // 正在播放离场 animation 的 id
 const leavingItems = ref<LeavingRow[]>([]) // 已从 layout 移除、DOM 仍保留的离场项
+
+/** layout 位移动画结束后移除 layout-anim（Pin 后切到 span0 实时定位） */
+const cancelLayoutAnim = (id: string) => {
+  if (!layoutAnimIds.value.has(id)) return
+  const next = new Set(layoutAnimIds.value)
+  next.delete(id)
+  layoutAnimIds.value = next
+}
+
+/** 外层 item transform 过渡结束 */
+const onItemTransitionEnd = (e: TransitionEvent, row: RenderRow) => {
+  if (row._leaving === true || e.propertyName !== 'transform') return
+  cancelLayoutAnim(row.id)
+}
 
 /** 取消指定 id 的入场动画状态 */
 const cancelEnter = (id: string) => {
@@ -201,9 +222,10 @@ const ItemStyle = computed(() => {
     const layoutDurationMs = mapItemPositionDuration.value.get(id) ?? POSITION_DURATION_MIN
 
     if (isSticky) {
-      const spanRect = measureSpanRectByIndex(0)
-      if (!spanRect) return {}
-      const { x, y, width, height } = spanRect
+      const animating = layoutAnimIds.value.has(id)
+      const rect = animating ? getRect(index, _leaving, id) : measureSpanRectByIndex(0)
+      if (!rect) return {}
+      const { x, y, width, height } = rect
       const cx = x + width / 2
       const cy = y + height / 2
       const py = cy + scrollOffset.y
@@ -230,9 +252,10 @@ const ItemInnerStyle = computed(() => {
   return (row: RenderRow) => {
     const { id, index, _leaving } = row
     if (_leaving === false && row.item.sticky === true) {
-      const spanRect = measureSpanRectByIndex(0)
-      if (spanRect) {
-        return { width: `${spanRect.width}px`, height: `${spanRect.height}px` }
+      const animating = layoutAnimIds.value.has(id)
+      const rect = animating ? getRect(index, _leaving, id) : measureSpanRectByIndex(0)
+      if (rect) {
+        return { width: `${rect.width}px`, height: `${rect.height}px` }
       }
     }
     const config = getRect(index, _leaving, id)
@@ -353,12 +376,31 @@ const applyGridWatch = async () => {
 }
 
 let layoutWatchChain: Promise<void> = Promise.resolve() // watch 串行队列，避免并行 sync
+let phasedLayoutApplyActive = false // 分阶段 Pin：layout → mapRect → rAF → sticky，期间跳过 watch 重复 sync
 
 const layoutGeometryKey = () => [layout.value.gap, layout.value.cols, layout.value.rows, ...layout.value.items.map((c) => `${c.x},${c.y},${c.w},${c.h}`)].join('|')
 
+/** 分阶段应用：先 layout + 测 span，下一帧再开 sticky（保证过渡起点） */
+const enqueuePhasedLayoutApply = (stickyId: string) => {
+  phasedLayoutApplyActive = true
+  layoutWatchChain = layoutWatchChain
+    .then(async () => {
+      await nextTick()
+      await syncItemsLayout()
+      await new Promise<void>((r) => requestAnimationFrame(() => r()))
+      gridItems.value = gridItems.value.map((g) => ({ ...g, sticky: g.id === stickyId }))
+      layoutAnimIds.value = new Set([...layoutAnimIds.value, stickyId])
+      await nextTick()
+    })
+    .catch((err) => console.error('[PrAdaptiveGrid] phased layout apply failed', err))
+    .finally(() => {
+      phasedLayoutApplyActive = false
+    })
+}
+
 /** 仅几何变化时重新测量（不触发 enter/leave） */
 watch(layoutGeometryKey, () => {
-  if (gridItems.value.length === 0) return
+  if (gridItems.value.length === 0 || phasedLayoutApplyActive) return
   layoutWatchChain = layoutWatchChain.then(() => syncSize()).catch((err) => console.error('[PrAdaptiveGrid] geometry watch failed', err))
 })
 
@@ -366,6 +408,7 @@ watch(layoutGeometryKey, () => {
 watch(
   () => gridItems.value.map((g) => `${g.id}:${g.sticky ?? ''}:${g.fixed ?? ''}`).join('|'),
   () => {
+    if (phasedLayoutApplyActive) return
     layoutWatchChain = layoutWatchChain.then(() => applyGridWatch()).catch((err) => console.error('[PrAdaptiveGrid] grid watch failed', err))
   }
 )
@@ -417,18 +460,39 @@ const mergeItemOptions = (id: string, prev: GridItem | undefined, option?: GridI
   fixed: option && 'fixed' in option ? option.fixed : prev?.fixed
 })
 
+/** 本次提交是否新开启 sticky（用于分阶段 Pin） */
+const findNewlyStickyId = (idList: string[], prevById: Map<string, GridItem>, optionById?: Map<string, GridItemOptions>) => {
+  for (const id of idList) {
+    const wasSticky = prevById.get(id)?.sticky === true
+    const opt = optionById?.get(id)
+    const nextSticky = opt && 'sticky' in opt ? opt.sticky : prevById.get(id)?.sticky
+    if (nextSticky === true && !wasSticky) return id
+  }
+  return undefined
+}
+
 /** 按 id 顺序重算 span 几何并同步 gridItems */
 const applyLayoutFromIds = (idList: string[], optionById?: Map<string, GridItemOptions>) => {
   const geo = props.getLayout(idList.length)
   const prevById = new Map(gridItems.value.map((g) => [g.id, g]))
-  layout.value = geo
-  gridItems.value = idList.map((id) => mergeItemOptions(id, prevById.get(id), optionById?.get(id)))
+  const newlyStickyId = findNewlyStickyId(idList, prevById, optionById)
 
-  const newlyStickyId = gridItems.value.find((g) => g.sticky === true && prevById.get(g.id)?.sticky !== true)?.id
+  layout.value = geo
+
   if (newlyStickyId) {
-    gridItems.value = gridItems.value.map((g) => ({ ...g, sticky: g.id === newlyStickyId }))
+    gridItems.value = idList.map((id) => {
+      const merged = mergeItemOptions(id, prevById.get(id), optionById?.get(id))
+      return { ...merged, sticky: false }
+    })
+    enqueuePhasedLayoutApply(newlyStickyId)
+    return
   }
 
+  gridItems.value = idList.map((id) => mergeItemOptions(id, prevById.get(id), optionById?.get(id)))
+  const activeStickyId = gridItems.value.find((g) => g.sticky === true)?.id
+  if (activeStickyId) {
+    gridItems.value = gridItems.value.map((g) => ({ ...g, sticky: g.id === activeStickyId }))
+  }
 }
 
 /** 新增或更新 item；id 已存在时仅合并传入的 options */
