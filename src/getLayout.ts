@@ -1,23 +1,19 @@
 import { Layout } from './types'
 
 // 布局一
-const getLayoutModel1 = (ids: string[]): Layout => {
+const getLayoutModel1 = (length: number): Layout => {
   const COLS = 5 // 最大列
   const ROWS = 3 // 最大行
-  const itemsNum = COLS * ROWS // 首屏最大数量item
 
-  const length = ids.length
+  let itemsNum = COLS * ROWS // 首屏最大数量item
 
-  const mainIds = ids.slice(0, itemsNum) // 首页items
-
-  const surplusIds = ids.slice(itemsNum, length) // 剩余items
+  let surplusItemsNum = Math.max(0, length - itemsNum) // 剩余items
 
   // 对最后一行回退补齐
   while (true) {
-    if (surplusIds.length % (COLS - 1) === 0) break
-    const id = mainIds.pop()
-    if (!id) break
-    surplusIds.unshift(id)
+    if (surplusItemsNum % (COLS - 1) === 0) break
+    itemsNum -= 1
+    surplusItemsNum += 1
   }
 
   // console.log('\x1b[38;2;0;151;255m%c%s\x1b[0m', 'color:#0097ff;', `------->Breathe: mainIds`, mainIds)
@@ -25,8 +21,8 @@ const getLayoutModel1 = (ids: string[]): Layout => {
 
   const layout: Layout = { gap: 8, cols: 1, rows: 1, items: [] }
 
-  const createMain = (mainIds: string[]) => {
-    switch (mainIds.length) {
+  const createMain = () => {
+    switch (itemsNum) {
       case 1:
         {
           layout.cols = 1
@@ -304,84 +300,70 @@ const getLayoutModel1 = (ids: string[]): Layout => {
     }
   }
 
-  createMain(mainIds)
+  createMain()
 
-  const createSurplus = (surplusIds: string[]) => {
-    if (surplusIds.length === 0) return
+  const createSurplus = () => {
+    if (surplusItemsNum === 0) return
 
-    if (surplusIds.length % 4 === 0) {
+    if (surplusItemsNum % 4 === 0) {
       let x = 1
       let y = ROWS + 1
 
       while (true) {
-        if (surplusIds.length === 0) break
+        if (surplusItemsNum === 0) break
         if (x === 21) {
           x = 1
           y++
         }
-        const id = surplusIds.shift()
-        if (!id) break
-        const item = { id, x, y, w: 5, h: 1 }
+
+        const item = { x, y, w: 5, h: 1 }
         layout.items.push(item)
         x += 5
       }
     }
 
-    if (surplusIds.length % 5 === 0) {
+    if (surplusItemsNum % 5 === 0) {
       let x = 1
       let y = ROWS + 1
 
       while (true) {
-        if (surplusIds.length === 0) break
+        if (surplusItemsNum === 0) break
         if (x === 21) {
           x = 1
           y++
         }
-        const id = surplusIds.shift()
-        if (!id) break
-        const item = { id, x, y, w: 5, h: 1 }
+        const item = { x, y, w: 5, h: 1 }
         layout.items.push(item)
         x += 4
       }
     }
   }
 
-  createSurplus(surplusIds)
+  createSurplus()
 
   return layout
 }
 
 // 布局二
-const getLayoutModel2 = (ids: string[]): Layout => {
+const getLayoutModel2 = (length: number): Layout => {
   const COLS = 2 // 最大列
   const ROWS = 5 // 最大行
+
   const itemsNum = COLS * ROWS + 1 // 首屏最大数量item
 
-  const length = ids.length
-
-  const mainIds = ids.slice(0, itemsNum) // 首页items
-
-  const surplusIds = ids.slice(itemsNum, length) // 剩余items
-
-  // 对最后一行回退补齐
-  while (true) {
-    if (surplusIds.length % (COLS - 1) === 0) break
-    const id = mainIds.pop()
-    if (!id) break
-    surplusIds.unshift(id)
-  }
+  const surplusItemsNum = Math.max(0, length - itemsNum) // 剩余items
 
   const layout: Layout = { gap: 8, cols: 1, rows: 1, items: [] }
 
-  const createMain = (mainIds: string[]) => {
-    switch (mainIds.length) {
+  const createMain = () => {
+    switch (itemsNum) {
       case 1:
         {
           layout.cols = 1
           layout.rows = 1
           layout.items = [
             //
-            { id: mainIds[0], x: 1, y: 1, w: 1, h: 1 }
+            { x: 1, y: 1, w: 1, h: 1 }
           ]
         }
         break
@@ -391,9 +373,9 @@ const getLayoutModel2 = (ids: string[]): Layout => {
           layout.rows = 1
           layout.items = [
             //
-            { id: mainIds[0], x: 1, y: 1, w: 9, h: 1 },
+            { x: 1, y: 1, w: 9, h: 1 },
             //
-            { id: mainIds[1], x: 10, y: 1, w: 3, h: 1 }
+            { x: 10, y: 1, w: 3, h: 1 }
           ]
         }
         break
@@ -568,7 +550,7 @@ const getLayoutModel2 = (ids: string[]): Layout => {
     }
   }
 
-  createMain(mainIds)
+  createMain()
 
   const createSurplus = (surplusIds: string[]) => {
     if (surplusIds.length === 0) return
@@ -595,14 +577,14 @@ const getLayoutModel2 = (ids: string[]): Layout => {
     }
   }
 
-  createSurplus(surplusIds)
+  createSurplus()
 
   return layout
 }
 
 // 生成布局
-export const getLayout = (mode: '1' | '2', ids: string[]): Layout => {
-  if (mode === '1') return getLayoutModel1(ids)
-  else if (mode === '2') return getLayoutModel2(ids)
+export const getLayout = (mode: '1' | '2', length: number): Layout => {
+  if (mode === '1') return getLayoutModel1(length)
+  else if (mode === '2') return getLayoutModel2(length)
   return { gap: 0, cols: 1, rows: 1, items: [] }
 }

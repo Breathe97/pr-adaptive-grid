@@ -1,6 +1,4 @@
 export interface LayoutItem {
-  /** 元素唯一 ID */
-  id: string
   /** 网格开始的水平坐标位置（列索引，0-based） */
   x: number
   /** 网格开始的垂直坐标位置（行索引，0-based） */

@@ -1,7 +1,7 @@
 <template>
   <div class="demo">
     <div class="grid-wrap">
-      <PrAdaptiveGrid ref="gridRef" :layout="layout">
+      <PrAdaptiveGrid ref="gridRef" v-model:layout="layout">
         <template #default="{ item }">
           <div class="tile" :class="{ 'is-pinned': item.sticky, 'is-fixed': item.fixed }" :style="{ backgroundColor: getTileColor(item.id) }">
             <div v-if="item.sticky || item.fixed" class="tile-badges">
