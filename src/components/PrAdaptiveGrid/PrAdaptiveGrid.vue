@@ -2,7 +2,7 @@
   <div class="pr-adaptive-grid" @scroll="onScroll">
     <div ref="pr_adaptive_grid_content_ref" class="pr-adaptive-grid-content" :style="ContainerStyle">
       <div v-for="item in Items" :key="`span-${item.id}`" class="pr-adaptive-grid-item-span" :data-item-id="item.id" :style="ItemSpanStyle(item)">{{ item.id }}</div>
-      <div v-for="item in Items" :key="`item-${item.id}`" class="pr-adaptive-grid-item" :style="ItemStyle(item.id)">
+      <div v-for="item in Items" :key="`item-${item.id}`" class="pr-adaptive-grid-item" :class="{ 'pr-adaptive-grid-item-no-transition': layoutReady === false }" :style="ItemStyle(item.id)">
         <div class="pr-adaptive-grid-item-inner" :style="ItemInnerStyle(item.id)">
           <!-- <slot :item="item" /> -->
         </div>
@@ -24,6 +24,8 @@ const props = defineProps({
 })
 
 const pr_adaptive_grid_content_ref = ref<HTMLElement>()
+
+const layoutReady = ref(false)
 
 const size = reactive({ x: 0, y: 0, width: 0, height: 0 })
 
@@ -98,6 +100,7 @@ const syncItemsLayout = async () => {
 
   console.log('\x1b[38;2;0;151;255m%c%s\x1b[0m', 'color:#0097ff;', `------->Breathe: syncItemsLayout`, next)
   mapItemStyle.value = next
+  layoutReady.value = true
 }
 
 const onScroll = () => {}
@@ -195,5 +198,9 @@ onBeforeUnmount(() => {
   transition:
     transform var(--ag-duration-position) var(--ag-ease-fade),
     opacity var(--ag-duration-position) var(--ag-ease-fade);
+}
+
+.pr-adaptive-grid-item-no-transition {
+  transition: none !important;
 }
 </style>
