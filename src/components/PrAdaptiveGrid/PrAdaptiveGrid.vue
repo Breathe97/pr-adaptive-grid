@@ -183,7 +183,7 @@ const ItemInnerStyle = computed(() => {
 const itemClass = (id: string, isLeaving: boolean) => ({
   'pr-adaptive-grid-item-layout-anim': layoutAnimIds.value.has(id) && !isLeaving,
   'pr-adaptive-grid-item-leaving': isLeaving,
-  'pr-adaptive-grid-item-no-transition': layoutReady.value === false
+  'pr-adaptive-grid-item-no-transition': layoutReady.value === false || enterAnimIds.value.has(id)
 })
 
 /** inner 的入场/离场/首屏 class */
