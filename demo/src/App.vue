@@ -161,7 +161,7 @@ const shuffleItems = () => {
   void initGrid()
 }
 
-/** 一次 setItems + 一次 syncLayout；讲座模式与 sticky 同帧提交 */
+/** 一次 setItems + syncLayout（组件内分阶段：layout → mapRect → sticky） */
 const initGrid = async () => {
   if (!gridRef.value) return
   const byId = new Map<string, { sticky?: boolean }>()

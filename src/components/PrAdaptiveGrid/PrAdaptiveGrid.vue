@@ -39,7 +39,7 @@ const pr_adaptive_grid_content_ref = ref<HTMLElement>() // Grid 内容容器 DOM
 
 const layoutReady = ref(false) // 首屏布局是否已就绪（就绪前禁用 transition）
 const size = reactive({ x: 0, y: 0, width: 0, height: 0 }) // content 在视口中的位置与尺寸
-const scrollOffset = reactive({ x: 0, y: 0 }) // .pr-adaptive-grid 的 scrollLeft/Top
+const scrollTop = ref(0) // .pr-adaptive-grid 的 scrollTop，Pin 定位用
 const prevIds = ref<string[]>([]) // 上一轮 layout 的 id 列表，用于 diff
 const lastItemById = ref(new Map<string, GridItem>()) // 上一轮 item 数据，供离场时 slot 使用
 const mapRectById = ref(new Map<string, ItemRect>()) // 各 id 当前帧矩形（驱动绝对定位）
@@ -76,7 +76,6 @@ const ItemSpanStyle = computed(() => {
   }
 })
 
-const mapRectByIndex = ref(new Map<number, ItemRect>()) // 各 span 下标相对 content 的测量结果（驱动定位）
 const layoutAnimIds = ref(new Set<string>()) // 需要播放 layout 位移动画的 id
 
 /** 读取 item 相对 content 的像素矩形（按 id；测量前回退 lastRectById，离场用快照） */
@@ -89,7 +88,7 @@ const enterAnimIds = ref(new Set<string>()) // 正在播放入场 animation 的 
 const leaveAnimIds = ref(new Set<string>()) // 正在播放离场 animation 的 id
 const leavingItems = ref<LeavingRow[]>([]) // 已从 layout 移除、DOM 仍保留的离场项
 
-/** layout 位移动画结束后移除 layout-anim（Pin 后切到 span0 实时定位） */
+/** layout 位移动画结束后移除 layout-anim（Pin 滚动更新不再走 transition） */
 const cancelLayoutAnim = (id: string) => {
   if (!layoutAnimIds.value.has(id)) return
   const next = new Set(layoutAnimIds.value)
@@ -202,7 +201,7 @@ const calcPositionDurationMs = (prev: ItemRect | undefined, next: ItemRect): num
   return Math.round(POSITION_DURATION_MIN + t * (POSITION_DURATION_MAX - POSITION_DURATION_MIN))
 }
 
-/** 用 getBoundingClientRect 测量指定 index 的 span（相对 content） */
+/** getBoundingClientRect 测量 span（相对 content） */
 const measureSpanRectByIndex = (index: number): ItemRect | undefined => {
   const content = pr_adaptive_grid_content_ref.value
   if (!content) return undefined
@@ -213,24 +212,24 @@ const measureSpanRectByIndex = (index: number): ItemRect | undefined => {
   return { x: x - contentBox.x, y: y - contentBox.y, width, height }
 }
 
+/** Pin 目标格：index 0 的 span 矩形 */
+const measurePinSpanRect = () => measureSpanRectByIndex(0)
+
 /** 外层 item 中心定位的 transform */
 const ItemStyle = computed(() => {
-  readScrollOffset()
+  void scrollTop.value
   return (row: RenderRow) => {
     const { id, index, _leaving } = row
     const isSticky = _leaving === false && row.item.sticky === true
     const layoutDurationMs = mapItemPositionDuration.value.get(id) ?? POSITION_DURATION_MIN
 
     if (isSticky) {
-      const animating = layoutAnimIds.value.has(id)
-      const rect = animating ? getRect(index, _leaving, id) : measureSpanRectByIndex(0)
+      const rect = measurePinSpanRect()
       if (!rect) return {}
-      const { x, y, width, height } = rect
-      const cx = x + width / 2
-      const cy = y + height / 2
-      const py = cy + scrollOffset.y
+      const cx = rect.x + rect.width / 2
+      const cy = rect.y + rect.height / 2
       return {
-        transform: `translate3d(${cx}px, ${py}px, 0) translate(-50%, -50%)`,
+        transform: `translate3d(${cx}px, ${cy + scrollTop.value}px, 0) translate(-50%, -50%)`,
         '--ag-duration-position': `${layoutDurationMs}ms`
       }
     }
@@ -252,11 +251,8 @@ const ItemInnerStyle = computed(() => {
   return (row: RenderRow) => {
     const { id, index, _leaving } = row
     if (_leaving === false && row.item.sticky === true) {
-      const animating = layoutAnimIds.value.has(id)
-      const rect = animating ? getRect(index, _leaving, id) : measureSpanRectByIndex(0)
-      if (rect) {
-        return { width: `${rect.width}px`, height: `${rect.height}px` }
-      }
+      const rect = measurePinSpanRect()
+      if (rect) return { width: `${rect.width}px`, height: `${rect.height}px` }
     }
     const config = getRect(index, _leaving, id)
     if (!config) return {}
@@ -326,7 +322,6 @@ const syncItemsLayout = async () => {
   })
   mapItemPositionDuration.value = durationNext
 
-  mapRectByIndex.value = next
   mapRectById.value = rectById
   lastRectById.value = rectById
 
@@ -389,7 +384,6 @@ const enqueuePhasedLayoutApply = (stickyId: string) => {
       await syncItemsLayout()
       await new Promise<void>((r) => requestAnimationFrame(() => r()))
       gridItems.value = gridItems.value.map((g) => ({ ...g, sticky: g.id === stickyId }))
-      layoutAnimIds.value = new Set([...layoutAnimIds.value, stickyId])
       await nextTick()
     })
     .catch((err) => console.error('[PrAdaptiveGrid] phased layout apply failed', err))
@@ -424,18 +418,11 @@ const scheduleResizeSync = () => {
   }, 32)
 }
 
-/** 从滚动容器读取当前 scroll（与 onScroll 一致） */
-const readScrollOffset = () => {
-  const el = pr_adaptive_grid_ref.value
-  if (!el) return { x: scrollOffset.x, y: scrollOffset.y }
-  return { x: el.scrollLeft, y: el.scrollTop }
-}
-
 /** 记录滚动偏移 */
 const onScroll = () => {
-  const { x, y } = readScrollOffset()
-  scrollOffset.x = x
-  scrollOffset.y = y
+  const el = pr_adaptive_grid_ref.value
+  if (!el) return
+  scrollTop.value = el.scrollTop
 }
 
 let observer: ResizeObserver // 监听 content 容器尺寸变化
