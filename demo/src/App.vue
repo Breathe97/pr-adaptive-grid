@@ -87,6 +87,7 @@ const createIds = (count: number = 8) => {
   const ids = []
   for (let index = 1; index <= count; index++) {
     ids.push(`${index}`)
+    ensureTileColor(`${index}`)
   }
   return ids.reverse()
 }
