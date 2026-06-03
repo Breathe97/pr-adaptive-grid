@@ -15,9 +15,6 @@ export const getLayout = (length: number): Layout => {
     surplusItemsNum += 1
   }
 
-  // console.log('\x1b[38;2;0;151;255m%c%s\x1b[0m', 'color:#0097ff;', `------->Breathe: itemsNum`, itemsNum)
-  // console.log('\x1b[38;2;0;151;255m%c%s\x1b[0m', 'color:#0097ff;', `------->Breathe: surplusItemsNum`, surplusItemsNum)
-
   const layout: Layout = { gap: 8, cols: 1, rows: 1, items: [] }
 
   const createMain = () => {
@@ -300,6 +297,7 @@ export const getLayout = (length: number): Layout => {
 
         const item = { x, y, w: 5, h: 1 }
         layout.items.push(item)
+        surplusItemsNum -= 1
         x += 5
       }
     }
@@ -316,6 +314,7 @@ export const getLayout = (length: number): Layout => {
         }
         const item = { x, y, w: 5, h: 1 }
         layout.items.push(item)
+        surplusItemsNum -= 1
         x += 4
       }
     }

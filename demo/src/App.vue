@@ -50,9 +50,9 @@ import { ref, onMounted, nextTick } from 'vue'
 import { PrAdaptiveGrid, getLayout, getLectureLayout } from '../../src/index.ts'
 import type { GetLayoutFn, GridSlotItem, PrAdaptiveGridExpose } from '../../src/index.ts'
 
-const DEFAULT_USER_COUNT = 8 // 演示初始 item 数量
+const DEFAULT_USER_COUNT = 11 // 演示初始 item 数量
 
-const layoutMode = ref(2) // 应用层布局模式：1 默认，2 讲座（Pin）
+const layoutMode = ref(1) // 应用层布局模式：1 默认，2 讲座（Pin）
 
 /** 闭包读取 layoutMode，组件只传 length */
 const resolveLayout: GetLayoutFn = (length) => (layoutMode.value === 2 ? getLectureLayout(length) : getLayout(length))
