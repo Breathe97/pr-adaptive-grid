@@ -263,13 +263,15 @@ const syncItemsLayout = async () => {
 
   layoutAnimIds.value = new Set(gridItems.value.map((g) => g.id))
 
-  const prev = mapRectByIndex.value
+  const mapRectById = ref(new Map<string, ItemRect>()) // 各 id 上一轮测量结果（仅用于位移动画）
+
   const durationNext = new Map<string, number>()
   const rectById = new Map<string, ItemRect>()
   gridItems.value.forEach((g, index) => {
     const rect = next.get(index)
     if (!rect) return
-    durationNext.set(g.id, calcPositionDurationMs(prev.get(index), rect))
+    durationNext.set(g.id, calcPositionDurationMs(mapRectById.value.get(g.id), rect))
+    mapRectById.value = new Map(rectById)
     rectById.set(g.id, rect)
   })
   mapItemPositionDuration.value = durationNext
