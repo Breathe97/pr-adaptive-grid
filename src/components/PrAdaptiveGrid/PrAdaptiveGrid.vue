@@ -100,7 +100,11 @@ const syncItemsLayout = async () => {
 
   console.log('\x1b[38;2;0;151;255m%c%s\x1b[0m', 'color:#0097ff;', `------->Breathe: syncItemsLayout`, next)
   mapItemStyle.value = next
-  layoutReady.value = true
+
+  if (layoutReady.value === false) {
+    await new Promise((r) => requestAnimationFrame(r)) // 可选，更稳
+    layoutReady.value = true
+  }
 }
 
 const onScroll = () => {}
