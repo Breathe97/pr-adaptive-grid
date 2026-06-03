@@ -85,7 +85,7 @@ const getLayoutModel1 = (ids: string[]): Layout => {
 
             { id: mainIds[2], x: 1, y: 2, w: 2, h: 1 },
             { id: mainIds[3], x: 3, y: 2, w: 2, h: 1 },
-            { id: mainIds[4], x: 5, y: 2, w: 3, h: 1 }
+            { id: mainIds[4], x: 5, y: 2, w: 2, h: 1 }
           ]
         }
         break
