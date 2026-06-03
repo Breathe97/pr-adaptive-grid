@@ -429,108 +429,117 @@ const getLayoutModel2 = (ids: string[]): Layout => {
         break
       case 5:
         {
-          layout.cols = 6
+          layout.cols = 12
           layout.rows = 2
           layout.items = [
             //
-            { id: mainIds[0], x: 1, y: 1, w: 3, h: 1 },
-            { id: mainIds[1], x: 4, y: 1, w: 3, h: 1 },
-
+            { id: mainIds[0], x: 3, y: 1, w: 8, h: 2 },
+            //
+            { id: mainIds[1], x: 1, y: 1, w: 2, h: 1 },
             { id: mainIds[2], x: 1, y: 2, w: 2, h: 1 },
-            { id: mainIds[3], x: 3, y: 2, w: 2, h: 1 },
-            { id: mainIds[4], x: 5, y: 2, w: 2, h: 1 }
+            //
+            { id: mainIds[3], x: 11, y: 1, w: 2, h: 1 },
+            { id: mainIds[4], x: 11, y: 2, w: 2, h: 1 }
           ]
         }
         break
       case 6:
         {
-          layout.cols = 3
-          layout.rows = 2
+          layout.cols = 12
+          layout.rows = 3
           layout.items = [
             //
-            { id: mainIds[0], x: 1, y: 1, w: 1, h: 1 },
-            { id: mainIds[1], x: 2, y: 1, w: 1, h: 1 },
-            { id: mainIds[2], x: 3, y: 1, w: 1, h: 1 },
+            { id: mainIds[0], x: 1, y: 1, w: 8, h: 3 },
 
-            { id: mainIds[3], x: 1, y: 2, w: 1, h: 1 },
-            { id: mainIds[4], x: 2, y: 2, w: 1, h: 1 },
-            { id: mainIds[5], x: 3, y: 2, w: 1, h: 1 }
+            //
+            { id: mainIds[1], x: 9, y: 1, w: 2, h: 1 },
+            { id: mainIds[2], x: 11, y: 1, w: 2, h: 1 },
+            //
+            { id: mainIds[5], x: 9, y: 2, w: 4, h: 1 },
+            //
+            { id: mainIds[3], x: 9, y: 3, w: 2, h: 1 },
+            { id: mainIds[4], x: 11, y: 3, w: 2, h: 1 }
           ]
         }
         break
       case 7:
         {
           layout.cols = 12
-          layout.rows = 2
+          layout.rows = 3
           layout.items = [
             //
-            { id: mainIds[0], x: 1, y: 1, w: 4, h: 1 },
-            { id: mainIds[1], x: 5, y: 1, w: 4, h: 1 },
-            { id: mainIds[2], x: 9, y: 1, w: 4, h: 1 },
-
-            { id: mainIds[3], x: 1, y: 2, w: 3, h: 1 },
-            { id: mainIds[4], x: 4, y: 2, w: 3, h: 1 },
-            { id: mainIds[5], x: 7, y: 2, w: 3, h: 1 },
-            { id: mainIds[6], x: 10, y: 2, w: 3, h: 1 }
+            { id: mainIds[0], x: 3, y: 1, w: 8, h: 3 },
+            //
+            { id: mainIds[1], x: 1, y: 1, w: 2, h: 1 },
+            { id: mainIds[2], x: 1, y: 2, w: 2, h: 1 },
+            { id: mainIds[3], x: 1, y: 3, w: 2, h: 1 },
+            //
+            { id: mainIds[4], x: 11, y: 1, w: 2, h: 1 },
+            { id: mainIds[5], x: 11, y: 2, w: 2, h: 1 },
+            { id: mainIds[6], x: 11, y: 3, w: 2, h: 1 }
           ]
         }
         break
       case 8:
         {
-          layout.cols = 4
-          layout.rows = 2
+          layout.cols = 12
+          layout.rows = 12
           layout.items = [
             //
-            { id: mainIds[0], x: 1, y: 1, w: 1, h: 1 },
-            { id: mainIds[1], x: 2, y: 1, w: 1, h: 1 },
-            { id: mainIds[2], x: 3, y: 1, w: 1, h: 1 },
-            { id: mainIds[3], x: 4, y: 1, w: 1, h: 1 },
-
-            { id: mainIds[4], x: 1, y: 2, w: 1, h: 1 },
-            { id: mainIds[5], x: 2, y: 2, w: 1, h: 1 },
-            { id: mainIds[6], x: 3, y: 2, w: 1, h: 1 },
-            { id: mainIds[7], x: 4, y: 2, w: 1, h: 1 }
+            { id: mainIds[0], x: 4, y: 1, w: 7, h: 12 },
+            //
+            { id: mainIds[1], x: 1, y: 1, w: 3, h: 4 },
+            { id: mainIds[2], x: 1, y: 5, w: 3, h: 4 },
+            { id: mainIds[3], x: 1, y: 9, w: 3, h: 4 },
+            //
+            { id: mainIds[4], x: 11, y: 1, w: 2, h: 3 },
+            { id: mainIds[5], x: 11, y: 4, w: 2, h: 3 },
+            { id: mainIds[6], x: 11, y: 7, w: 2, h: 3 },
+            { id: mainIds[7], x: 11, y: 10, w: 2, h: 3 }
           ]
         }
         break
       case 9:
         {
-          layout.cols = 3
-          layout.rows = 3
+          layout.cols = 12
+          layout.rows = 4
           layout.items = [
             //
-            { id: mainIds[0], x: 1, y: 1, w: 1, h: 1 },
-            { id: mainIds[1], x: 2, y: 1, w: 1, h: 1 },
-            { id: mainIds[2], x: 3, y: 1, w: 1, h: 1 },
-
-            { id: mainIds[3], x: 1, y: 2, w: 1, h: 1 },
-            { id: mainIds[4], x: 2, y: 2, w: 1, h: 1 },
-            { id: mainIds[5], x: 3, y: 2, w: 1, h: 1 },
-
-            { id: mainIds[6], x: 1, y: 3, w: 1, h: 1 },
-            { id: mainIds[7], x: 2, y: 3, w: 1, h: 1 },
-            { id: mainIds[8], x: 3, y: 3, w: 1, h: 1 }
+            { id: mainIds[0], x: 3, y: 1, w: 8, h: 4 },
+            //
+            { id: mainIds[1], x: 1, y: 1, w: 2, h: 1 },
+            { id: mainIds[2], x: 1, y: 2, w: 2, h: 1 },
+            { id: mainIds[3], x: 1, y: 3, w: 2, h: 1 },
+            { id: mainIds[4], x: 1, y: 4, w: 2, h: 1 },
+            //
+            { id: mainIds[5], x: 11, y: 1, w: 2, h: 1 },
+            { id: mainIds[6], x: 11, y: 2, w: 2, h: 1 },
+            { id: mainIds[7], x: 11, y: 3, w: 2, h: 1 },
+            { id: mainIds[8], x: 11, y: 4, w: 2, h: 1 }
           ]
         }
         break
       case 10:
         {
-          layout.cols = 12
-          layout.rows = 3
+          layout.cols = 15
+          layout.rows = 11
           layout.items = [
             //
-            { id: mainIds[0], x: 1, y: 1, w: 4, h: 1 },
-            { id: mainIds[1], x: 5, y: 1, w: 4, h: 1 },
-            { id: mainIds[2], x: 9, y: 1, w: 4, h: 1 },
-
-            { id: mainIds[3], x: 1, y: 2, w: 4, h: 1 },
-            { id: mainIds[4], x: 5, y: 2, w: 4, h: 1 },
-            { id: mainIds[5], x: 9, y: 2, w: 4, h: 1 },
-
-            { id: mainIds[6], x: 1, y: 3, w: 3, h: 1 },
-            { id: mainIds[7], x: 4, y: 3, w: 3, h: 1 },
-            { id: mainIds[8], x: 7, y: 3, w: 3, h: 1 },
-            { id: mainIds[9], x: 10, y: 3, w: 3, h: 1 }
+            { id: mainIds[0], x: 1, y: 1, w: 11, h: 11 },
+            //
+            { id: mainIds[1], x: 12, y: 5, w: 4, h: 3 },
+            //
+            { id: mainIds[2], x: 12, y: 1, w: 2, h: 2 },
+            { id: mainIds[3], x: 14, y: 1, w: 2, h: 2 },
+            //
+            { id: mainIds[4], x: 12, y: 3, w: 2, h: 2 },
+            { id: mainIds[5], x: 14, y: 3, w: 2, h: 2 },
+            //
+            { id: mainIds[6], x: 12, y: 8, w: 2, h: 2 },
+            { id: mainIds[7], x: 14, y: 8, w: 2, h: 2 },
+            //
+            { id: mainIds[8], x: 12, y: 10, w: 2, h: 2 },
+            { id: mainIds[9], x: 14, y: 10, w: 2, h: 2 }
           ]
         }
         break
