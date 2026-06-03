@@ -19,7 +19,9 @@ import type { GetLayoutFn, GridItem, GridItemOptions, GridSlotItem, Layout, Layo
 
 type ItemRect = { x: number; y: number; width: number; height: number } // 相对 content 的像素矩形
 type LeavingRow = { id: string; index: number; rect: ItemRect; item: GridItem } // 离场中的 item 快照
-type RenderRow = { id: string; index: number; item: GridItem; slotItem: GridSlotItem; _leaving: boolean } // 模板 v-for 的一行数据
+type RenderRow =
+  | { id: string; index: number; item: GridItem; slotItem: GridSlotItem; _leaving: false }
+  | { id: string; index: number; item: GridItem; slotItem: GridSlotItem; _leaving: true } // 模板 v-for 的一行数据
 
 const props = defineProps({
   getLayout: { type: Function as PropType<GetLayoutFn>, default: undefined } // 自定义布局函数，默认内置 getLayout
@@ -141,27 +143,26 @@ const onInnerAnimationEnd = (e: AnimationEvent, row: RenderRow) => {
 const RenderItems = computed((): RenderRow[] => {
   const leavingIdSet = new Set(leavingItems.value.map((l) => l.id))
   const cells = layout.value.items
-  const active = gridItems.value
-    .map((item, index) => {
-      const cell = cells[index]
-      if (!cell) return null
-      return {
-        id: item.id,
-        index,
-        item,
-        slotItem: { ...item, ...cell },
-        _leaving: false as const
-      }
+  const active: RenderRow[] = []
+  gridItems.value.forEach((item, index) => {
+    const cell = cells[index]
+    if (!cell || leavingIdSet.has(item.id)) return
+    active.push({
+      id: item.id,
+      index,
+      item,
+      slotItem: { ...item, ...cell },
+      _leaving: false
     })
-    .filter((row): row is RenderRow => row != null && !leavingIdSet.has(row.id))
-  const leaving = leavingItems.value.map((l) => {
+  })
+  const leaving: RenderRow[] = leavingItems.value.map((l) => {
     const cell = cells[l.index]
     return {
       id: l.id,
       index: l.index,
       item: l.item,
       slotItem: cell ? { ...l.item, ...cell } : { ...l.item, x: 0, y: 0, w: 1, h: 1 },
-      _leaving: true as const
+      _leaving: true
     }
   })
   return [...active, ...leaving]

@@ -1,14 +1,14 @@
 import { Layout } from '../types'
 
 export const getLayout = (length: number): Layout => {
-  const COLS = 5 // ???
-  const ROWS = 3 // ???
+  const COLS = 5 // 设计列数
+  const ROWS = 3 // 设计行数
 
-  let itemsNum = COLS * ROWS // ??????item
+  let itemsNum = COLS * ROWS // 主区可容纳的 item 数
 
-  let surplusItemsNum = Math.max(0, length - itemsNum) // ??items
+  let surplusItemsNum = Math.max(0, length - itemsNum) // 超出主区的 item 数
 
-  // ?????????
+  // 缩减主区格数，直到余数能被 (COLS - 1) 整除
   while (true) {
     if (surplusItemsNum % (COLS - 1) === 0) break
     itemsNum -= 1
@@ -27,7 +27,6 @@ export const getLayout = (length: number): Layout => {
           layout.cols = 1
           layout.rows = 1
           layout.items = [
-            //
             { x: 1, y: 1, w: 1, h: 1 }
           ]
         }
@@ -37,7 +36,6 @@ export const getLayout = (length: number): Layout => {
           layout.cols = 2
           layout.rows = 1
           layout.items = [
-            //
             { x: 1, y: 1, w: 1, h: 1 },
             { x: 2, y: 1, w: 1, h: 1 }
           ]
@@ -48,7 +46,6 @@ export const getLayout = (length: number): Layout => {
           layout.cols = 3
           layout.rows = 1
           layout.items = [
-            //
             { x: 1, y: 1, w: 1, h: 1 },
             { x: 2, y: 1, w: 1, h: 1 },
             { x: 3, y: 1, w: 1, h: 1 }
@@ -60,7 +57,6 @@ export const getLayout = (length: number): Layout => {
           layout.cols = 2
           layout.rows = 2
           layout.items = [
-            //
             { x: 1, y: 1, w: 1, h: 1 },
             { x: 2, y: 1, w: 1, h: 1 },
 
@@ -74,7 +70,6 @@ export const getLayout = (length: number): Layout => {
           layout.cols = 6
           layout.rows = 2
           layout.items = [
-            //
             { x: 1, y: 1, w: 3, h: 1 },
             { x: 4, y: 1, w: 3, h: 1 },
 
@@ -89,7 +84,6 @@ export const getLayout = (length: number): Layout => {
           layout.cols = 3
           layout.rows = 2
           layout.items = [
-            //
             { x: 1, y: 1, w: 1, h: 1 },
             { x: 2, y: 1, w: 1, h: 1 },
             { x: 3, y: 1, w: 1, h: 1 },
@@ -105,7 +99,6 @@ export const getLayout = (length: number): Layout => {
           layout.cols = 12
           layout.rows = 2
           layout.items = [
-            //
             { x: 1, y: 1, w: 4, h: 1 },
             { x: 5, y: 1, w: 4, h: 1 },
             { x: 9, y: 1, w: 4, h: 1 },
@@ -122,7 +115,6 @@ export const getLayout = (length: number): Layout => {
           layout.cols = 4
           layout.rows = 2
           layout.items = [
-            //
             { x: 1, y: 1, w: 1, h: 1 },
             { x: 2, y: 1, w: 1, h: 1 },
             { x: 3, y: 1, w: 1, h: 1 },
@@ -140,7 +132,6 @@ export const getLayout = (length: number): Layout => {
           layout.cols = 3
           layout.rows = 3
           layout.items = [
-            //
             { x: 1, y: 1, w: 1, h: 1 },
             { x: 2, y: 1, w: 1, h: 1 },
             { x: 3, y: 1, w: 1, h: 1 },
@@ -160,7 +151,6 @@ export const getLayout = (length: number): Layout => {
           layout.cols = 12
           layout.rows = 3
           layout.items = [
-            //
             { x: 1, y: 1, w: 4, h: 1 },
             { x: 5, y: 1, w: 4, h: 1 },
             { x: 9, y: 1, w: 4, h: 1 },
@@ -181,7 +171,6 @@ export const getLayout = (length: number): Layout => {
           layout.cols = 12
           layout.rows = 3
           layout.items = [
-            //
             { x: 1, y: 1, w: 4, h: 1 },
             { x: 5, y: 1, w: 4, h: 1 },
             { x: 9, y: 1, w: 4, h: 1 },
@@ -203,7 +192,6 @@ export const getLayout = (length: number): Layout => {
           layout.cols = 20
           layout.rows = 3
           layout.items = [
-            //
             { x: 1, y: 1, w: 5, h: 1 },
             { x: 6, y: 1, w: 5, h: 1 },
             { x: 11, y: 1, w: 5, h: 1 },
@@ -226,7 +214,6 @@ export const getLayout = (length: number): Layout => {
           layout.cols = 20
           layout.rows = 3
           layout.items = [
-            //
             { x: 1, y: 1, w: 5, h: 1 },
             { x: 6, y: 1, w: 5, h: 1 },
             { x: 11, y: 1, w: 5, h: 1 },
@@ -250,7 +237,6 @@ export const getLayout = (length: number): Layout => {
           layout.cols = 20
           layout.rows = 3
           layout.items = [
-            //
             { x: 1, y: 1, w: 5, h: 1 },
             { x: 6, y: 1, w: 5, h: 1 },
             { x: 11, y: 1, w: 5, h: 1 },
@@ -275,7 +261,6 @@ export const getLayout = (length: number): Layout => {
           layout.cols = 20
           layout.rows = 3
           layout.items = [
-            //
             { x: 1, y: 1, w: 4, h: 1 },
             { x: 5, y: 1, w: 4, h: 1 },
             { x: 9, y: 1, w: 4, h: 1 },
