@@ -111,6 +111,7 @@ const syncItemsLayout = async () => {
   }
   layoutAnimIds.value = new Set(Items.value.map((i) => i.id))
   mapItemStyle.value = next
+  lastRectById.value = new Map(next)
   if (layoutReady.value === false) {
     await nextTick()
     await new Promise((r) => requestAnimationFrame(r))
@@ -135,6 +136,7 @@ const enterAnimIds = ref(new Set<string>())
 const leaveAnimIds = ref(new Set<string>())
 const leavingItems = ref<LeavingRow[]>([])
 const lastItemById = ref(new Map<string, LayoutItem>())
+const lastRectById = ref(new Map<string, ItemRect>())
 
 const getRect = (id: string, isLeaving: boolean): ItemRect | undefined => {
   if (isLeaving) return leavingItems.value.find((l) => l.id === id)?.rect
@@ -153,12 +155,33 @@ const innerClass = (id: string, isLeaving: boolean) => ({
   'ag-inner-leave': isLeaving && leaveAnimIds.value.has(id)
 })
 
+const cancelEnter = (id: string) => {
+  if (!enterAnimIds.value.has(id)) return
+  const next = new Set(enterAnimIds.value)
+  next.delete(id)
+  enterAnimIds.value = next
+}
+const cancelLeave = (id: string) => {
+  leavingItems.value = leavingItems.value.filter((l) => l.id !== id)
+  if (!leaveAnimIds.value.has(id)) return
+  const next = new Set(leaveAnimIds.value)
+  next.delete(id)
+  leaveAnimIds.value = next
+}
+const pruneAnimState = (layoutIdSet: Set<string>) => {
+  enterAnimIds.value = new Set([...enterAnimIds.value].filter((id) => layoutIdSet.has(id)))
+  leavingItems.value = leavingItems.value.filter((l) => !layoutIdSet.has(l.id))
+  leaveAnimIds.value = new Set([...leaveAnimIds.value].filter((id) => !layoutIdSet.has(id)))
+}
+
 const onItemEnter = (id: string) => {
+  cancelLeave(id)
   enterAnimIds.value = new Set([...enterAnimIds.value, id])
 }
 
 const onItemLeave = (id: string) => {
-  const rect = mapItemStyle.value.get(id)
+  cancelEnter(id)
+  const rect = mapItemStyle.value.get(id) ?? lastRectById.value.get(id)
   const item = lastItemById.value.get(id)
   if (!rect || !item) return
   if (leavingItems.value.some((l) => l.id === id)) return
@@ -201,35 +224,55 @@ const RenderItems = computed((): RenderRow[] => {
   return [...active, ...leaving]
 })
 
+const applyLayoutWatch = async () => {
+  const nextIds = props.layout.items.map((i) => i.id)
+  const layoutIdSet = new Set(nextIds)
+  if (prevIds.value.length === 0) {
+    await syncSize()
+    prevIds.value = nextIds
+    lastItemById.value = new Map(Items.value.map((i) => [i.id, i]))
+    pruneAnimState(layoutIdSet)
+    return
+  }
+  const { added, removed } = diffIds(prevIds.value, nextIds)
+  for (const id of removed) onItemLeave(id)
+  for (const id of added) onItemEnter(id)
+  await nextTick()
+  await syncSize()
+  prevIds.value = nextIds
+  lastItemById.value = new Map(Items.value.map((i) => [i.id, i]))
+  pruneAnimState(layoutIdSet)
+}
+
+let layoutWatchChain: Promise<void> = Promise.resolve()
+
 watch(
   () => props.layout.items.map((i) => i.id).join(','),
-  async () => {
-    const nextIds = props.layout.items.map((i) => i.id)
-    if (prevIds.value.length === 0) {
-      await syncSize()
-      prevIds.value = nextIds
-      lastItemById.value = new Map(Items.value.map((i) => [i.id, i]))
-      return
-    }
-    const { added, removed } = diffIds(prevIds.value, nextIds)
-    for (const id of removed) onItemLeave(id)
-    for (const id of added) onItemEnter(id)
-    prevIds.value = nextIds
-    await syncSize()
-    lastItemById.value = new Map(Items.value.map((i) => [i.id, i]))
+  () => {
+    layoutWatchChain = layoutWatchChain.then(() => applyLayoutWatch())
   }
 )
 
-let observer: ResizeObserver
+let resizeTimer: ReturnType<typeof setTimeout> | undefined
 
+const scheduleResizeSync = () => {
+  if (resizeTimer) clearTimeout(resizeTimer)
+  resizeTimer = setTimeout(() => {
+    resizeTimer = undefined
+    void syncSize()
+  }, 32)
+}
+
+let observer: ResizeObserver
 onMounted(async () => {
   await nextTick()
-  observer = new ResizeObserver(() => syncSize())
+  observer = new ResizeObserver(() => scheduleResizeSync())
   if (pr_adaptive_grid_content_ref.value) observer.observe(pr_adaptive_grid_content_ref.value)
 })
 
 onBeforeUnmount(() => {
   observer?.disconnect()
+  if (resizeTimer) clearTimeout(resizeTimer)
 })
 </script>
 
