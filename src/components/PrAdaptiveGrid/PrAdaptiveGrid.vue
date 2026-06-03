@@ -469,4 +469,12 @@ defineExpose({
 .pr-adaptive-grid-item-no-transition {
   transition: none !important;
 }
+
+.pr-adaptive-grid-item-dragging {
+  z-index: 25; /* 高于 pinned 的 20 */
+  cursor: grabbing;
+}
+.pr-adaptive-grid-item-dragging .pr-adaptive-grid-item-inner {
+  cursor: grabbing;
+}
 </style>
