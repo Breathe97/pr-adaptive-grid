@@ -158,9 +158,9 @@ onBeforeUnmount(() => {
   min-width: 0;
   min-height: 0;
   grid-auto-flow: row dense;
-
   z-index: 2;
-  background-color: rgba(200, 200, 200, 0.1);
+  box-shadow: 0 0 0 1px red inset;
+  color: red;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -185,7 +185,7 @@ onBeforeUnmount(() => {
   transform-origin: center center;
   cursor: grab;
   touch-action: none;
-  background-color: #0097ff;
+  background-color: rgba(0, 151, 255, 0.7);
   transition:
     transform var(--ag-duration-position) var(--ag-ease-fade),
     opacity var(--ag-duration-position) var(--ag-ease-fade);
