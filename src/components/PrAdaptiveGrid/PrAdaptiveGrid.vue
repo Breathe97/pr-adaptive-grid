@@ -2,8 +2,8 @@
   <div class="pr-adaptive-grid" @scroll="onScroll">
     <div ref="pr_adaptive_grid_content_ref" class="pr-adaptive-grid-content" :style="ContainerStyle">
       <div v-for="item in Items" :key="`span-${item.id}`" class="pr-adaptive-grid-item-span" :data-item-id="item.id" :style="ItemSpanStyle(item)">{{ item.id }}</div>
-      <div v-for="item in Items" :key="`item-${item.id}`" class="pr-adaptive-grid-item" :class="{ 'pr-adaptive-grid-item-no-transition': layoutReady === false }" :style="ItemStyle(item.id)">
-        <div class="pr-adaptive-grid-item-inner" :style="ItemInnerStyle(item.id)">
+      <div v-for="item in Items" :key="`item-${item.id}`" class="pr-adaptive-grid-item" :class="[{ 'pr-adaptive-grid-item-no-transition': layoutReady === false }]" :style="ItemStyle(item.id)">
+        <div class="pr-adaptive-grid-item-inner" :class="[{ 'pr-adaptive-grid-item-no-transition': layoutReady === false }]" :style="ItemInnerStyle(item.id)">
           <!-- <slot :item="item" /> -->
         </div>
       </div>
