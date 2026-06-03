@@ -545,23 +545,26 @@ const getLayoutModel2 = (ids: string[]): Layout => {
         break
       case 11:
         {
-          layout.cols = 12
-          layout.rows = 3
+          layout.cols = 15
+          layout.rows = 5
           layout.items = [
             //
-            { id: mainIds[0], x: 1, y: 1, w: 4, h: 1 },
-            { id: mainIds[1], x: 5, y: 1, w: 4, h: 1 },
-            { id: mainIds[2], x: 9, y: 1, w: 4, h: 1 },
-
-            { id: mainIds[3], x: 1, y: 2, w: 3, h: 1 },
-            { id: mainIds[4], x: 4, y: 2, w: 3, h: 1 },
-            { id: mainIds[5], x: 7, y: 2, w: 3, h: 1 },
-            { id: mainIds[6], x: 10, y: 2, w: 3, h: 1 },
-
-            { id: mainIds[7], x: 1, y: 3, w: 3, h: 1 },
-            { id: mainIds[8], x: 4, y: 3, w: 3, h: 1 },
-            { id: mainIds[9], x: 7, y: 3, w: 3, h: 1 },
-            { id: mainIds[10], x: 10, y: 3, w: 3, h: 1 }
+            { id: mainIds[0], x: 1, y: 1, w: 11, h: 5 },
+            //
+            { id: mainIds[1], x: 12, y: 1, w: 2, h: 1 },
+            { id: mainIds[2], x: 14, y: 1, w: 2, h: 1 },
+            //
+            { id: mainIds[3], x: 12, y: 2, w: 2, h: 1 },
+            { id: mainIds[4], x: 14, y: 2, w: 2, h: 1 },
+            //
+            { id: mainIds[5], x: 12, y: 3, w: 2, h: 1 },
+            { id: mainIds[6], x: 14, y: 3, w: 2, h: 1 },
+            //
+            { id: mainIds[7], x: 12, y: 4, w: 2, h: 1 },
+            { id: mainIds[8], x: 14, y: 4, w: 2, h: 1 },
+            //
+            { id: mainIds[9], x: 12, y: 5, w: 2, h: 1 },
+            { id: mainIds[10], x: 14, y: 5, w: 2, h: 1 }
           ]
         }
         break
