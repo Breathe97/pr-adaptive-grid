@@ -50,7 +50,7 @@ import { ref, onMounted } from 'vue'
 import { PrAdaptiveGrid, getLayout } from '../../src/index.ts'
 import type { Layout } from '../../src/index.ts'
 
-const DEFAULT_USER_COUNT = 12
+const DEFAULT_USER_COUNT = 2
 
 const gridRef = ref<PrAdaptiveGridExpose>()
 const userCount = ref(DEFAULT_USER_COUNT)

@@ -4,7 +4,7 @@
       <div v-for="item in Items" :key="`span-${item.id}`" class="pr-adaptive-grid-item-span" :data-item-id="item.id" :style="ItemSpanStyle(item)">{{ item.id }}</div>
       <div v-for="item in Items" :key="`item-${item.id}`" class="pr-adaptive-grid-item" :class="[itemClass(item.id), { 'pr-adaptive-grid-item-no-transition': layoutReady === false }]" :style="ItemStyle(item.id)">
         <div class="pr-adaptive-grid-item-inner" :class="[{ 'pr-adaptive-grid-item-no-transition': layoutReady === false }]" :style="ItemInnerStyle(item.id)">
-          <!-- <slot :item="item" /> -->
+          <slot :item="item" />
         </div>
       </div>
     </div>
@@ -64,9 +64,11 @@ const ItemStyle = computed(() => {
   return (id: string) => {
     const config = mapItemStyle.value.get(id)
     if (!config) return {}
-    const { x, y } = config
+    const { x, y, width, height } = config
+    const cx = x + width / 2
+    const cy = y + height / 2
     return {
-      transform: `translate3d(${x}px,${y}px,0)`
+      transform: `translate3d(${cx}px, ${cy}px, 0) translate(-50%, -50%)`
     }
   }
 })
@@ -150,7 +152,7 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .pr-adaptive-grid {
-  --ag-duration-position: 5000ms;
+  --ag-duration-position: 800ms;
   --ag-duration-size: 500ms;
   --ag-duration-enter: 220ms;
   --ag-duration-exit: 180ms;
@@ -195,7 +197,7 @@ onBeforeUnmount(() => {
   top: 0;
   z-index: 1;
   box-sizing: border-box;
-  transition: transform var(--ag-duration-position) var(--ag-ease-position);
+  transition: transform var(--ag-duration-position) var(--ag-ease-position) 300ms;
   will-change: transform;
 }
 
@@ -206,21 +208,21 @@ onBeforeUnmount(() => {
   transform-origin: center center;
   cursor: grab;
   touch-action: none;
-  background-color: rgba(0, 151, 255, 0.9);
   transition:
-    transform var(--ag-duration-position) var(--ag-ease-fade),
+    width var(--ag-duration-size) var(--ag-ease-size),
+    height var(--ag-duration-size) var(--ag-ease-size),
     opacity var(--ag-duration-position) var(--ag-ease-fade);
 }
 
 .pr-adaptive-grid-item-layout-anim {
-  transition: transform var(--ag-duration-position) var(--ag-ease-position);
+  transition: transform var(--ag-duration-position) var(--ag-ease-position) 300ms;
 }
 
-.pr-adaptive-grid-item-layout-anim .pr-adaptive-grid-item-inner {
+/* .pr-adaptive-grid-item-layout-anim .pr-adaptive-grid-item-inner {
   transition:
     width var(--ag-duration-size) var(--ag-ease-size),
     height var(--ag-duration-size) var(--ag-ease-size);
-}
+} */
 
 .pr-adaptive-grid-item-no-transition {
   transition: none !important;
