@@ -51,7 +51,7 @@ import { PrAdaptiveGrid, getLayout } from '../../src/index.ts'
 import type { Layout, LayoutItem, PrAdaptiveGridExpose } from '../../src/index.ts'
 import { GridItem } from '../../dist/src/types'
 
-const DEFAULT_USER_COUNT = 5
+const DEFAULT_USER_COUNT = 10
 
 const gridRef = ref<PrAdaptiveGridExpose>()
 const userCount = ref(DEFAULT_USER_COUNT)
