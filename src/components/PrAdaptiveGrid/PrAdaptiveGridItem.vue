@@ -1,7 +1,7 @@
 <template>
   <div class="pr-adaptive-grid-item" :style="[ItemStyle]">
     <div class="pr-adaptive-grid-item-inner" :style="[ItemInnerStyle]">
-      <slot :item="geo" />
+      <slot :item="Info" />
     </div>
   </div>
 </template>
@@ -22,11 +22,11 @@ const props = defineProps({
   }
 })
 
-const Info = () =>
-  computed(() => {
-    const { id, geo } = props
-    return { id, ...geo, sticky: false, fixed: false }
-  })
+const Info = computed(() => {
+  const { id, geo } = props
+  const info = { id, ...geo, sticky: true, fixed: true }
+  return info
+})
 
 const ItemStyle = computed(() => {
   const { top, left } = props.geo

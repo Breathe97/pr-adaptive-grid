@@ -35,7 +35,7 @@ const itemIds = ref<string[]>([]) // 当前渲染的item
 const spanGeos = ref<Geo[]>([]) // 所有span的几何信息
 
 // 获取所有span的几何信息
-const getSpanGeos = () => {
+const getSpanGeos = async () => {
   if (!pr_adaptive_grid_content_ref.value) return
   const spans = pr_adaptive_grid_content_ref.value.childNodes
   const _spanGeos = []
@@ -46,15 +46,15 @@ const getSpanGeos = () => {
     _spanGeos.push(geo)
   }
   spanGeos.value = _spanGeos
-  console.log('\x1b[38;2;0;151;255m%c%s\x1b[0m', 'color:#0097ff;', `------->Breathe: spanGeos.value`, spanGeos.value)
+  await nextTick()
+  console.log('\x1b[38;2;0;151;255m%c%s\x1b[0m', 'color:#0097ff;', `------->Breathe: itemIds.value`, spanGeos.value.length, spanIds.value.length)
   itemIds.value = spanIds.value
-  console.log('\x1b[38;2;0;151;255m%c%s\x1b[0m', 'color:#0097ff;', `------->Breathe:  itemIds.value`, itemIds.value)
 }
 
 const ItemGeo = computed(() => {
   return (index: number) => {
     const geo = spanGeos.value[index]
-    // console.log('\x1b[38;2;0;151;255m%c%s\x1b[0m', 'color:#0097ff;', `------->Breathe: `, index, geo)
+    console.log('\x1b[38;2;0;151;255m%c%s\x1b[0m', 'color:#0097ff;', `------->Breathe: `, index, geo)
     return geo
   }
 })
@@ -68,10 +68,9 @@ const RenderKey = computed(() => {
 
 const initLayout = async () => {
   if (isReady.value === false) return
-  console.log('\x1b[38;2;0;151;255m%c%s\x1b[0m', 'color:#0097ff;', `------->Breathe: initLayout`)
   layout.value = props.getLayout(spanIds.value.length)
   await nextTick()
-  getSpanGeos()
+  await getSpanGeos()
 }
 
 // 布局受外部变量实时变化
