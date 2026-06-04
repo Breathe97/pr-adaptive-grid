@@ -25,6 +25,7 @@ const props = defineProps({
 const pr_adaptive_grid_ref = ref<HTMLElement>() // 外部容器 滚动
 const pr_adaptive_grid_content_ref = ref<HTMLElement>() // Grid 内容容器 DOM
 
+const isReady = ref(false) // 是否准备就绪
 const layout = ref<Layout>({ gap: 8, cols: 1, rows: 1, items: [] }) // 仅 span 占位几何
 const size = ref({ width: 0, height: 0 }) // content 尺寸（行高与位移动画时长）
 const scrollTop = ref(0) // .pr-adaptive-grid 的 scrollTop，Pin 定位用
@@ -45,20 +46,28 @@ const getSpanGeos = () => {
     _spanGeos.push(geo)
   }
   spanGeos.value = _spanGeos
+  // console.log('\x1b[38;2;0;151;255m%c%s\x1b[0m', 'color:#0097ff;', `------->Breathe: spanGeos.value`, spanGeos.value)
   itemIds.value = spanIds.value
 }
 
 const ItemGeo = computed(() => {
-  return (index: number) => spanGeos.value[index]
+  return (index: number) => {
+    const geo = spanGeos.value[index]
+    // console.log('\x1b[38;2;0;151;255m%c%s\x1b[0m', 'color:#0097ff;', `------->Breathe: `, index, geo)
+    return geo
+  }
 })
 
 const RenderKey = computed(() => {
   const { width, height } = size.value
   const ids = spanIds.value.join('&')
-  return `${width}-${height}-${ids}`
+  const key = `${width}-${height}-${ids}`
+  return key
 })
 
 const initLayout = async () => {
+  if (isReady.value === false) return
+  console.log('\x1b[38;2;0;151;255m%c%s\x1b[0m', 'color:#0097ff;', `------->Breathe: initLayout`)
   layout.value = props.getLayout(spanIds.value.length)
   await nextTick()
   getSpanGeos()
@@ -67,7 +76,8 @@ const initLayout = async () => {
 // 布局受外部变量实时变化
 watch(
   () => RenderKey.value,
-  () => initLayout()
+  () => initLayout(),
+  {}
 )
 
 /** Grid 容器的列、行、间距样式 */
@@ -103,8 +113,6 @@ const ItemSpanStyle = computed(() => {
   }
 })
 
-let resizeTimer: ReturnType<typeof setTimeout> | undefined // resize debounce 定时器
-
 /** 新增或更新 item；id 已存在时仅合并传入的 options */
 const setItem = (id: string, option?: GridItemOptions) => {
   spanIds.value.push(id)
@@ -132,14 +140,27 @@ const onScroll = () => {
 }
 
 let observer: ResizeObserver // 监听 content 容器尺寸变化
+let resizeTimer = 0 // resize debounce 定时器
 
 /** 挂载后监听 content 容器尺寸变化 */
 onMounted(async () => {
   await nextTick()
+
+  let _size = { width: 0, height: 0 }
+
   observer = new ResizeObserver((sizes) => {
     const [{ contentRect }] = sizes
     const { width, height } = contentRect
-    size.value = { width, height }
+    _size = { width, height }
+    const setSize = () => {
+      size.value = _size
+    }
+    if (isReady.value === false) {
+      isReady.value = true
+      return setSize()
+    }
+    if (resizeTimer) clearTimeout(resizeTimer)
+    resizeTimer = setTimeout(setSize, 500) // 节流
   })
   if (pr_adaptive_grid_ref.value) observer.observe(pr_adaptive_grid_ref.value)
 })
