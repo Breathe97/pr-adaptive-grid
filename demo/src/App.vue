@@ -180,7 +180,7 @@ onMounted(async () => {
   for (let index = DEFAULT_USER_COUNT; index >= 1; index--) {
     const id = `${index}`
     ensureTileColor(id)
-    initialIds.push(id)
+    initialIds.unshift(id)
   }
   ids.push(...initialIds)
   gridRef.value?.setItems(initialIds)
