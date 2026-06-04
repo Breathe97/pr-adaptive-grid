@@ -1,13 +1,13 @@
 <template>
-  <div class="pr-adaptive-grid-item">
-    <div class="pr-adaptive-grid-item-inner">
+  <div class="pr-adaptive-grid-item" :style="[ItemStyle]">
+    <div class="pr-adaptive-grid-item-inner" :style="[ItemInnerStyle]">
       <slot :item="geo" />
     </div>
   </div>
 </template>
 
 <script lang="ts" setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, reactive, watch } from 'vue'
+import { computed } from 'vue'
 import type { PropType } from 'vue'
 import type { Geo } from '../../types'
 
@@ -15,6 +15,24 @@ const props = defineProps({
   geo: {
     required: true,
     type: Object as PropType<Geo>
+  }
+})
+
+const ItemStyle = computed(() => {
+  const { top, left } = props.geo
+
+  const x = `${left}px`
+  const y = `${top}px`
+  return {
+    transform: `translate3d(${x},${y},0)`
+  }
+})
+
+const ItemInnerStyle = computed(() => {
+  const { width, height } = props.geo
+  return {
+    width: `${width}px`,
+    height: `${height}px`
   }
 })
 </script>

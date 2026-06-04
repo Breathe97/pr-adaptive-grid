@@ -3,7 +3,11 @@
     <div ref="pr_adaptive_grid_content_ref" class="pr-adaptive-grid-content" :style="ContainerStyle">
       <div v-for="(item, index) in layout.items" :key="index" class="pr-adaptive-grid-item-span" :data-grid-span-index="index" :style="ItemSpanStyle(item)"></div>
     </div>
-    <PrAdaptiveGridItem v-for="(id, index) in itemIds" :key="id" :geo="ItemGeo(index)"></PrAdaptiveGridItem>
+    <PrAdaptiveGridItem v-for="(id, index) in itemIds" :key="id" :geo="ItemGeo(index)">
+      <template #default="{ item }">
+        <slot :item="item" />
+      </template>
+    </PrAdaptiveGridItem>
   </div>
 </template>
 
@@ -46,8 +50,9 @@ const getSpanGeos = () => {
     _spanGeos.push(geo)
   }
   spanGeos.value = _spanGeos
-  // console.log('\x1b[38;2;0;151;255m%c%s\x1b[0m', 'color:#0097ff;', `------->Breathe: spanGeos.value`, spanGeos.value)
+  console.log('\x1b[38;2;0;151;255m%c%s\x1b[0m', 'color:#0097ff;', `------->Breathe: spanGeos.value`, spanGeos.value)
   itemIds.value = spanIds.value
+  console.log('\x1b[38;2;0;151;255m%c%s\x1b[0m', 'color:#0097ff;', `------->Breathe:  itemIds.value`, itemIds.value)
 }
 
 const ItemGeo = computed(() => {
