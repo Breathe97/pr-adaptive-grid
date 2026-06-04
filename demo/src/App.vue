@@ -48,7 +48,7 @@
 <script setup lang="ts">
 import { ref, onMounted, nextTick } from 'vue'
 import { PrAdaptiveGrid, getLayout, getLectureLayout } from '../../src/index.ts'
-import type { GetLayoutFn, GridSlotItem, PrAdaptiveGridExpose } from '../../src/index.ts'
+import type { GetLayoutFn, PrAdaptiveGridExpose } from '../../src/index.ts'
 
 const DEFAULT_USER_COUNT = 11 // 演示初始 item 数量
 
@@ -167,14 +167,11 @@ const initGrid = async () => {
   const byId = new Map<string, { sticky?: boolean }>()
   ids.forEach((id) => byId.set(id, { sticky: false }))
   if (layoutMode.value === 2 && ids.length > 0) byId.set(ids[0], { sticky: true })
-  gridRef.value.setItems(ids, undefined, byId)
-  await gridRef.value.syncLayout()
+  gridRef.value.setItems(ids)
 }
 
 /** 主动触发组件重新测量 span 与绝对定位 */
-const syncGrid = () => {
-  void gridRef.value?.syncLayout()
-}
+const syncGrid = () => {}
 
 /** 一次性 setItems 初始化演示数据 */
 onMounted(async () => {
