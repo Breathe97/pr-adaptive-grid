@@ -116,7 +116,7 @@ onMounted(async () => {
     const { width, height } = contentRect
     size.value = { width, height }
   })
-  if (pr_adaptive_grid_content_ref.value) observer.observe(pr_adaptive_grid_content_ref.value)
+  if (pr_adaptive_grid_ref.value) observer.observe(pr_adaptive_grid_ref.value)
 })
 
 /** 卸载时断开监听并清理定时器 */
