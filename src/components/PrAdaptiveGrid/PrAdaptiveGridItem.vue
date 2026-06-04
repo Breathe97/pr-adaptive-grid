@@ -12,11 +12,21 @@ import type { PropType } from 'vue'
 import type { Geo } from '../../types'
 
 const props = defineProps({
+  id: {
+    required: true,
+    type: String
+  },
   geo: {
     required: true,
     type: Object as PropType<Geo>
   }
 })
+
+const Info = () =>
+  computed(() => {
+    const { id, geo } = props
+    return { id, ...geo, sticky: false, fixed: false }
+  })
 
 const ItemStyle = computed(() => {
   const { top, left } = props.geo
