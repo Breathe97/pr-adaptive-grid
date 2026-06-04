@@ -36,7 +36,6 @@ const spanGeos = ref<Geo[]>([]) // 所有span的几何信息
 
 // 获取所有span的几何信息
 const getSpanGeos = async () => {
-  console.log('\x1b[38;2;0;151;255m%c%s\x1b[0m', 'color:#0097ff;', `------->Breathe: pr_adaptive_grid_content_ref.value`, pr_adaptive_grid_content_ref.value)
   if (pr_adaptive_grid_content_ref.value === undefined) return
   const spans = pr_adaptive_grid_content_ref.value.childNodes
   const _spanGeos = []
