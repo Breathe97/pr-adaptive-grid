@@ -2,16 +2,16 @@
   <div ref="pr_adaptive_grid_ref" class="pr-adaptive-grid" @scroll="onScroll">
     <div ref="pr_adaptive_grid_content_ref" class="pr-adaptive-grid-content" :style="ContainerStyle">
       <div v-for="(item, index) in layout.items" :key="index" class="pr-adaptive-grid-item-span" :data-grid-span-index="index" :style="ItemSpanStyle(item)"></div>
-      <!-- <PrAdaptiveGridItem v-for="id in renderIds" :key="id" :geo="Geo(id)"></PrAdaptiveGridItem> -->
     </div>
+    <PrAdaptiveGridItem v-for="(id, index) in itemIds" :key="id" :geo="ItemGeo(index)"></PrAdaptiveGridItem>
   </div>
 </template>
 
 <script lang="ts" setup>
 import PrAdaptiveGridItem from './PrAdaptiveGridItem.vue'
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, reactive, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { PropType } from 'vue'
-import type { GetLayoutFn, GridItemOptions, GridItemsOptions, Layout, LayoutCell } from '../../types'
+import type { Geo, GetLayoutFn, GridItemOptions, GridItemsOptions, Layout, LayoutCell } from '../../types'
 import { getLayout } from '../../layouts/layout.default.ts'
 
 const props = defineProps({
@@ -29,21 +29,40 @@ const layout = ref<Layout>({ gap: 8, cols: 1, rows: 1, items: [] }) // 仅 span 
 const size = ref({ width: 0, height: 0 }) // content 尺寸（行高与位移动画时长）
 const scrollTop = ref(0) // .pr-adaptive-grid 的 scrollTop，Pin 定位用
 
-const renderIds = ref<string[]>([]) // 当前渲染的item
+const spanIds = ref<string[]>([]) // 当前渲染的span
+const itemIds = ref<string[]>([]) // 当前渲染的item
+const spanGeos = ref<Geo[]>([]) // 所有span的几何信息
 
-const initLayout = () => {
-  layout.value = props.getLayout(renderIds.value.length)
+// 获取所有span的几何信息
+const getSpanGeos = () => {
+  if (!pr_adaptive_grid_content_ref.value) return
+  const spans = pr_adaptive_grid_content_ref.value.childNodes
+  const _spanGeos = []
+  for (const span of spans) {
+    const { offsetTop, offsetLeft, clientWidth, clientHeight, className } = span as HTMLElement
+    if (className !== 'pr-adaptive-grid-item-span') continue
+    const geo: Geo = { top: offsetTop, left: offsetLeft, width: clientWidth, height: clientHeight }
+    _spanGeos.push(geo)
+  }
+  spanGeos.value = _spanGeos
+  itemIds.value = spanIds.value
 }
 
-const Geo = computed(() => {
-  return (id: string) => {}
+const ItemGeo = computed(() => {
+  return (index: number) => spanGeos.value[index]
 })
 
 const RenderKey = computed(() => {
   const { width, height } = size.value
-  const ids = renderIds.value.join('&')
+  const ids = spanIds.value.join('&')
   return `${width}-${height}-${ids}`
 })
+
+const initLayout = async () => {
+  layout.value = props.getLayout(spanIds.value.length)
+  await nextTick()
+  getSpanGeos()
+}
 
 // 布局受外部变量实时变化
 watch(
@@ -88,16 +107,22 @@ let resizeTimer: ReturnType<typeof setTimeout> | undefined // resize debounce �
 
 /** 新增或更新 item；id 已存在时仅合并传入的 options */
 const setItem = (id: string, option?: GridItemOptions) => {
-  renderIds.value.push(id)
+  spanIds.value.push(id)
 }
 
 /** 按 ids 一次性设置 */
 const setItems = (ids: string[], option?: GridItemsOptions) => {
-  renderIds.value.push(...ids)
+  spanIds.value.push(...ids)
 }
 
 /** 移除 item 并重算布局 */
-const removeItems = (removeIds: string[]) => {}
+const removeItems = (removeIds: string[]) => {
+  for (const id of removeIds) {
+    const index = spanIds.value.findIndex((spanId) => spanId === id)
+    if (index === -1) continue
+    spanIds.value.splice(index, 1)
+  }
+}
 
 /** 记录滚动偏移 */
 const onScroll = () => {
