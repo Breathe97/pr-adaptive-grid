@@ -36,7 +36,8 @@ const spanGeos = ref<Geo[]>([]) // 所有span的几何信息
 
 // 获取所有span的几何信息
 const getSpanGeos = async () => {
-  if (!pr_adaptive_grid_content_ref.value) return
+  console.log('\x1b[38;2;0;151;255m%c%s\x1b[0m', 'color:#0097ff;', `------->Breathe: pr_adaptive_grid_content_ref.value`, pr_adaptive_grid_content_ref.value)
+  if (pr_adaptive_grid_content_ref.value === undefined) return
   const spans = pr_adaptive_grid_content_ref.value.childNodes
   const _spanGeos = []
   for (const span of spans) {
@@ -47,7 +48,6 @@ const getSpanGeos = async () => {
   }
   spanGeos.value = _spanGeos
   await nextTick()
-  console.log('\x1b[38;2;0;151;255m%c%s\x1b[0m', 'color:#0097ff;', `------->Breathe: itemIds.value`, spanGeos.value.length, spanIds.value.length)
   itemIds.value = spanIds.value
 }
 
@@ -59,7 +59,7 @@ const ItemGeo = computed(() => {
   }
 })
 
-const RenderKey = computed(() => {
+const LayoutKey = computed(() => {
   const { width, height } = size.value
   const ids = spanIds.value.join('&')
   const key = `${width}-${height}-${ids}`
@@ -70,12 +70,12 @@ const initLayout = async () => {
   if (isReady.value === false) return
   layout.value = props.getLayout(spanIds.value.length)
   await nextTick()
-  await getSpanGeos()
+  getSpanGeos()
 }
 
 // 布局受外部变量实时变化
 watch(
-  () => RenderKey.value,
+  () => LayoutKey.value,
   () => initLayout(),
   {}
 )
