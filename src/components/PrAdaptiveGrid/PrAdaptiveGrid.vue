@@ -1,7 +1,7 @@
 <template>
   <div ref="pr_adaptive_grid_ref" class="pr-adaptive-grid" @scroll="onScroll">
     <div ref="pr_adaptive_grid_content_ref" class="pr-adaptive-grid-content" :style="ContainerStyle">
-      <div v-for="(item, index) in layout.items" :key="index" class="pr-adaptive-grid-item-span" :data-grid-span-index="index" :style="ItemSpanStyle(item)">{{ index }}</div>
+      <div v-for="(item, index) in layout.items" :key="index" class="pr-adaptive-grid-item-span" :data-grid-span-index="index" :style="ItemSpanStyle(item)"></div>
       <!-- <PrAdaptiveGridItem v-for="id in renderIds" :key="id" :geo="Geo(id)"></PrAdaptiveGridItem> -->
     </div>
   </div>
