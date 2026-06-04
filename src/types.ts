@@ -36,7 +36,7 @@ export type GridItemsOptions = GridItemOptions & {
 
 /** PrAdaptiveGrid 组件 expose 的方法 */
 export type PrAdaptiveGridExpose = {
-  setItem: (id: string, option?: GridItemOptions) => void
-  setItems: (ids: string[], option?: GridItemOptions, optionsById?: Map<string, GridItemOptions>) => void
+  setItem: (id: string, option?: GridItemsOptions) => void
+  setItems: (ids: string[], option?: GridItemOptions) => void
   removeItems: (ids: string[]) => void
 }
