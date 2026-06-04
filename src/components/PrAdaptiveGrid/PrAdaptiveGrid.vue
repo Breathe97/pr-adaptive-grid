@@ -46,8 +46,10 @@ const getSpanGeos = async () => {
     _spanGeos.push(geo)
   }
   spanGeos.value = _spanGeos
-  await nextTick()
-  itemIds.value = spanIds.value
+  console.log('\x1b[38;2;0;151;255m%c%s\x1b[0m', 'color:#0097ff;', `------->Breathe: _spanGeos`, _spanGeos)
+
+  // itemIds.value = spanIds.value
+  console.log('\x1b[38;2;0;151;255m%c%s\x1b[0m', 'color:#0097ff;', `------->Breathe:  itemIds.value `, spanIds.value)
 }
 
 const ItemGeo = computed(() => {
