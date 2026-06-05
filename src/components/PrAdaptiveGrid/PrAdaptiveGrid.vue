@@ -247,7 +247,7 @@ defineExpose({
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 0 0 1px red inset;
+  /* box-shadow: 0 0 0 1px red inset; */
   pointer-events: none;
 }
 </style>
