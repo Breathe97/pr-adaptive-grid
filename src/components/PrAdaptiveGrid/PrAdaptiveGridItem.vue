@@ -79,6 +79,7 @@ const toTransform = (newGeo: Geo) => {
   const currentGeo = getCurrentCenterGeo() // 当前几何
 
   const saveStyles = (animate: Animation) => {
+    if (animate.playState === 'idle') return
     animate.commitStyles()
     animate.cancel()
   }
@@ -98,7 +99,7 @@ const toTransform = (newGeo: Geo) => {
       { duration: AG_DURATION_POSITION, easing: AG_EASING_POSITION }
     )
     .finished.then((animate) => saveStyles(animate))
-    .catch()
+    .catch(() => {})
 
   // 执行新动画
   inner
@@ -112,7 +113,7 @@ const toTransform = (newGeo: Geo) => {
       { duration: AG_DURATION_SIZE, easing: AG_EASING_SIZE, delay: 0 }
     )
     .finished.then((animate) => saveStyles(animate))
-    .catch()
+    .catch(() => {})
 
   prevGeo = currentGeo
 }
