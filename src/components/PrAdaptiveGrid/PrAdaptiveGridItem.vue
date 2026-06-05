@@ -100,8 +100,7 @@ const toTransform = (newGeo: Geo) => {
 
 watch(
   () => ({ ...props.geo }),
-  (geo) => toTransform(geo),
-  { flush: 'post' }
+  (geo) => toTransform(geo)
 )
 </script>
 
