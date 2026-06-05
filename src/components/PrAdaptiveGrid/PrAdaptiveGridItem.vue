@@ -30,9 +30,6 @@ const props = defineProps({
 const outerRef = ref<HTMLElement>()
 const innerRef = ref<HTMLElement>()
 
-let prevGeo: Geo = { ...props.geo }
-let isFirst = true // 首次挂载不做位移动画
-
 const Info = computed(() => {
   const { id, geo } = props
   const info = { id, ...geo, sticky: true, fixed: true }
@@ -55,37 +52,55 @@ const ItemInnerStyle = computed(() => {
   }
 })
 
-// 过渡到dom的最新几何数据
-const retarget = (el: HTMLElement, keyframes: Keyframe[], options: KeyframeAnimationOptions) => {
-  const running = el.getAnimations()
-  if (running.length) {
-    running.forEach((anim) => {
-      anim.commitStyles()
-      anim.cancel()
-    })
+const toTransform = (newGeo: Geo) => {
+  const outer = outerRef.value
+  const inner = innerRef.value
+
+  if (!outer || !inner) return
+
+  // 获取当前几何信息
+  const getCurrentCenterGeo = () => {
+    const rect = outer.getBoundingClientRect()
+    const parentRect = (outer.offsetParent as HTMLElement).getBoundingClientRect()
+    return {
+      cx: rect.left - parentRect.left + rect.width / 2,
+      cy: rect.top - parentRect.top + rect.height / 2,
+      width: parseFloat(getComputedStyle(inner).width),
+      height: parseFloat(getComputedStyle(inner).height)
+    }
   }
-  return el.animate(keyframes, options)
+
+  const currentGeo = getCurrentCenterGeo() // 当前几何
+
+  outer.getAnimations().forEach((a) => a.cancel()) // 取消动画
+  inner.getAnimations().forEach((a) => a.cancel()) // 取消动画
+
+  // 执行新动画
+  outer.animate(
+    [
+      // 开始
+      { transform: `translate3d(${currentGeo.cx}px, ${currentGeo.cy}px, 0) translate(-50%, -50%)` },
+      // 结束
+      { transform: `translate3d(${newGeo.cx}px, ${newGeo.cy}px, 0) translate(-50%, -50%)` }
+    ],
+    { duration: AG_DURATION_POSITION, easing: AG_EASING_POSITION }
+  )
+
+  // 执行新动画
+  inner.animate(
+    [
+      // 开始
+      { width: `${currentGeo.width}px`, height: `${currentGeo.height}px` },
+      // 结束
+      { width: `${newGeo.width}px`, height: `${newGeo.height}px` }
+    ],
+    { duration: AG_DURATION_SIZE, easing: AG_EASING_SIZE }
+  )
 }
 
 watch(
   () => ({ ...props.geo }),
-  (newGeo) => {
-    const outer = outerRef.value
-    const inner = innerRef.value
-
-    if (!outer || !inner) return
-
-    // 位置：外层从旧中心点过渡到新中心点
-    if (prevGeo.cx !== newGeo.cx || prevGeo.cy !== newGeo.cy) {
-      retarget(outer, [{ transform: `translate3d(${newGeo.cx}px, ${newGeo.cy}px, 0) translate(-50%, -50%)` }], { duration: AG_DURATION_POSITION, easing: AG_EASING_POSITION })
-    }
-
-    // 尺寸：内层从旧宽高过渡到新宽高
-    if (prevGeo.width !== newGeo.width || prevGeo.height !== newGeo.height) {
-      retarget(inner, [{ width: `${newGeo.width}px`, height: `${newGeo.height}px` }], { duration: AG_DURATION_SIZE, easing: AG_EASING_SIZE })
-    }
-    prevGeo = newGeo
-  },
+  (geo) => toTransform(geo),
   { flush: 'post' }
 )
 </script>
