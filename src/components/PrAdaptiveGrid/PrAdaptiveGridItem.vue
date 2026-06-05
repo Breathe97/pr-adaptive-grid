@@ -11,9 +11,9 @@ import { computed, ref, watch } from 'vue'
 import type { PropType } from 'vue'
 import type { Geo } from '../../types'
 
-const AG_DURATION_POSITION = 700
+const AG_DURATION_POSITION = 7000
 const AG_EASING_POSITION = 'cubic-bezier(0.22, 1, 0.44, 1)'
-const AG_DURATION_SIZE = 700
+const AG_DURATION_SIZE = 7000
 const AG_EASING_SIZE = 'cubic-bezier(0.22, 1, 0.44, 1)'
 
 const props = defineProps({
@@ -55,37 +55,39 @@ const ItemInnerStyle = computed(() => {
   }
 })
 
+// 过渡到dom的最新几何数据
+const retarget = (el: HTMLElement, keyframes: Keyframe[], options: KeyframeAnimationOptions) => {
+  const running = el.getAnimations()
+  if (running.length) {
+    running.forEach((anim) => {
+      anim.commitStyles()
+      anim.cancel()
+    })
+  }
+  return el.animate(keyframes, options)
+}
+
 watch(
   () => ({ ...props.geo }),
-  (newGeo, oldGeo) => {
+  (newGeo) => {
     const outer = outerRef.value
     const inner = innerRef.value
+
     if (!outer || !inner) return
-    // 位置：外层从旧中心点过渡到新中心点
-    if (oldGeo.cx !== newGeo.cx || oldGeo.cy !== newGeo.cy) {
-      outer.getAnimations().forEach((a) => a.cancel())
-      outer.animate(
-        [
-          // 开始
-          { transform: `translate3d(${oldGeo.cx}px, ${oldGeo.cy}px, 0) translate(-50%, -50%)` },
-          // 结束
-          { transform: `translate3d(${newGeo.cx}px, ${newGeo.cy}px, 0) translate(-50%, -50%)` }
-        ],
-        { duration: AG_DURATION_POSITION, easing: AG_EASING_POSITION }
-      )
+
+    {
+      const res = outer.getAnimations()
+      console.log('\x1b[38;2;0;151;255m%c%s\x1b[0m', 'color:#0097ff;', `------->Breathe: res`, res)
     }
+
+    // 位置：外层从旧中心点过渡到新中心点
+    if (prevGeo.cx !== newGeo.cx || prevGeo.cy !== newGeo.cy) {
+      retarget(outer, [{ transform: `translate3d(${newGeo.cx}px, ${newGeo.cy}px, 0) translate(-50%, -50%)` }], { duration: AG_DURATION_POSITION, easing: AG_EASING_POSITION })
+    }
+
     // 尺寸：内层从旧宽高过渡到新宽高
-    if (oldGeo.width !== newGeo.width || oldGeo.height !== newGeo.height) {
-      inner.getAnimations().forEach((a) => a.cancel())
-      inner.animate(
-        [
-          // 开始
-          { width: `${oldGeo.width}px`, height: `${oldGeo.height}px` },
-          // 结束
-          { width: `${newGeo.width}px`, height: `${newGeo.height}px` }
-        ],
-        { duration: AG_DURATION_SIZE, easing: AG_EASING_SIZE }
-      )
+    if (prevGeo.width !== newGeo.width || prevGeo.height !== newGeo.height) {
+      retarget(inner, [{ width: `${newGeo.width}px`, height: `${newGeo.height}px` }], { duration: AG_DURATION_SIZE, easing: AG_EASING_SIZE })
     }
     prevGeo = newGeo
   },
