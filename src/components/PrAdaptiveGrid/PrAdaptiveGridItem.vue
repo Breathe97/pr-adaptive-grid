@@ -13,7 +13,7 @@ import { computed, ref, watch, onMounted } from 'vue'
 import type { PropType } from 'vue'
 import type { Geo, PrAdaptiveGridItemDragEvent } from '../../types'
 
-const AG_DURATION_ENTER = 500
+const AG_DURATION_ENTER = 5000
 const AG_EASING_ENTER = 'ease-out'
 const AG_DURATION_POSITION = 800
 const AG_EASING_POSITION = 'cubic-bezier(0.22, 1, 0.44, 1)'
@@ -426,7 +426,7 @@ onMounted(() => {
   cursor: grab;
   touch-action: none;
   opacity: 0;
-  transform: scale(0.3);
+  transform: scale(0.3) translate3d(0, 100px, 0);
 }
 
 .pr-adaptive-grid-item-pinned {
