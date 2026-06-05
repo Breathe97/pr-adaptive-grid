@@ -7,7 +7,7 @@
 </template>
 
 <script lang="ts" setup>
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, nextTick } from 'vue'
 import type { PropType } from 'vue'
 import type { Geo } from '../../types'
 
@@ -40,7 +40,6 @@ const Info = computed(() => {
 
 const ItemStyle = computed(() => {
   const { cx, cy } = props.geo
-
   return {
     transform: `translate3d(${cx}px, ${cy}px, 0) translate(-50%, -50%)`
   }
@@ -57,7 +56,6 @@ const ItemInnerStyle = computed(() => {
 const toTransform = (newGeo: Geo) => {
   const outer = outerRef.value
   const inner = innerRef.value
-
   if (!outer || !inner) return
 
   // 获取当前几何信息
