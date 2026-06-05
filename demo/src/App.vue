@@ -51,7 +51,7 @@
       </div>
       <span class="bar-sep" />
       <button type="button" class="bar-text" :disabled="userCount <= 1" @click="shuffleItems">打乱</button>
-      <button type="button" class="bar-text" @click="syncGrid">同步</button>
+      <button type="button" class="bar-text" @click="resetGrid">重置</button>
     </div>
   </div>
 </template>
@@ -229,21 +229,36 @@ const initGrid = async () => {
   })
 }
 
-/** 主动触发组件重新测量 span 与绝对定位 */
-const syncGrid = () => {
-  void initGrid()
+/** 生成默认 ids：从 DEFAULT_USER_COUNT 递减到 1。 */
+const getDefaultIds = () => {
+  const next: string[] = []
+  for (let index = DEFAULT_USER_COUNT; index >= 1; index--) {
+    const id = `${index}`
+    ensureTileColor(id)
+    next.push(id)
+  }
+  return next
+}
+
+/** 重置为初始默认 ids，并清除 Pin / Fixed 与布局模式。 */
+const resetGrid = async () => {
+  if (!gridRef.value) return
+  ids.splice(0, ids.length, ...getDefaultIds())
+  layoutMode.value = 1
+  pinnedId.value = null
+  pinnedSwapIndex.value = null
+  userCount.value = DEFAULT_USER_COUNT
+  await nextTick()
+  gridRef.value.setItems(ids)
+  ids.forEach((id) => {
+    gridRef.value?.setItem(id, { sticky: false, fixed: false })
+  })
 }
 
 /** 一次性 setItems 初始化演示数据 */
 onMounted(async () => {
   await nextTick()
-  const initialIds: string[] = []
-  for (let index = DEFAULT_USER_COUNT; index >= 1; index--) {
-    const id = `${index}`
-    ensureTileColor(id)
-    initialIds.push(id)
-  }
-  ids.push(...initialIds)
+  ids.push(...getDefaultIds())
   await initGrid()
   userCount.value = DEFAULT_USER_COUNT
 })
