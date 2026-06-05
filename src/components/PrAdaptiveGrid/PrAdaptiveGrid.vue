@@ -280,6 +280,18 @@ const syncLayout = (duringDrag = false) => {
   })
 }
 
+/** 拖拽换位后，让 sticky / fixed 跟随槽位而不是跟随 id。 */
+const applySlotOptionsAfterReorder = (prevSpanIds: string[], nextSpanIds: string[]) => {
+  const prevSlotOptions = prevSpanIds.map((spanId) => itemOptionsById.value.get(spanId) ?? DEFAULT_ITEM_OPTIONS)
+  const nextOptions = new Map(itemOptionsById.value)
+
+  nextSpanIds.forEach((spanId, index) => {
+    nextOptions.set(spanId, { ...prevSlotOptions[index] })
+  })
+
+  itemOptionsById.value = nextOptions
+}
+
 /** 将指定 id 移动到目标 span 下标，返回是否真的发生了排序变化。 */
 const moveSpanId = (id: string, toIndex: number) => {
   const fromIndex = spanIds.value.indexOf(id)
@@ -288,6 +300,8 @@ const moveSpanId = (id: string, toIndex: number) => {
   const targetIndex = Math.max(0, Math.min(toIndex, spanIds.value.length - 1))
   if (fromIndex === targetIndex) return false
   if (IsFixedItem(id) || IsFixedSpanIndex(targetIndex)) return false
+
+  const prevSpanIds = [...spanIds.value]
 
   const fixedSlots = new Map<number, string>()
   spanIds.value.forEach((spanId, index) => {
@@ -306,6 +320,7 @@ const moveSpanId = (id: string, toIndex: number) => {
     nextSpanIds[slotIndex] = movableIds[index]
   })
   spanIds.value = nextSpanIds
+  applySlotOptionsAfterReorder(prevSpanIds, nextSpanIds)
   return true
 }
 
