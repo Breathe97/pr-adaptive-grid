@@ -1,7 +1,7 @@
 <template>
-  <div ref="positionRef" class="pr-adaptive-grid-item-position" :style="[ItemStyle]">
+  <div ref="positionRef" class="pr-adaptive-grid-item-position" :class="{ 'pr-adaptive-grid-item-leaving': leaving, 'pr-adaptive-grid-item-dragging': dragging }" :style="[ItemStyle]">
     <div ref="sizeRef" class="pr-adaptive-grid-item-size" :style="[ItemInnerStyle]">
-      <div ref="visualRef" class="pr-adaptive-grid-item-visual">
+      <div ref="visualRef" class="pr-adaptive-grid-item-visual" @pointerdown="onPointerDown" @pointermove="onPointerMove" @pointerup="onPointerUp" @pointercancel="onPointerCancel">
         <slot :item="Info" />
       </div>
     </div>
@@ -11,7 +11,7 @@
 <script lang="ts" setup>
 import { computed, ref, watch, onMounted } from 'vue'
 import type { PropType } from 'vue'
-import type { Geo } from '../../types'
+import type { Geo, PrAdaptiveGridItemDragEvent } from '../../types'
 
 const AG_DURATION_ENTER = 500
 const AG_EASING_ENTER = 'ease-out'
@@ -29,10 +29,40 @@ const props = defineProps({
     required: true,
     type: Object as PropType<Geo>
   },
+  dragGeo: {
+    required: false,
+    type: Object as PropType<Geo>,
+    default: undefined
+  },
+  draggable: {
+    required: false,
+    type: Boolean,
+    default: () => false
+  },
+  dragging: {
+    required: false,
+    type: Boolean,
+    default: () => false
+  },
   leaving: {
     required: false,
     type: Boolean,
     default: () => false
+  },
+  onDragStart: {
+    required: false,
+    type: Function as PropType<PrAdaptiveGridItemDragEvent>,
+    default: undefined
+  },
+  onDragMove: {
+    required: false,
+    type: Function as PropType<PrAdaptiveGridItemDragEvent>,
+    default: undefined
+  },
+  onDragEnd: {
+    required: false,
+    type: Function as PropType<PrAdaptiveGridItemDragEvent>,
+    default: undefined
   },
   onLeaveEnd: {
     required: false,
@@ -41,27 +71,29 @@ const props = defineProps({
   }
 })
 
-let prevGeo: Geo = { ...props.geo }
-
 const positionRef = ref<HTMLElement>()
 const sizeRef = ref<HTMLElement>()
 const visualRef = ref<HTMLElement>()
+const activePointerId = ref<number>()
+
+const EffectiveGeo = computed(() => props.dragGeo ?? props.geo)
 
 const Info = computed(() => {
-  const { id, geo } = props
+  const { id } = props
+  const geo = EffectiveGeo.value
   const info = { id, ...geo, sticky: true, fixed: true }
   return info
 })
 
 const ItemStyle = computed(() => {
-  const { cx, cy } = props.geo
+  const { cx, cy } = EffectiveGeo.value
   return {
     transform: `translate3d(${cx}px, ${cy}px, 0) translate(-50%, -50%)`
   }
 })
 
 const ItemInnerStyle = computed(() => {
-  const { width, height } = props.geo
+  const { width, height } = EffectiveGeo.value
   return {
     width: `${width}px`,
     height: `${height}px`
@@ -72,6 +104,45 @@ const saveStyles = (animate: Animation) => {
   if (animate.playState === 'idle') return
   animate.commitStyles()
   animate.cancel()
+}
+
+const stopPositionAnimations = () => {
+  const outer = positionRef.value
+  if (!outer) return
+  outer.getAnimations().forEach((animate) => saveStyles(animate))
+}
+
+const releasePointerCapture = (event: PointerEvent) => {
+  const visual = visualRef.value
+  if (!visual?.hasPointerCapture(event.pointerId)) return
+  visual.releasePointerCapture(event.pointerId)
+}
+
+const onPointerDown = (event: PointerEvent) => {
+  if (!props.draggable || props.leaving) return
+
+  activePointerId.value = event.pointerId
+  visualRef.value?.setPointerCapture(event.pointerId)
+  props.onDragStart?.(props.id, event)
+}
+
+const onPointerMove = (event: PointerEvent) => {
+  if (activePointerId.value !== event.pointerId) return
+  props.onDragMove?.(props.id, event)
+}
+
+const onPointerUp = (event: PointerEvent) => {
+  if (activePointerId.value !== event.pointerId) return
+  activePointerId.value = undefined
+  releasePointerCapture(event)
+  props.onDragEnd?.(props.id, event)
+}
+
+const onPointerCancel = (event: PointerEvent) => {
+  if (activePointerId.value !== event.pointerId) return
+  activePointerId.value = undefined
+  releasePointerCapture(event)
+  props.onDragEnd?.(props.id, event)
 }
 
 // 位移大小等变化
@@ -132,7 +203,17 @@ const toTransform = (newGeo: Geo) => {
 
 watch(
   () => ({ ...props.geo }),
-  (geo) => toTransform(geo)
+  (geo) => {
+    if (props.dragging) return
+    toTransform(geo)
+  }
+)
+
+watch(
+  () => props.dragging,
+  (dragging) => {
+    if (dragging) stopPositionAnimations()
+  }
 )
 
 // 退场动画

@@ -23,6 +23,8 @@ export interface Geo {
   height: number
 }
 
+export type PrAdaptiveGridItemDragEvent = (id: string, event: PointerEvent) => void
+
 /** 布局计算函数；mode 由应用层在闭包内决定，组件只传 length */
 export type GetLayoutFn = (length: number) => Layout
 
