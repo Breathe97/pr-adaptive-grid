@@ -211,8 +211,14 @@ watch(
 
 watch(
   () => props.dragging,
-  (dragging) => {
-    if (dragging) stopPositionAnimations()
+  (dragging, oldDragging) => {
+    if (dragging) {
+      stopPositionAnimations()
+      return
+    }
+    if (oldDragging) {
+      toTransform(props.geo)
+    }
   }
 )
 

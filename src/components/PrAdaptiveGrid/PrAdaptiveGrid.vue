@@ -131,20 +131,7 @@ const onItemDragStart = (id: string, event: PointerEvent) => {
   if (!startGeo) return
 
   event.preventDefault()
-  dragState.value = {
-    id,
-    startPointer: {
-      x: event.clientX,
-      y: event.clientY
-    },
-    startGeo,
-    currentCenter: {
-      x: startGeo.cx,
-      y: startGeo.cy
-    },
-    fromIndex,
-    overIndex: fromIndex
-  }
+  dragState.value = { id, startPointer: { x: event.clientX, y: event.clientY }, startGeo, currentCenter: { x: startGeo.cx, y: startGeo.cy }, fromIndex, overIndex: fromIndex }
 }
 
 const onItemDragMove = (id: string, event: PointerEvent) => {
@@ -154,13 +141,7 @@ const onItemDragMove = (id: string, event: PointerEvent) => {
   event.preventDefault()
   const dx = event.clientX - state.startPointer.x
   const dy = event.clientY - state.startPointer.y
-  dragState.value = {
-    ...state,
-    currentCenter: {
-      x: state.startGeo.cx + dx,
-      y: state.startGeo.cy + dy
-    }
-  }
+  dragState.value = { ...state, currentCenter: { x: state.startGeo.cx + dx, y: state.startGeo.cy + dy } }
 }
 
 const onItemDragEnd = (id: string, event: PointerEvent) => {
