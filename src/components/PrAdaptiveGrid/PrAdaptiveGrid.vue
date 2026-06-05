@@ -170,6 +170,18 @@ const getNearestSpanIndex = (center: { x: number; y: number }, fallbackIndex: nu
   return nearestIndex
 }
 
+const updateDragStateFromPointer = (state: DragState, event: PointerEvent) => {
+  const dx = event.clientX - state.startPointer.x
+  const dy = event.clientY - state.startPointer.y
+  const currentCenter = { x: state.startGeo.cx + dx, y: state.startGeo.cy + dy }
+  const overIndex = getNearestSpanIndex(currentCenter, state.overIndex)
+  const didReorder = overIndex !== state.overIndex && moveSpanId(state.id, overIndex)
+  const nextState = { ...state, currentCenter, overIndex }
+  dragState.value = nextState
+
+  return { didReorder }
+}
+
 const onItemDragStart = (id: string, event: PointerEvent) => {
   const fromIndex = itemIds.value.indexOf(id)
   const startGeo = fromIndex === -1 ? undefined : spanGeos.value[fromIndex]
@@ -184,18 +196,19 @@ const onItemDragMove = (id: string, event: PointerEvent) => {
   if (!state || state.id !== id) return
 
   event.preventDefault()
-  const dx = event.clientX - state.startPointer.x
-  const dy = event.clientY - state.startPointer.y
-  const currentCenter = { x: state.startGeo.cx + dx, y: state.startGeo.cy + dy }
-  const overIndex = getNearestSpanIndex(currentCenter, state.overIndex)
-  const didReorder = overIndex !== state.overIndex && moveSpanId(id, overIndex)
-  dragState.value = { ...state, currentCenter, overIndex }
+  const { didReorder } = updateDragStateFromPointer(state, event)
   if (didReorder) void syncLayout()
 }
 
-const onItemDragEnd = (id: string, event: PointerEvent) => {
-  if (dragState.value?.id !== id) return
+const onItemDragEnd = async (id: string, event: PointerEvent) => {
+  const state = dragState.value
+  if (!state || state.id !== id) return
   event.preventDefault()
+
+  updateDragStateFromPointer(state, event)
+  await syncLayout()
+  if (dragState.value?.id !== id) return
+
   dragState.value = undefined
 }
 
