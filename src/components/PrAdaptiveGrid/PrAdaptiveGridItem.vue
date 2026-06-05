@@ -75,11 +75,6 @@ watch(
 
     if (!outer || !inner) return
 
-    {
-      const res = outer.getAnimations()
-      console.log('\x1b[38;2;0;151;255m%c%s\x1b[0m', 'color:#0097ff;', `------->Breathe: res`, res)
-    }
-
     // 位置：外层从旧中心点过渡到新中心点
     if (prevGeo.cx !== newGeo.cx || prevGeo.cy !== newGeo.cy) {
       retarget(outer, [{ transform: `translate3d(${newGeo.cx}px, ${newGeo.cy}px, 0) translate(-50%, -50%)` }], { duration: AG_DURATION_POSITION, easing: AG_EASING_POSITION })

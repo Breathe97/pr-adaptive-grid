@@ -56,7 +56,7 @@ import { ref, onMounted, nextTick } from 'vue'
 import { PrAdaptiveGrid, getLayout, getLectureLayout } from '../../src/index.ts'
 import type { GetLayoutFn, PrAdaptiveGridExpose } from '../../src/index.ts'
 
-const DEFAULT_USER_COUNT = 1 // 演示初始 item 数量
+const DEFAULT_USER_COUNT = 4 // 演示初始 item 数量
 
 const layoutMode = ref(1) // 应用层布局模式：1 默认，2 讲座（Pin）
 
