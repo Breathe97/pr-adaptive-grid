@@ -55,6 +55,7 @@ type DragState = {
 }
 
 const dragState = ref<DragState>()
+let syncLayoutToken = 0
 
 // 获取所有span的几何信息
 const getSpanGeos = async () => {
@@ -97,8 +98,7 @@ const ItemGeo = computed(() => {
 
 const LayoutKey = computed(() => {
   const { width, height } = size.value
-  const ids = spanIds.value.join('&')
-  const key = `${width}-${height}-${ids}`
+  const key = `${width}-${height}-${spanIds.value.length}`
   return key
 })
 
@@ -125,13 +125,35 @@ const DragGeo = computed(() => {
   }
 })
 
+const syncLayout = async () => {
+  if (isReady.value === false) return
+
+  const token = ++syncLayoutToken
+  layout.value = props.getLayout(spanIds.value.length)
+  await nextTick()
+  if (token !== syncLayoutToken) return
+  await getSpanGeos()
+}
+
+const moveSpanId = (id: string, toIndex: number) => {
+  const fromIndex = spanIds.value.indexOf(id)
+  if (fromIndex === -1) return false
+
+  const targetIndex = Math.max(0, Math.min(toIndex, spanIds.value.length - 1))
+  if (fromIndex === targetIndex) return false
+
+  spanIds.value.splice(fromIndex, 1)
+  spanIds.value.splice(targetIndex, 0, id)
+  return true
+}
+
 /** 根据拖拽 item 的视觉中心点，寻找距离最近的 span 槽位。 */
 const getNearestSpanIndex = (center: { x: number; y: number }, fallbackIndex: number) => {
   let nearestIndex = fallbackIndex
   let nearestScore = Number.POSITIVE_INFINITY
 
   spanGeos.value.forEach((geo, index) => {
-    const id = itemIds.value[index]
+    const id = spanIds.value[index]
     // 正在退场的 item 不参与拖拽目标判断，避免拖到即将移除的槽位。
     if (id !== undefined && leavingIds.value.includes(id)) return
 
@@ -166,7 +188,9 @@ const onItemDragMove = (id: string, event: PointerEvent) => {
   const dy = event.clientY - state.startPointer.y
   const currentCenter = { x: state.startGeo.cx + dx, y: state.startGeo.cy + dy }
   const overIndex = getNearestSpanIndex(currentCenter, state.overIndex)
+  const didReorder = overIndex !== state.overIndex && moveSpanId(id, overIndex)
   dragState.value = { ...state, currentCenter, overIndex }
+  if (didReorder) void syncLayout()
 }
 
 const onItemDragEnd = (id: string, event: PointerEvent) => {
@@ -175,17 +199,10 @@ const onItemDragEnd = (id: string, event: PointerEvent) => {
   dragState.value = undefined
 }
 
-const initLayout = async () => {
-  if (isReady.value === false) return
-  layout.value = props.getLayout(spanIds.value.length)
-  await nextTick()
-  getSpanGeos()
-}
-
 // 布局受外部变量实时变化
 watch(
   () => LayoutKey.value,
-  () => initLayout(),
+  () => syncLayout(),
   {}
 )
 
