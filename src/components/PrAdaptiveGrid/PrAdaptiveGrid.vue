@@ -120,12 +120,13 @@ const ItemSpanStyle = computed(() => {
 })
 
 /** 新增或更新 item；id 已存在时仅合并传入的 options */
-const setItem = (id: string, option?: GridItemOptions) => {
-  spanIds.value.push(id)
+const setItem = (id: string, options?: GridItemOptions) => {
+  const { index = 0 } = options
+  spanIds.value.splice(index, 0, id)
 }
 
 /** 按 ids 一次性设置 */
-const setItems = (ids: string[], option?: GridItemsOptions) => {
+const setItems = (ids: string[], options?: GridItemsOptions) => {
   spanIds.value.push(...ids)
 }
 

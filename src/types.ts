@@ -27,12 +27,12 @@ export interface Geo {
 export type GetLayoutFn = (length: number) => Layout
 
 /** setItem 可选参数 */
-export interface GridItemOptions {
+export interface GridItemsOptions {
   sticky?: boolean
   fixed?: boolean
 }
 /** setItems 可选参数 */
-export type GridItemsOptions = GridItemOptions & {
+export type GridItemOptions = GridItemsOptions & {
   index?: number
 }
 
@@ -40,7 +40,7 @@ export type GeoItem = Geo & Required<GridItemOptions>
 
 /** PrAdaptiveGrid 组件 expose 的方法 */
 export type PrAdaptiveGridExpose = {
-  setItem: (id: string, option?: GridItemsOptions) => void
-  setItems: (ids: string[], option?: GridItemOptions) => void
+  setItem: (id: string, option?: GridItemOptions) => void
+  setItems: (ids: string[], option?: GridItemsOptions) => void
   removeItems: (ids: string[]) => void
 }
