@@ -75,37 +75,49 @@ const toTransform = (newGeo: Geo) => {
 
   const currentGeo = getCurrentCenterGeo() // 当前几何
 
-  outer.getAnimations().forEach((a) => a.cancel()) // 取消动画
-  inner.getAnimations().forEach((a) => a.cancel()) // 取消动画
+  const saveStyles = (animate: Animation) => {
+    animate.commitStyles()
+    animate.cancel()
+  }
+
+  outer.getAnimations().forEach((animate) => saveStyles(animate)) // 取消动画
+  inner.getAnimations().forEach((animate) => saveStyles(animate)) // 取消动画
 
   // 执行新动画
-  outer.animate(
-    [
-      // 开始
-      { transform: `translate3d(${currentGeo.cx}px, ${currentGeo.cy}px, 0) translate(-50%, -50%)` },
-      // 结束
-      { transform: `translate3d(${newGeo.cx}px, ${newGeo.cy}px, 0) translate(-50%, -50%)` }
-    ],
-    { duration: AG_DURATION_POSITION, easing: AG_EASING_POSITION }
-  )
+  outer
+    .animate(
+      [
+        // 开始
+        { transform: `translate3d(${currentGeo.cx}px, ${currentGeo.cy}px, 0) translate(-50%, -50%)` },
+        // 结束
+        { transform: `translate3d(${newGeo.cx}px, ${newGeo.cy}px, 0) translate(-50%, -50%)` }
+      ],
+      { duration: AG_DURATION_POSITION, easing: AG_EASING_POSITION }
+    )
+    .finished.then((animate) => saveStyles(animate))
 
   // 执行新动画
-  inner.animate(
-    [
-      // 开始
-      { width: `${currentGeo.width}px`, height: `${currentGeo.height}px` },
-      // 结束
-      { width: `${newGeo.width}px`, height: `${newGeo.height}px` }
-    ],
-    { duration: AG_DURATION_SIZE, easing: AG_EASING_SIZE, delay: 0 }
-  )
+  inner
+    .animate(
+      [
+        // 开始
+        { width: `${currentGeo.width}px`, height: `${currentGeo.height}px` },
+        // 结束
+        { width: `${newGeo.width}px`, height: `${newGeo.height}px` }
+      ],
+      { duration: AG_DURATION_SIZE, easing: AG_EASING_SIZE, delay: 0 }
+    )
+    .finished.then((animate) => saveStyles(animate))
 
   prevGeo = currentGeo
 }
 
 watch(
   () => ({ ...props.geo }),
-  (geo) => toTransform(geo)
+  (geo) => toTransform(geo),
+  {
+    flush: 'post'
+  }
 )
 </script>
 

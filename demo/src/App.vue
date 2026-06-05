@@ -201,13 +201,6 @@ onMounted(async () => {
   height: 100vh;
   background: var(--bg);
   overflow: hidden;
-  width: 50%;
-  height: 50vh;
-  left: 20vh;
-  right: 0;
-  top: 0;
-  bottom: 0;
-  margin-right: auto;
 }
 
 .grid-wrap {
