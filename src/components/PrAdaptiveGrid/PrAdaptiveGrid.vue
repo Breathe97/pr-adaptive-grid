@@ -3,7 +3,7 @@
     <div ref="pr_adaptive_grid_content_ref" class="pr-adaptive-grid-content" :style="ContainerStyle">
       <div v-for="(item, index) in layout.items" :key="index" class="pr-adaptive-grid-item-span" :data-grid-span-index="index" :style="ItemSpanStyle(item)"></div>
     </div>
-    <PrAdaptiveGridItem v-for="(id, index) in itemIds" :key="id" :id="id" :geo="ItemGeo(index)">
+    <PrAdaptiveGridItem v-for="(id, index) in itemIds" :key="id" :id="id" :geo="ItemGeo(index)" :leaving="IsLeaving(id)" :on-leave-end="onItemLeaveEnd">
       <template #default="slotProps">
         <slot v-bind="slotProps" />
       </template>
@@ -36,6 +36,7 @@ const scrollTop = ref(0) // .pr-adaptive-grid 的 scrollTop，Pin 定位用
 
 const spanIds = ref<string[]>([]) // 当前渲染的span
 const itemIds = ref<string[]>([]) // 当前渲染的item
+const leavingIds = ref<string[]>([]) // 当前退场的item
 const spanGeos = ref<Geo[]>([]) // 所有span的几何信息
 
 // 获取所有span的几何信息
@@ -58,6 +59,15 @@ const getSpanGeos = async () => {
   itemIds.value = [...spanIds.value]
 }
 
+const onItemLeaveEnd = (id: string) => {
+  const leavingIndex = leavingIds.value.indexOf(id)
+  if (leavingIndex !== -1) leavingIds.value.splice(leavingIndex, 1)
+  const spanIndex = spanIds.value.indexOf(id)
+  if (spanIndex !== -1) spanIds.value.splice(spanIndex, 1)
+  const itemIndex = itemIds.value.indexOf(id)
+  if (itemIndex !== -1) itemIds.value.splice(itemIndex, 1)
+}
+
 const ItemGeo = computed(() => {
   return (index: number) => {
     const geo = spanGeos.value[index]
@@ -70,6 +80,10 @@ const LayoutKey = computed(() => {
   const ids = spanIds.value.join('&')
   const key = `${width}-${height}-${ids}`
   return key
+})
+
+const IsLeaving = computed(() => {
+  return (id: string) => leavingIds.value.includes(id)
 })
 
 const initLayout = async () => {
@@ -133,9 +147,9 @@ const setItems = (ids: string[], options?: GridItemsOptions) => {
 /** 移除 item 并重算布局 */
 const removeItems = (removeIds: string[]) => {
   for (const id of removeIds) {
-    const index = spanIds.value.findIndex((spanId) => spanId === id)
-    if (index === -1) continue
-    spanIds.value.splice(index, 1)
+    if (!spanIds.value.includes(id)) continue
+    if (leavingIds.value.includes(id)) continue
+    leavingIds.value.push(id)
   }
 }
 

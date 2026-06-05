@@ -28,6 +28,16 @@ const props = defineProps({
   geo: {
     required: true,
     type: Object as PropType<Geo>
+  },
+  leaving: {
+    required: false,
+    type: Boolean,
+    default: () => false
+  },
+  onLeaveEnd: {
+    required: false,
+    type: Function as PropType<(id: string) => void>,
+    default: undefined
   }
 })
 
@@ -124,6 +134,42 @@ watch(
   (geo) => toTransform(geo)
 )
 
+const leavTransform = () => {
+  const visual = visualRef.value
+  if (!visual) {
+    props.onLeaveEnd?.(props.id)
+    return
+  }
+  visual.getAnimations().forEach((animation) => animation.cancel())
+  const animation = visual.animate(
+    [
+      { opacity: 1, transform: 'scale(1)' },
+      { opacity: 0, transform: 'scale(0.3)' }
+    ],
+    {
+      duration: AG_DURATION_ENTER,
+      easing: AG_EASING_ENTER,
+      fill: 'forwards'
+    }
+  )
+  animation.finished
+    .then(() => {
+      props.onLeaveEnd?.(props.id)
+    })
+    .catch(() => {
+      props.onLeaveEnd?.(props.id)
+    })
+}
+
+watch(
+  () => props.leaving,
+  (leaving, oldLeaving) => {
+    if (leaving === true && oldLeaving !== true) {
+      leavTransform()
+    }
+  }
+)
+
 const addTransform = () => {
   const inner = visualRef.value
   if (!inner) return
@@ -134,7 +180,7 @@ const addTransform = () => {
       // 结束
       { opacity: 1, transform: 'scale(1)' }
     ],
-    { duration: AG_DURATION_ENTER, easing: AG_EASING_ENTER, delay: 0 }
+    { duration: AG_DURATION_ENTER, easing: AG_EASING_ENTER, delay: 300 }
   )
 }
 
