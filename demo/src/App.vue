@@ -11,8 +11,8 @@
             <span class="tile-id">{{ item.id }}</span>
             <!-- geo 调试信息 -->
             <div class="tile-geo">
-              <span>top: {{ Math.round(item.top) }}</span>
-              <span>left: {{ Math.round(item.left) }}</span>
+              <span>cx: {{ Math.round(item.cx) }}</span>
+              <span>cy: {{ Math.round(item.cy) }}</span>
               <span>w: {{ Math.round(item.width) }}</span>
               <span>h: {{ Math.round(item.height) }}</span>
             </div>

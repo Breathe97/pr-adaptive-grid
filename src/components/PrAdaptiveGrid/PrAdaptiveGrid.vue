@@ -50,7 +50,7 @@ const getSpanGeos = async () => {
     const cx = offsetLeft + clientWidth / 2
     const cy = offsetTop + clientHeight / 2
 
-    const geo: Geo = { cx, cy, width: clientWidth, height: clientHeight }
+    const geo: Geo = { cx, cy, top: offsetTop, left: offsetLeft, width: clientWidth, height: clientHeight }
 
     _spanGeos.push(geo)
   }

@@ -17,6 +17,8 @@ export interface Layout {
 export interface Geo {
   cx: number
   cy: number
+  left: number
+  top: number
   width: number
   height: number
 }
