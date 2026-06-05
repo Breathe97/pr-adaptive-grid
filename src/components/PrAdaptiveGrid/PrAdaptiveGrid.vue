@@ -3,7 +3,7 @@
     <div ref="pr_adaptive_grid_content_ref" class="pr-adaptive-grid-content" :style="ContainerStyle">
       <div v-for="(item, index) in layout.items" :key="index" class="pr-adaptive-grid-item-span" :data-grid-span-index="index" :style="ItemSpanStyle(item)"></div>
     </div>
-    <PrAdaptiveGridItem v-for="(id, index) in itemIds" :key="id" :id="id" :geo="ItemGeo(index)" :drag-geo="DragGeo(id)" :sticky="ItemOptions(id).sticky" :fixed="ItemOptions(id).fixed" :draggable="true" :dragging="DraggingId === id" :leaving="IsLeaving(id)" :on-drag-start="onItemDragStart" :on-drag-move="onItemDragMove" :on-drag-end="onItemDragEnd" :on-leave-end="onItemLeaveEnd">
+    <PrAdaptiveGridItem v-for="(id, index) in itemIds" :key="id" :id="id" :geo="ItemGeo(index)" :drag-geo="DragGeo(id)" :sticky="ItemOptions(id).sticky" :fixed="ItemOptions(id).fixed" :draggable="!ItemOptions(id).fixed" :dragging="DraggingId === id" :leaving="IsLeaving(id)" :on-drag-start="onItemDragStart" :on-drag-move="onItemDragMove" :on-drag-end="onItemDragEnd" :on-leave-end="onItemLeaveEnd">
       <template #default="slotProps">
         <slot v-bind="slotProps" />
       </template>
@@ -143,6 +143,14 @@ const ItemOptions = computed(() => {
   return (id: string): StoredItemOptions => itemOptionsById.value.get(id) ?? DEFAULT_ITEM_OPTIONS
 })
 
+/** 判断 item 是否固定；固定 item 不可被拖动，也不作为拖拽落点。 */
+const IsFixedItem = (id?: string) => {
+  if (id === undefined) return false
+  return itemOptionsById.value.get(id)?.fixed ?? DEFAULT_ITEM_OPTIONS.fixed
+}
+
+const IsFixedSpanIndex = (index: number) => IsFixedItem(spanIds.value[index])
+
 /** 当前正在拖拽的 item id。 */
 const DraggingId = computed(() => dragState.value?.id)
 
@@ -182,9 +190,25 @@ const moveSpanId = (id: string, toIndex: number) => {
 
   const targetIndex = Math.max(0, Math.min(toIndex, spanIds.value.length - 1))
   if (fromIndex === targetIndex) return false
+  if (IsFixedItem(id) || IsFixedSpanIndex(targetIndex)) return false
 
-  spanIds.value.splice(fromIndex, 1)
-  spanIds.value.splice(targetIndex, 0, id)
+  const fixedSlots = new Map<number, string>()
+  spanIds.value.forEach((spanId, index) => {
+    if (spanId !== id && IsFixedItem(spanId)) fixedSlots.set(index, spanId)
+  })
+
+  const movableSlotIndexes = spanIds.value.map((_, index) => index).filter((index) => !fixedSlots.has(index))
+  const targetMovableIndex = movableSlotIndexes.indexOf(targetIndex)
+  if (targetMovableIndex === -1) return false
+
+  const movableIds = movableSlotIndexes.map((index) => spanIds.value[index]).filter((spanId) => spanId !== id)
+  movableIds.splice(targetMovableIndex, 0, id)
+
+  const nextSpanIds = [...spanIds.value]
+  movableSlotIndexes.forEach((slotIndex, index) => {
+    nextSpanIds[slotIndex] = movableIds[index]
+  })
+  spanIds.value = nextSpanIds
   return true
 }
 
@@ -197,6 +221,7 @@ const getNearestSpanIndex = (center: { x: number; y: number }, fallbackIndex: nu
     const id = spanIds.value[index]
     // 正在退场的 item 不参与拖拽目标判断，避免拖到即将移除的槽位。
     if (id !== undefined && leavingIds.value.includes(id)) return
+    if (IsFixedItem(id)) return
 
     // 用平方距离比较即可，不需要开方，结果排序一致且计算更轻。
     const dx = center.x - geo.cx
@@ -226,6 +251,8 @@ const updateDragStateFromPointer = (state: DragState, event: PointerEvent) => {
 
 /** 开始拖拽：记录指针起点、item 初始 geo 与原始下标。 */
 const onItemDragStart = (id: string, event: PointerEvent) => {
+  if (IsFixedItem(id)) return
+
   const fromIndex = itemIds.value.indexOf(id)
   const startGeo = fromIndex === -1 ? undefined : spanGeos.value[fromIndex]
   if (!startGeo) return
