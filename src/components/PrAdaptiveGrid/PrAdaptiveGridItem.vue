@@ -39,18 +39,18 @@ const Info = computed(() => {
 })
 
 const ItemStyle = computed(() => {
-  const { cx, cy } = prevGeo
+  const { cx, cy } = props.geo
 
   return {
-    // transform: `translate3d(${cx}px, ${cy}px, 0) translate(-50%, -50%)`
+    transform: `translate3d(${cx}px, ${cy}px, 0) translate(-50%, -50%)`
   }
 })
 
 const ItemInnerStyle = computed(() => {
-  const { width, height } = prevGeo
+  const { width, height } = props.geo
   return {
-    // width: `${width}px`,
-    // height: `${height}px`
+    width: `${width}px`,
+    height: `${height}px`
   }
 })
 
@@ -114,16 +114,11 @@ const toTransform = (newGeo: Geo) => {
     )
     .finished.then((animate) => saveStyles(animate))
     .catch(() => {})
-
-  prevGeo = currentGeo
 }
 
 watch(
   () => ({ ...props.geo }),
-  (geo) => toTransform(geo),
-  {
-    flush: 'post'
-  }
+  (geo) => toTransform(geo)
 )
 </script>
 
