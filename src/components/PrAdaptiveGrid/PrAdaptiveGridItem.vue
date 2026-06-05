@@ -91,6 +91,8 @@ const sizeRef = ref<HTMLElement>()
 const visualRef = ref<HTMLElement>()
 const activePointerId = ref<number>()
 
+const isPositionAnimating = ref(false)
+
 /** 当前实际用于渲染的几何；拖拽优先，其次 sticky 视觉吸附，最后使用原始占位。 */
 const EffectiveGeo = computed(() => props.dragGeo ?? props.stickyGeo ?? props.geo)
 
@@ -117,7 +119,7 @@ const ItemClass = computed(() => {
 const ItemStyle = computed(() => {
   const { cx, cy } = EffectiveGeo.value
   return {
-    'z-index': props.dragging === true ? 22 : 2,
+    'z-index': props.dragging ? 22 : isPositionAnimating.value ? 21 : undefined, // 交给 CSS class 决定：普通 2 / pinned 20
     transform: `translate3d(${cx}px, ${cy}px, 0) translate(-50%, -50%)`
   }
 })
@@ -188,6 +190,7 @@ const toTransform = (newGeo: Geo) => {
   const outer = positionRef.value
   const inner = sizeRef.value
   if (!outer || !inner) return
+  isPositionAnimating.value = true
 
   /** 读取当前视觉几何，用作下一段 WAAPI 动画的起点。 */
   const getCurrentCenterGeo = () => {
@@ -216,14 +219,17 @@ const toTransform = (newGeo: Geo) => {
     .animate(
       [
         // 开始
-        { transform: `translate3d(${currentGeo.cx}px, ${currentGeo.cy}px, 0) translate(-50%, -50%)`, zIndex: 21 },
+        { transform: `translate3d(${currentGeo.cx}px, ${currentGeo.cy}px, 0) translate(-50%, -50%)` },
         // 结束
-        { transform: `translate3d(${newGeo.cx}px, ${newGeo.cy}px, 0) translate(-50%, -50%)`, zIndex: 2 }
+        { transform: `translate3d(${newGeo.cx}px, ${newGeo.cy}px, 0) translate(-50%, -50%)` }
       ],
       { duration: AG_DURATION_POSITION, easing: AG_EASING_POSITION }
     )
     .finished.then((animate) => saveStyles(animate))
     .catch(() => {})
+    .finally(() => {
+      isPositionAnimating.value = false
+    })
 
   // 执行新动画
   inner
