@@ -32,7 +32,7 @@
           <p class="help-title">按钮说明</p>
           <div class="help-item">
             <span class="help-tag help-tag-pin">📌 Pin</span>
-            <p class="help-desc">滚动时固定在网格可视区域，类似 sticky 锚点。</p>
+            <p class="help-desc">滚动时固定在网格可视区域；同时只能 Pin 一个 item。切到布局 2 自动 Pin 第一项，切回布局 1 自动取消 Pin。</p>
           </div>
           <div class="help-item">
             <span class="help-tag help-tag-fixed">🔒 Fixed</span>
@@ -41,9 +41,14 @@
         </div>
       </div>
       <span class="bar-sep" />
-      <button type="button" class="bar-btn" :disabled="userCount <= 1" @click="changeUserCount(-1)">−</button>
+      <button type="button" class="bar-btn" :disabled="!canRemoveItem" @click="changeUserCount(-1)">−</button>
       <span class="bar-count">{{ userCount }}</span>
       <button type="button" class="bar-btn" @click="changeUserCount(1)">+</button>
+      <span class="bar-sep" />
+      <div class="bar-mode" role="group" aria-label="布局模式">
+        <button type="button" class="bar-mode-btn" :class="{ active: layoutMode === 1 }" @click="setLayoutMode(1)">布局 1</button>
+        <button type="button" class="bar-mode-btn" :class="{ active: layoutMode === 2 }" @click="setLayoutMode(2)">布局 2</button>
+      </div>
       <span class="bar-sep" />
       <button type="button" class="bar-text" :disabled="userCount <= 1" @click="shuffleItems">打乱</button>
       <button type="button" class="bar-text" @click="syncGrid">同步</button>
@@ -52,13 +57,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, nextTick } from 'vue'
+import { computed, ref, onMounted, nextTick } from 'vue'
 import { PrAdaptiveGrid, getLayout, getLectureLayout } from '../../src/index.ts'
 import type { Geo, GetLayoutFn, GridItemsOptions, PrAdaptiveGridExpose } from '../../src/index.ts'
 
-const DEFAULT_USER_COUNT = 4 // 演示初始 item 数量
-
-const layoutMode = ref(1) // 应用层布局模式：1 默认，2 讲座（Pin）
+const DEFAULT_USER_COUNT = 10 // 演示初始 item 数量
+const layoutMode = ref<1 | 2>(1) // 1 默认布局，2 讲座布局
 
 /** 闭包读取 layoutMode，组件只传 length */
 const resolveLayout: GetLayoutFn = (length) => (layoutMode.value === 2 ? getLectureLayout(length) : getLayout(length))
@@ -68,8 +72,18 @@ const userCount = ref(DEFAULT_USER_COUNT) // 工具栏显示的数量
 const tileColorMap = ref(new Map<string, string>()) // 每个 id 对应的 tile 背景色
 
 const ids: string[] = [] // 业务侧 id 顺序，与 gridItems 下标一致
-const pinnedSwapIndex = ref<number | null>(null) // Pin 时与 index 0 互换的下标，取消时换回
+const pinnedId = ref<string | null>(null) // 当前唯一 Pin 的 item id
+const pinnedSwapIndex = ref<number | null>(null) // Pin 时与 index 0 互换的原下标
 type GridSlotItem = Geo & Required<GridItemsOptions> & { id: string }
+
+/** 从前 10 项中筛选可移除候选；布局 2 时保护第一项。 */
+const getRemovableCandidates = () => {
+  const pool = ids.slice(0, Math.min(10, ids.length))
+  if (layoutMode.value === 2) return pool.slice(1)
+  return pool
+}
+
+const canRemoveItem = computed(() => userCount.value > 1 && getRemovableCandidates().length > 0)
 
 /** 高饱和度随机色，亮度偏高以对比黑色背景 */
 const pickContrastColor = (): string => {
@@ -90,6 +104,55 @@ const ensureTileColor = (id: string) => {
 /** 读取 tile 背景色，未分配时用默认色 */
 const getTileColor = (id: string): string => tileColorMap.value.get(id) ?? 'hsl(210 95% 72%)'
 
+/** 交换 ids 中两个下标的 id（应用层换位） */
+const swapIdsAt = (a: number, b: number) => {
+  if (a === b || a < 0 || b < 0 || a >= ids.length || b >= ids.length) return
+  const tmp = ids[a]
+  ids[a] = ids[b]
+  ids[b] = tmp
+}
+
+/** 取消当前 Pin 并还原换位。 */
+const clearPin = () => {
+  if (pinnedSwapIndex.value != null) swapIdsAt(0, pinnedSwapIndex.value)
+  pinnedId.value = null
+  pinnedSwapIndex.value = null
+}
+
+/** 将指定 id 设为唯一 Pin，并换到 index 0。 */
+const applyPinToId = (targetId: string) => {
+  if (ids.length === 0) return
+  const wasPinned = pinnedId.value === targetId
+
+  if (pinnedId.value && pinnedId.value !== targetId && pinnedSwapIndex.value != null) {
+    swapIdsAt(0, pinnedSwapIndex.value)
+  }
+
+  const index = ids.indexOf(targetId)
+  if (index === -1) return
+
+  if (index !== 0) {
+    swapIdsAt(0, index)
+    pinnedSwapIndex.value = index
+  } else if (!wasPinned || pinnedSwapIndex.value == null) {
+    pinnedSwapIndex.value = null
+  }
+
+  pinnedId.value = targetId
+}
+
+/** 切换布局模式：布局 1 取消 Pin，布局 2 自动 Pin 第一项。 */
+const setLayoutMode = async (mode: 1 | 2) => {
+  if (layoutMode.value === mode) return
+
+  if (mode === 1) clearPin()
+  else applyPinToId(ids[0])
+
+  layoutMode.value = mode
+  await nextTick()
+  await initGrid()
+}
+
 /** 切换 Fixed：只锁定当前 id 的拖拽排序能力，不改变业务顺序。 */
 const setFixed = (item: GridSlotItem) => {
   gridRef.value?.setItem(item.id, { fixed: !item.fixed })
@@ -108,46 +171,34 @@ const changeUserCount = (delta: number) => {
     userCount.value += 1
     return
   }
-  if (userCount.value <= 1) return
-  const removeId = ids[0]
+  const candidates = getRemovableCandidates()
+  if (candidates.length === 0) return
+  const removeId = candidates[Math.floor(Math.random() * candidates.length)]
   if (!removeId) return
   gridRef.value?.removeItems([removeId])
   ids.splice(ids.indexOf(removeId), 1)
+  if (pinnedId.value === removeId) {
+    pinnedId.value = null
+    pinnedSwapIndex.value = null
+    layoutMode.value = 1
+  }
   userCount.value -= 1
 }
 
-/** 交换 ids 中两个下标的 id（应用层换位） */
-const swapIdsAt = (a: number, b: number) => {
-  if (a === b || a < 0 || b < 0 || a >= ids.length || b >= ids.length) return
-  const tmp = ids[a]
-  ids[a] = ids[b]
-  ids[b] = tmp
-}
-
-/** 切换 Pin：与 index 0 互换槽位；先改 ids 再改 mode，最后 initGrid 一次性同步 */
+/** 切换 Pin：同时只能 Pin 一个；设置后自动切到布局 2，取消后切回布局 1。 */
 const setPin = async (target: GridSlotItem) => {
   const targetId = target.id
-  const index = ids.indexOf(targetId)
-  if (index < 0) return
+  if (ids.indexOf(targetId) < 0) return
 
   if (target.sticky === true) {
-    if (pinnedSwapIndex.value != null) {
-      swapIdsAt(0, pinnedSwapIndex.value)
-      pinnedSwapIndex.value = null
-    }
+    clearPin()
     layoutMode.value = 1
     await nextTick()
     await initGrid()
     return
   }
 
-  if (index !== 0) {
-    swapIdsAt(0, index)
-    pinnedSwapIndex.value = index
-  } else {
-    pinnedSwapIndex.value = null
-  }
-
+  applyPinToId(targetId)
   layoutMode.value = 2
   await nextTick()
   await initGrid()
@@ -169,12 +220,12 @@ const shuffleItems = () => {
   void initGrid()
 }
 
-/** 一次 setItems + syncLayout（组件内分阶段：layout → mapRect → sticky） */
+/** 一次 setItems，再恢复唯一 Pin 的 sticky 状态。 */
 const initGrid = async () => {
   if (!gridRef.value) return
   gridRef.value.setItems(ids)
-  ids.forEach((id, index) => {
-    gridRef.value?.setItem(id, { sticky: layoutMode.value === 2 && index === 0 })
+  ids.forEach((id) => {
+    gridRef.value?.setItem(id, { sticky: id === pinnedId.value })
   })
 }
 
@@ -598,6 +649,49 @@ onMounted(async () => {
   cursor: not-allowed;
 }
 
+.bar-mode {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.bar-mode-label {
+  padding: 0 6px 0 8px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: rgba(245, 245, 245, 0.65);
+  white-space: nowrap;
+}
+
+.bar-mode-btn {
+  height: 40px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.bar-mode-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.bar-mode-btn.active {
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+}
+
 @media (max-width: 480px) {
   .float-bar {
     width: calc(100% - 24px);
@@ -613,6 +707,11 @@ onMounted(async () => {
   .bar-text {
     flex: 1;
     min-width: 80px;
+  }
+
+  .bar-mode {
+    width: 100%;
+    justify-content: center;
   }
 }
 </style>
