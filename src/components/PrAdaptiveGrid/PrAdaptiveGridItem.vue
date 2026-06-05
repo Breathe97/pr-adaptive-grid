@@ -332,7 +332,7 @@ const addTransform = () => {
         // 结束
         { opacity: 1, transform: 'scale(1)' }
       ],
-      { duration: AG_DURATION_ENTER, easing: AG_EASING_ENTER, delay: 0 }
+      { duration: AG_DURATION_ENTER, easing: AG_EASING_ENTER, delay: 100 }
     )
     .finished.then((animate) => saveStyles(animate))
     .catch(() => {})
