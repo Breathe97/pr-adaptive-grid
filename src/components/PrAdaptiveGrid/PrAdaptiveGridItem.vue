@@ -1,7 +1,9 @@
 <template>
-  <div ref="outerRef" class="pr-adaptive-grid-item" :style="[ItemStyle]">
-    <div ref="innerRef" class="pr-adaptive-grid-item-inner" :style="[ItemInnerStyle]">
-      <slot :item="Info" />
+  <div ref="positionRef" class="pr-adaptive-grid-item-position" :style="[ItemStyle]">
+    <div ref="sizeRef" class="pr-adaptive-grid-item-size" :style="[ItemInnerStyle]">
+      <div ref="visualRef" class="pr-adaptive-grid-item-visual">
+        <slot :item="Info" />
+      </div>
     </div>
   </div>
 </template>
@@ -31,8 +33,9 @@ const props = defineProps({
 
 let prevGeo: Geo = { ...props.geo }
 
-const outerRef = ref<HTMLElement>()
-const innerRef = ref<HTMLElement>()
+const positionRef = ref<HTMLElement>()
+const sizeRef = ref<HTMLElement>()
+const visualRef = ref<HTMLElement>()
 
 const Info = computed(() => {
   const { id, geo } = props
@@ -56,8 +59,8 @@ const ItemInnerStyle = computed(() => {
 })
 
 const toTransform = (newGeo: Geo) => {
-  const outer = outerRef.value
-  const inner = innerRef.value
+  const outer = positionRef.value
+  const inner = sizeRef.value
   if (!outer || !inner) return
 
   // 获取当前几何信息
@@ -122,7 +125,7 @@ watch(
 )
 
 const addTransform = () => {
-  const inner = innerRef.value
+  const inner = visualRef.value
   if (!inner) return
   inner.animate(
     [
@@ -131,7 +134,7 @@ const addTransform = () => {
       // 结束
       { opacity: 1, transform: 'scale(1)' }
     ],
-    { duration: AG_DURATION_ENTER, easing: AG_EASING_ENTER, delay: 80 }
+    { duration: AG_DURATION_ENTER, easing: AG_EASING_ENTER, delay: 0 }
   )
 }
 
@@ -141,7 +144,7 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.pr-adaptive-grid-item {
+.pr-adaptive-grid-item-position {
   position: absolute;
   left: 0;
   top: 0;
@@ -153,7 +156,7 @@ onMounted(() => {
 .pr-adaptive-grid-item-leaving {
   z-index: 1;
 }
-.pr-adaptive-grid-item-inner {
+.pr-adaptive-grid-item-size {
   width: 100%;
   height: 100%;
   box-sizing: border-box;
@@ -161,40 +164,13 @@ onMounted(() => {
   cursor: grab;
   touch-action: none;
 }
-.pr-adaptive-grid-item-layout-anim {
-  transition: transform var(--ag-duration-position, 700ms) var(--ag-ease-position);
-}
-.pr-adaptive-grid-item-layout-anim .pr-adaptive-grid-item-inner {
-  transition:
-    width var(--ag-duration-size) var(--ag-ease-size),
-    height var(--ag-duration-size) var(--ag-ease-size);
-}
-@keyframes ag-inner-enter {
-  from {
-    opacity: 0;
-    transform: scale(0.3);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-@keyframes ag-inner-leave {
-  from {
-    opacity: 1;
-    transform: scale(1);
-  }
-  to {
-    opacity: 0;
-    transform: scale(0.3);
-  }
-}
-.pr-adaptive-grid-item-inner.ag-inner-enter {
-  animation: ag-inner-enter var(--ag-duration-enter) var(--ag-ease-fade) 100ms both;
-}
-.pr-adaptive-grid-item-inner.ag-inner-leave {
-  animation: ag-inner-leave var(--ag-duration-exit) var(--ag-ease-fade) both;
-  pointer-events: none;
+.pr-adaptive-grid-item-visual {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  transform-origin: center center;
+  cursor: grab;
+  touch-action: none;
 }
 
 .pr-adaptive-grid-item-pinned {
