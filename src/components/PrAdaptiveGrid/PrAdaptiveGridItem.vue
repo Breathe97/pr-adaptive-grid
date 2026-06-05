@@ -27,6 +27,8 @@ const props = defineProps({
   }
 })
 
+let prevGeo: Geo = { ...props.geo }
+
 const outerRef = ref<HTMLElement>()
 const innerRef = ref<HTMLElement>()
 
@@ -37,7 +39,7 @@ const Info = computed(() => {
 })
 
 const ItemStyle = computed(() => {
-  const { cx, cy } = props.geo
+  const { cx, cy } = prevGeo
 
   return {
     transform: `translate3d(${cx}px, ${cy}px, 0) translate(-50%, -50%)`
@@ -45,7 +47,7 @@ const ItemStyle = computed(() => {
 })
 
 const ItemInnerStyle = computed(() => {
-  const { width, height } = props.geo
+  const { width, height } = prevGeo
   return {
     width: `${width}px`,
     height: `${height}px`
@@ -60,14 +62,11 @@ const toTransform = (newGeo: Geo) => {
 
   // 获取当前几何信息
   const getCurrentCenterGeo = () => {
-    const rect = outer.getBoundingClientRect()
-    const parentRect = (outer.offsetParent as HTMLElement).getBoundingClientRect()
-    return {
-      cx: rect.left - parentRect.left + rect.width / 2,
-      cy: rect.top - parentRect.top + rect.height / 2,
-      width: parseFloat(getComputedStyle(inner).width),
-      height: parseFloat(getComputedStyle(inner).height)
-    }
+    const rect = inner.getBoundingClientRect()
+    const { top, left, width, height } = rect
+    const cx = left + rect.width / 2
+    const cy = top + rect.height / 2
+    return { top, left, cx, cy, width, height }
   }
 
   const currentGeo = getCurrentCenterGeo() // 当前几何
@@ -94,8 +93,10 @@ const toTransform = (newGeo: Geo) => {
       // 结束
       { width: `${newGeo.width}px`, height: `${newGeo.height}px` }
     ],
-    { duration: AG_DURATION_SIZE, easing: AG_EASING_SIZE }
+    { duration: AG_DURATION_SIZE, easing: AG_EASING_SIZE, delay: 0 }
   )
+
+  prevGeo = currentGeo
 }
 
 watch(
