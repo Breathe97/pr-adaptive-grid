@@ -68,6 +68,12 @@ const ItemInnerStyle = computed(() => {
   }
 })
 
+const saveStyles = (animate: Animation) => {
+  if (animate.playState === 'idle') return
+  animate.commitStyles()
+  animate.cancel()
+}
+
 // 位移大小等变化
 const toTransform = (newGeo: Geo) => {
   const outer = positionRef.value
@@ -92,14 +98,8 @@ const toTransform = (newGeo: Geo) => {
 
   const currentGeo = getCurrentCenterGeo() // 当前几何
 
-  const saveStyles = (animate: Animation) => {
-    if (animate.playState === 'idle') return
-    animate.commitStyles()
-    animate.cancel()
-  }
-
-  outer.getAnimations().forEach((animate) => saveStyles(animate)) // 取消动画
-  inner.getAnimations().forEach((animate) => saveStyles(animate)) // 取消动画
+  outer.getAnimations().forEach((animate) => saveStyles(animate)) // 暂停动画
+  inner.getAnimations().forEach((animate) => saveStyles(animate)) // 暂停动画
 
   // 执行新动画
   outer
@@ -124,7 +124,7 @@ const toTransform = (newGeo: Geo) => {
         // 结束
         { width: `${newGeo.width}px`, height: `${newGeo.height}px` }
       ],
-      { duration: AG_DURATION_SIZE, easing: AG_EASING_SIZE, delay: 0 }
+      { duration: AG_DURATION_SIZE, easing: AG_EASING_SIZE }
     )
     .finished.then((animate) => saveStyles(animate))
     .catch(() => {})
@@ -142,7 +142,7 @@ const leavTransform = () => {
     props.onLeaveEnd?.(props.id)
     return
   }
-  visual.getAnimations().forEach((animation) => animation.cancel())
+  visual.getAnimations().forEach((animate) => saveStyles(animate)) // 暂停动画
   const animation = visual.animate(
     [
       { opacity: 1, transform: 'scale(1)' },
@@ -172,18 +172,24 @@ watch(
   }
 )
 
+// 入场动画
 const addTransform = () => {
-  const inner = visualRef.value
-  if (!inner) return
-  inner.animate(
-    [
-      // 开始
-      { opacity: 0, transform: 'scale(0.3)' },
-      // 结束
-      { opacity: 1, transform: 'scale(1)' }
-    ],
-    { duration: AG_DURATION_ENTER, easing: AG_EASING_ENTER, delay: 0 }
-  )
+  const visual = visualRef.value
+  if (!visual) return
+
+  visual.getAnimations().forEach((animate) => saveStyles(animate)) // 暂停动画
+  visual
+    .animate(
+      [
+        // 开始
+        { opacity: 0, transform: 'scale(0.3)' },
+        // 结束
+        { opacity: 1, transform: 'scale(1)' }
+      ],
+      { duration: AG_DURATION_ENTER, easing: AG_EASING_ENTER, delay: 0 }
+    )
+    .finished.then((animate) => saveStyles(animate))
+    .catch(() => {})
 }
 
 onMounted(() => {
@@ -219,6 +225,8 @@ onMounted(() => {
   transform-origin: center center;
   cursor: grab;
   touch-action: none;
+  opacity: 0;
+  transform: scale(0.3);
 }
 
 .pr-adaptive-grid-item-pinned {
