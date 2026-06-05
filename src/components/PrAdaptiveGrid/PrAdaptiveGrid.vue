@@ -3,7 +3,7 @@
     <div ref="pr_adaptive_grid_content_ref" class="pr-adaptive-grid-content" :style="ContainerStyle">
       <div v-for="(item, index) in layout.items" :key="index" class="pr-adaptive-grid-item-span" :data-grid-span-index="index" :style="ItemSpanStyle(item)"></div>
     </div>
-    <PrAdaptiveGridItem v-for="(id, index) in itemIds" :key="id" :id="id" :geo="ItemGeo(index)" :leaving="IsLeaving(id)" :on-leave-end="onItemLeaveEnd">
+    <PrAdaptiveGridItem v-for="(id, index) in itemIds" :key="id" :id="id" :geo="ItemGeo(index)" :drag-geo="DragGeo(id)" :draggable="true" :dragging="DraggingId === id" :leaving="IsLeaving(id)" :on-drag-start="onItemDragStart" :on-drag-move="onItemDragMove" :on-drag-end="onItemDragEnd" :on-leave-end="onItemLeaveEnd">
       <template #default="slotProps">
         <slot v-bind="slotProps" />
       </template>
@@ -39,6 +39,23 @@ const itemIds = ref<string[]>([]) // 当前渲染的item
 const leavingIds = ref<string[]>([]) // 当前退场的item
 const spanGeos = ref<Geo[]>([]) // 所有span的几何信息
 
+type DragState = {
+  id: string
+  startPointer: {
+    x: number
+    y: number
+  }
+  startGeo: Geo
+  currentCenter: {
+    x: number
+    y: number
+  }
+  fromIndex: number
+  overIndex: number
+}
+
+const dragState = ref<DragState>()
+
 // 获取所有span的几何信息
 const getSpanGeos = async () => {
   if (pr_adaptive_grid_content_ref.value === undefined) return
@@ -63,6 +80,7 @@ const onItemLeaveEnd = (id: string) => {
   const leavingIndex = leavingIds.value.indexOf(id)
   // 已经被 setItem 复活了，忽略这次退场完成回调
   if (leavingIndex === -1) return
+  if (dragState.value?.id === id) dragState.value = undefined
   leavingIds.value.splice(leavingIndex, 1)
   const spanIndex = spanIds.value.indexOf(id)
   if (spanIndex !== -1) spanIds.value.splice(spanIndex, 1)
@@ -87,6 +105,69 @@ const LayoutKey = computed(() => {
 const IsLeaving = computed(() => {
   return (id: string) => leavingIds.value.includes(id)
 })
+
+const DraggingId = computed(() => dragState.value?.id)
+
+const DragGeo = computed(() => {
+  return (id: string) => {
+    const state = dragState.value
+    if (!state || state.id !== id) return undefined
+
+    const dx = state.currentCenter.x - state.startGeo.cx
+    const dy = state.currentCenter.y - state.startGeo.cy
+    return {
+      ...state.startGeo,
+      cx: state.currentCenter.x,
+      cy: state.currentCenter.y,
+      left: state.startGeo.left + dx,
+      top: state.startGeo.top + dy
+    }
+  }
+})
+
+const onItemDragStart = (id: string, event: PointerEvent) => {
+  const fromIndex = itemIds.value.indexOf(id)
+  const startGeo = fromIndex === -1 ? undefined : spanGeos.value[fromIndex]
+  if (!startGeo) return
+
+  event.preventDefault()
+  dragState.value = {
+    id,
+    startPointer: {
+      x: event.clientX,
+      y: event.clientY
+    },
+    startGeo,
+    currentCenter: {
+      x: startGeo.cx,
+      y: startGeo.cy
+    },
+    fromIndex,
+    overIndex: fromIndex
+  }
+}
+
+const onItemDragMove = (id: string, event: PointerEvent) => {
+  const state = dragState.value
+  if (!state || state.id !== id) return
+
+  event.preventDefault()
+  const dx = event.clientX - state.startPointer.x
+  const dy = event.clientY - state.startPointer.y
+  dragState.value = {
+    ...state,
+    currentCenter: {
+      x: state.startGeo.cx + dx,
+      y: state.startGeo.cy + dy
+    }
+  }
+}
+
+const onItemDragEnd = (id: string, event: PointerEvent) => {
+  if (dragState.value?.id !== id) return
+  event.preventDefault()
+  dragState.value = undefined
+}
 
 const initLayout = async () => {
   if (isReady.value === false) return
@@ -159,7 +240,7 @@ const setItem = (id: string, options?: GridItemOptions) => {
 }
 
 /** 按 ids 一次性设置 */
-const setItems = (ids: string[], options?: GridItemsOptions) => {
+const setItems = (ids: string[], _options?: GridItemsOptions) => {
   spanIds.value.push(...ids)
 }
 
