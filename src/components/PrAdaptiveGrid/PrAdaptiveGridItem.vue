@@ -9,11 +9,11 @@
 </template>
 
 <script lang="ts" setup>
-import { computed, ref, watch, nextTick, onMounted } from 'vue'
+import { computed, ref, watch, onMounted } from 'vue'
 import type { PropType } from 'vue'
 import type { Geo } from '../../types'
 
-const AG_DURATION_ENTER = 5000
+const AG_DURATION_ENTER = 500
 const AG_EASING_ENTER = 'ease-out'
 const AG_DURATION_POSITION = 700
 const AG_EASING_POSITION = 'cubic-bezier(0.22, 1, 0.44, 1)'
@@ -142,10 +142,35 @@ const leavTransform = () => {
     props.onLeaveEnd?.(props.id)
     return
   }
+
+  const outer = positionRef.value
+  const inner = sizeRef.value
+  if (!outer || !inner) return
+
+  // 当前进出场信息
+  const getCurrentVisualState = () => {
+    const visual = visualRef.value
+    if (!visual) {
+      return {
+        opacity: 1,
+        transform: 'scale(1)'
+      }
+    }
+    const style = getComputedStyle(visual)
+
+    return {
+      opacity: style.opacity,
+      transform: style.transform === 'none' ? 'scale(1)' : style.transform
+    }
+  }
+
+  const current = getCurrentVisualState() // 当前进出场信息
+
   visual.getAnimations().forEach((animate) => saveStyles(animate)) // 暂停动画
+
   const animation = visual.animate(
     [
-      { opacity: 1, transform: 'scale(1)' },
+      { opacity: current.opacity, transform: current.transform },
       { opacity: 0, transform: 'scale(0.3)' }
     ],
     {
@@ -168,12 +193,31 @@ const addTransform = () => {
   const visual = visualRef.value
   if (!visual) return
 
+  // 当前进出场信息
+  const getCurrentVisualState = () => {
+    const visual = visualRef.value
+    if (!visual) {
+      return {
+        opacity: 1,
+        transform: 'scale(1)'
+      }
+    }
+    const style = getComputedStyle(visual)
+
+    return {
+      opacity: style.opacity,
+      transform: style.transform === 'none' ? 'scale(1)' : style.transform
+    }
+  }
+
+  const current = getCurrentVisualState() // 当前进出场信息
+
   visual.getAnimations().forEach((animate) => saveStyles(animate)) // 暂停动画
   visual
     .animate(
       [
         // 开始
-        { opacity: 0, transform: 'scale(0.3)' },
+        { opacity: current.opacity, transform: current.transform },
         // 结束
         { opacity: 1, transform: 'scale(1)' }
       ],
