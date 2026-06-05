@@ -66,7 +66,7 @@ const ItemInnerStyle = computed(() => {
 
 watch(
   () => ({ ...props.geo }),
-  (newGeo, oldGeo) => {
+  (newGeo) => {
     const outer = outerRef.value
     const inner = innerRef.value
     if (!outer || !inner) return
@@ -78,16 +78,16 @@ watch(
     }
 
     // —— 位置:外层 transform 从旧 → 新 ——
-    if (oldGeo.cx !== newGeo.cx || oldGeo.cy !== newGeo.cy) {
+    if (prevGeo.cx !== newGeo.cx || prevGeo.cy !== newGeo.cy) {
       const anims = outer.getAnimations()
       if (anims.length) {
         anims[0].commitStyles() // 把当前动画帧写入 inline style，视觉位置不变
         anims.forEach((a) => a.cancel())
       }
-      outer.animate([{ transform: `translate3d(${oldGeo.cx}px, ${oldGeo.cy}px, 0) translate(-50%, -50%)` }, { transform: `translate3d(${newGeo.cx}px, ${newGeo.cy}px, 0) translate(-50%, -50%)` }], { duration: AG_DURATION_POSITION, easing: 'ease' })
+      outer.animate([{ transform: `translate3d(${prevGeo.cx}px, ${prevGeo.cy}px, 0) translate(-50%, -50%)` }, { transform: `translate3d(${newGeo.cx}px, ${newGeo.cy}px, 0) translate(-50%, -50%)` }], { duration: AG_DURATION_POSITION, easing: 'ease' })
     }
     // —— 尺寸:内层 width/height 从旧 → 新 ——
-    // if (oldGeo.width !== newGeo.width || oldGeo.height !== newGeo.height) {
+    // if (prevGeo.width !== newGeo.width || prevGeo.height !== newGeo.height) {
     //   const anims = inner.getAnimations()
     //   if (anims.length) {
     //     anims[0].commitStyles()
