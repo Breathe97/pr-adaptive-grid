@@ -68,6 +68,7 @@ const ItemInnerStyle = computed(() => {
   }
 })
 
+// 位移大小等变化
 const toTransform = (newGeo: Geo) => {
   const outer = positionRef.value
   const inner = sizeRef.value
@@ -134,6 +135,7 @@ watch(
   (geo) => toTransform(geo)
 )
 
+// 退场动画
 const leavTransform = () => {
   const visual = visualRef.value
   if (!visual) {
@@ -180,7 +182,7 @@ const addTransform = () => {
       // 结束
       { opacity: 1, transform: 'scale(1)' }
     ],
-    { duration: AG_DURATION_ENTER, easing: AG_EASING_ENTER, delay: 300 }
+    { duration: AG_DURATION_ENTER, easing: AG_EASING_ENTER, delay: 0 }
   )
 }
 
