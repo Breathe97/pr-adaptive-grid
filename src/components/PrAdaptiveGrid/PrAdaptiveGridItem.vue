@@ -65,7 +65,7 @@ const ItemInnerStyle = computed(() => {
 
 watch(
   () => ({ ...props.geo }),
-  (oldGeo, newGeo) => {
+  (newGeo, oldGeo) => {
     const outer = outerRef.value
     const inner = innerRef.value
     if (!outer || !inner) return
