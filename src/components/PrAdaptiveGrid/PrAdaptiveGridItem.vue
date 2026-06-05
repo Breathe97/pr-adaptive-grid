@@ -11,6 +11,9 @@ import { computed, ref, watch } from 'vue'
 import type { PropType } from 'vue'
 import type { Geo } from '../../types'
 
+const AG_DURATION_POSITION = 7000
+const AG_DURATION_SIZE = 500
+
 const props = defineProps({
   id: {
     required: true,
@@ -81,8 +84,7 @@ watch(
         anims[0].commitStyles() // 把当前动画帧写入 inline style，视觉位置不变
         anims.forEach((a) => a.cancel())
       }
-      // 只设新目标即可
-      outer.animate([{ transform: `translate3d(${newGeo.cx}px, ${newGeo.cy}px, 0) translate(-50%, -50%)` }], {})
+      outer.animate([{ transform: `translate3d(${oldGeo.cx}px, ${oldGeo.cy}px, 0) translate(-50%, -50%)` }, { transform: `translate3d(${newGeo.cx}px, ${newGeo.cy}px, 0) translate(-50%, -50%)` }], { duration: AG_DURATION_POSITION, easing: 'ease' })
     }
     // —— 尺寸:内层 width/height 从旧 → 新 ——
     // if (oldGeo.width !== newGeo.width || oldGeo.height !== newGeo.height) {
