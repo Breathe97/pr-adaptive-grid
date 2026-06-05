@@ -11,8 +11,10 @@ import { computed, ref, watch } from 'vue'
 import type { PropType } from 'vue'
 import type { Geo } from '../../types'
 
-const AG_DURATION_POSITION = 7000
-const AG_DURATION_SIZE = 500
+const AG_DURATION_POSITION = 700
+const AG_EASING_POSITION = 'cubic-bezier(0.22, 1, 0.44, 1)'
+const AG_DURATION_SIZE = 700
+const AG_EASING_SIZE = 'cubic-bezier(0.22, 1, 0.44, 1)'
 
 const props = defineProps({
   id: {
@@ -30,17 +32,6 @@ const innerRef = ref<HTMLElement>()
 
 let prevGeo: Geo = { ...props.geo }
 let isFirst = true // 首次挂载不做位移动画
-
-const readVars = () => {
-  const cs = getComputedStyle(outerRef.value!)
-  const num = (name: string, fallback: number) => parseFloat(cs.getPropertyValue(name)) || fallback
-  return {
-    posDur: num('--ag-duration-position', 700),
-    sizeDur: num('--ag-duration-size', 500),
-    posEase: cs.getPropertyValue('--ag-ease-position').trim() || 'cubic-bezier(0.22,1,0.44,1)',
-    sizeEase: cs.getPropertyValue('--ag-ease-size').trim() || 'ease'
-  }
-}
 
 const Info = computed(() => {
   const { id, geo } = props
@@ -66,35 +57,36 @@ const ItemInnerStyle = computed(() => {
 
 watch(
   () => ({ ...props.geo }),
-  (newGeo) => {
+  (newGeo, oldGeo) => {
     const outer = outerRef.value
     const inner = innerRef.value
     if (!outer || !inner) return
-    // 首次挂载:不做位移,交给入场动画
-    if (isFirst) {
-      isFirst = false
-      prevGeo = newGeo
-      return
+    // 位置：外层从旧中心点过渡到新中心点
+    if (oldGeo.cx !== newGeo.cx || oldGeo.cy !== newGeo.cy) {
+      outer.getAnimations().forEach((a) => a.cancel())
+      outer.animate(
+        [
+          // 开始
+          { transform: `translate3d(${oldGeo.cx}px, ${oldGeo.cy}px, 0) translate(-50%, -50%)` },
+          // 结束
+          { transform: `translate3d(${newGeo.cx}px, ${newGeo.cy}px, 0) translate(-50%, -50%)` }
+        ],
+        { duration: AG_DURATION_POSITION, easing: AG_EASING_POSITION }
+      )
     }
-
-    // —— 位置:外层 transform 从旧 → 新 ——
-    if (prevGeo.cx !== newGeo.cx || prevGeo.cy !== newGeo.cy) {
-      const anims = outer.getAnimations()
-      if (anims.length) {
-        anims[0].commitStyles() // 把当前动画帧写入 inline style，视觉位置不变
-        anims.forEach((a) => a.cancel())
-      }
-      outer.animate([{ transform: `translate3d(${prevGeo.cx}px, ${prevGeo.cy}px, 0) translate(-50%, -50%)` }, { transform: `translate3d(${newGeo.cx}px, ${newGeo.cy}px, 0) translate(-50%, -50%)` }], { duration: AG_DURATION_POSITION, easing: 'ease' })
+    // 尺寸：内层从旧宽高过渡到新宽高
+    if (oldGeo.width !== newGeo.width || oldGeo.height !== newGeo.height) {
+      inner.getAnimations().forEach((a) => a.cancel())
+      inner.animate(
+        [
+          // 开始
+          { width: `${oldGeo.width}px`, height: `${oldGeo.height}px` },
+          // 结束
+          { width: `${newGeo.width}px`, height: `${newGeo.height}px` }
+        ],
+        { duration: AG_DURATION_SIZE, easing: AG_EASING_SIZE }
+      )
     }
-    // —— 尺寸:内层 width/height 从旧 → 新 ——
-    // if (prevGeo.width !== newGeo.width || prevGeo.height !== newGeo.height) {
-    //   const anims = inner.getAnimations()
-    //   if (anims.length) {
-    //     anims[0].commitStyles()
-    //     anims.forEach((a) => a.cancel())
-    //   }
-    //   inner.animate([{ width: `${newGeo.width}px`, height: `${newGeo.height}px` }], { duration: sizeDur, easing: sizeEase })
-    // }
     prevGeo = newGeo
   },
   { flush: 'post' }
