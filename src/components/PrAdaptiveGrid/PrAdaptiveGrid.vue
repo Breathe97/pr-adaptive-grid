@@ -125,6 +125,29 @@ const DragGeo = computed(() => {
   }
 })
 
+/** 根据拖拽 item 的视觉中心点，寻找距离最近的 span 槽位。 */
+const getNearestSpanIndex = (center: { x: number; y: number }, fallbackIndex: number) => {
+  let nearestIndex = fallbackIndex
+  let nearestScore = Number.POSITIVE_INFINITY
+
+  spanGeos.value.forEach((geo, index) => {
+    const id = itemIds.value[index]
+    // 正在退场的 item 不参与拖拽目标判断，避免拖到即将移除的槽位。
+    if (id !== undefined && leavingIds.value.includes(id)) return
+
+    // 用平方距离比较即可，不需要开方，结果排序一致且计算更轻。
+    const dx = center.x - geo.cx
+    const dy = center.y - geo.cy
+    const score = dx * dx + dy * dy
+    if (score >= nearestScore) return
+
+    nearestIndex = index
+    nearestScore = score
+  })
+
+  return nearestIndex
+}
+
 const onItemDragStart = (id: string, event: PointerEvent) => {
   const fromIndex = itemIds.value.indexOf(id)
   const startGeo = fromIndex === -1 ? undefined : spanGeos.value[fromIndex]
@@ -141,7 +164,9 @@ const onItemDragMove = (id: string, event: PointerEvent) => {
   event.preventDefault()
   const dx = event.clientX - state.startPointer.x
   const dy = event.clientY - state.startPointer.y
-  dragState.value = { ...state, currentCenter: { x: state.startGeo.cx + dx, y: state.startGeo.cy + dy } }
+  const currentCenter = { x: state.startGeo.cx + dx, y: state.startGeo.cy + dy }
+  const overIndex = getNearestSpanIndex(currentCenter, state.overIndex)
+  dragState.value = { ...state, currentCenter, overIndex }
 }
 
 const onItemDragEnd = (id: string, event: PointerEvent) => {
