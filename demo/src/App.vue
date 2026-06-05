@@ -9,7 +9,13 @@
               <span v-if="item.fixed" class="badge badge-fixed">🔒 Fixed</span>
             </div>
             <span class="tile-id">{{ item.id }}</span>
-            <span class="tile-meta">{{ item.w }}×{{ item.h }}</span>
+            <!-- geo 调试信息 -->
+            <div class="tile-geo">
+              <span>top: {{ Math.round(item.top) }}</span>
+              <span>left: {{ Math.round(item.left) }}</span>
+              <span>w: {{ Math.round(item.width) }}</span>
+              <span>h: {{ Math.round(item.height) }}</span>
+            </div>
             <div class="tile-ops">
               <button type="button" class="op" :class="{ active: item.sticky }" data-type="pin" @pointerdown.stop @click.stop="setPin(item)">Pin</button>
               <button type="button" class="op" :class="{ active: item.fixed }" data-type="fix" @pointerdown.stop @click.stop="setFixed(item)">Fixed</button>
@@ -259,6 +265,23 @@ onMounted(async () => {
 .tile-badges {
   position: relative;
   z-index: 2;
+}
+
+.tile-geo {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px 8px;
+  margin-top: 4px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.35);
+  font-size: 0.625rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.3;
+  color: rgba(255, 255, 255, 0.92);
+  text-align: left;
+  width: 100%;
+  max-width: 140px;
 }
 
 .tile-badges {
