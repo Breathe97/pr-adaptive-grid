@@ -49,8 +49,8 @@ const ItemStyle = computed(() => {
 const ItemInnerStyle = computed(() => {
   const { width, height } = prevGeo
   return {
-    width: `${width}px`,
-    height: `${height}px`
+    // width: `${width}px`,
+    // height: `${height}px`
   }
 })
 
@@ -62,12 +62,15 @@ const toTransform = (newGeo: Geo) => {
 
   // 获取当前几何信息
   const getCurrentCenterGeo = () => {
-    const outerRect = outer.getBoundingClientRect()
-    const innerRect = inner.getBoundingClientRect()
-    const left = innerRect.left - outerRect.left
-    const top = innerRect.top - outerRect.top
-    const width = innerRect.width
-    const height = innerRect.height
+    const rect = inner.getBoundingClientRect()
+    // outer 是 absolute item，offsetParent 通常就是 .pr-adaptive-grid
+    const parent = outer.offsetParent as HTMLElement | null
+    if (!parent) return { ...newGeo }
+    const parentRect = parent.getBoundingClientRect()
+    const left = rect.left - parentRect.left + parent.scrollLeft
+    const top = rect.top - parentRect.top + parent.scrollTop
+    const width = rect.width
+    const height = rect.height
     const cx = left + width / 2
     const cy = top + height / 2
     return { top, left, cx, cy, width, height }
@@ -95,6 +98,7 @@ const toTransform = (newGeo: Geo) => {
       { duration: AG_DURATION_POSITION, easing: AG_EASING_POSITION }
     )
     .finished.then((animate) => saveStyles(animate))
+    .catch()
 
   // 执行新动画
   inner
@@ -108,6 +112,7 @@ const toTransform = (newGeo: Geo) => {
       { duration: AG_DURATION_SIZE, easing: AG_EASING_SIZE, delay: 0 }
     )
     .finished.then((animate) => saveStyles(animate))
+    .catch()
 
   prevGeo = currentGeo
 }
