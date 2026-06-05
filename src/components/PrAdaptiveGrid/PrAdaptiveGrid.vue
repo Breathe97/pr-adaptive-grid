@@ -57,7 +57,7 @@ type DragState = {
 const dragState = ref<DragState>()
 let syncLayoutToken = 0
 
-// 获取所有span的几何信息
+/** 读取所有 span 占位节点的几何信息，并用 spanIds 同步真实渲染 item 顺序。 */
 const getSpanGeos = async () => {
   if (pr_adaptive_grid_content_ref.value === undefined) return
   const spans = pr_adaptive_grid_content_ref.value.childNodes
@@ -77,6 +77,7 @@ const getSpanGeos = async () => {
   itemIds.value = [...spanIds.value]
 }
 
+/** item 退场动画完成后，真正从 span / item 列表中移除。 */
 const onItemLeaveEnd = (id: string) => {
   const leavingIndex = leavingIds.value.indexOf(id)
   // 已经被 setItem 复活了，忽略这次退场完成回调
@@ -89,6 +90,7 @@ const onItemLeaveEnd = (id: string) => {
   if (itemIndex !== -1) itemIds.value.splice(itemIndex, 1)
 }
 
+/** 按渲染下标返回 item 对应的 span 几何。 */
 const ItemGeo = computed(() => {
   return (index: number) => {
     const geo = spanGeos.value[index]
@@ -96,18 +98,22 @@ const ItemGeo = computed(() => {
   }
 })
 
+/** 布局重算 key：容器尺寸或 span 数量变化时触发重新计算。 */
 const LayoutKey = computed(() => {
   const { width, height } = size.value
   const key = `${width}-${height}-${spanIds.value.length}`
   return key
 })
 
+/** 判断指定 item 是否正在退场。 */
 const IsLeaving = computed(() => {
   return (id: string) => leavingIds.value.includes(id)
 })
 
+/** 当前正在拖拽的 item id。 */
 const DraggingId = computed(() => dragState.value?.id)
 
+/** 根据拖拽中心点生成临时 geo，让拖拽项直接跟随指针。 */
 const DragGeo = computed(() => {
   return (id: string) => {
     const state = dragState.value
@@ -125,6 +131,7 @@ const DragGeo = computed(() => {
   }
 })
 
+/** 重新计算布局并在 DOM 更新后刷新 span 几何；token 用来丢弃过期异步结果。 */
 const syncLayout = async () => {
   if (isReady.value === false) return
 
@@ -135,6 +142,7 @@ const syncLayout = async () => {
   await getSpanGeos()
 }
 
+/** 将指定 id 移动到目标 span 下标，返回是否真的发生了排序变化。 */
 const moveSpanId = (id: string, toIndex: number) => {
   const fromIndex = spanIds.value.indexOf(id)
   if (fromIndex === -1) return false
@@ -170,6 +178,7 @@ const getNearestSpanIndex = (center: { x: number; y: number }, fallbackIndex: nu
   return nearestIndex
 }
 
+/** 根据当前 pointer 位置刷新拖拽中心点，并在跨槽位时调整 spanIds 顺序。 */
 const updateDragStateFromPointer = (state: DragState, event: PointerEvent) => {
   const dx = event.clientX - state.startPointer.x
   const dy = event.clientY - state.startPointer.y
@@ -182,6 +191,7 @@ const updateDragStateFromPointer = (state: DragState, event: PointerEvent) => {
   return { didReorder }
 }
 
+/** 开始拖拽：记录指针起点、item 初始 geo 与原始下标。 */
 const onItemDragStart = (id: string, event: PointerEvent) => {
   const fromIndex = itemIds.value.indexOf(id)
   const startGeo = fromIndex === -1 ? undefined : spanGeos.value[fromIndex]
@@ -191,6 +201,7 @@ const onItemDragStart = (id: string, event: PointerEvent) => {
   dragState.value = { id, startPointer: { x: event.clientX, y: event.clientY }, startGeo, currentCenter: { x: startGeo.cx, y: startGeo.cy }, fromIndex, overIndex: fromIndex }
 }
 
+/** 拖拽移动：更新临时 geo，并在目标槽位变化时让其他 item 补位。 */
 const onItemDragMove = (id: string, event: PointerEvent) => {
   const state = dragState.value
   if (!state || state.id !== id) return
@@ -200,6 +211,7 @@ const onItemDragMove = (id: string, event: PointerEvent) => {
   if (didReorder) void syncLayout()
 }
 
+/** 结束拖拽：先同步最终布局，再清理拖拽态触发 item 回到最终 geo。 */
 const onItemDragEnd = async (id: string, event: PointerEvent) => {
   const state = dragState.value
   if (!state || state.id !== id) return
@@ -207,12 +219,13 @@ const onItemDragEnd = async (id: string, event: PointerEvent) => {
 
   updateDragStateFromPointer(state, event)
   await syncLayout()
+  // 等待期间可能已经被退场或下一次拖拽替换，避免清掉新的拖拽状态。
   if (dragState.value?.id !== id) return
 
   dragState.value = undefined
 }
 
-// 布局受外部变量实时变化
+// 布局受外部变量实时变化。
 watch(
   () => LayoutKey.value,
   () => syncLayout(),
@@ -309,6 +322,7 @@ onMounted(async () => {
     const [{ contentRect }] = sizes
     const { width, height } = contentRect
     _size = { width, height }
+    /** 写入最新容器尺寸，驱动 LayoutKey 变化后重算布局。 */
     const setSize = () => {
       size.value = _size
     }

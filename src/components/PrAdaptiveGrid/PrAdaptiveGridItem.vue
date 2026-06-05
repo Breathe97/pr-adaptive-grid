@@ -76,8 +76,10 @@ const sizeRef = ref<HTMLElement>()
 const visualRef = ref<HTMLElement>()
 const activePointerId = ref<number>()
 
+/** 当前实际用于渲染的几何；拖拽时优先使用父组件传入的临时 dragGeo。 */
 const EffectiveGeo = computed(() => props.dragGeo ?? props.geo)
 
+/** 暴露给默认插槽的 item 信息。 */
 const Info = computed(() => {
   const { id } = props
   const geo = EffectiveGeo.value
@@ -85,6 +87,7 @@ const Info = computed(() => {
   return info
 })
 
+/** 根据退场、拖拽和 pointer 捕获状态生成根节点 class。 */
 const ItemClass = computed(() => {
   return {
     'pr-adaptive-grid-item-leaving': props.leaving,
@@ -93,6 +96,7 @@ const ItemClass = computed(() => {
   }
 })
 
+/** position 层只负责中心点定位和层级。 */
 const ItemStyle = computed(() => {
   const { cx, cy } = EffectiveGeo.value
   return {
@@ -101,6 +105,7 @@ const ItemStyle = computed(() => {
   }
 })
 
+/** size 层只负责宽高，避免尺寸动画和位移动画互相影响。 */
 const ItemInnerStyle = computed(() => {
   const { width, height } = EffectiveGeo.value
   return {
@@ -109,24 +114,28 @@ const ItemInnerStyle = computed(() => {
   }
 })
 
+/** 将 WAAPI 动画的当前状态提交到内联样式后停止动画。 */
 const saveStyles = (animate: Animation) => {
   if (animate.playState === 'idle') return
   animate.commitStyles()
   animate.cancel()
 }
 
+/** 拖拽开始前停止 position 层动画，避免布局动画和指针跟随竞争。 */
 const stopPositionAnimations = () => {
   const outer = positionRef.value
   if (!outer) return
   outer.getAnimations().forEach((animate) => saveStyles(animate))
 }
 
+/** 释放当前 pointer capture。 */
 const releasePointerCapture = (event: PointerEvent) => {
   const visual = visualRef.value
   if (!visual?.hasPointerCapture(event.pointerId)) return
   visual.releasePointerCapture(event.pointerId)
 }
 
+/** pointerdown：捕获当前指针并通知父组件进入拖拽。 */
 const onPointerDown = (event: PointerEvent) => {
   if (!props.draggable || props.leaving) return
 
@@ -135,11 +144,13 @@ const onPointerDown = (event: PointerEvent) => {
   props.onDragStart?.(props.id, event)
 }
 
+/** pointermove：只响应当前捕获的指针，交给父组件计算拖拽位置。 */
 const onPointerMove = (event: PointerEvent) => {
   if (activePointerId.value !== event.pointerId) return
   props.onDragMove?.(props.id, event)
 }
 
+/** pointerup：结束当前指针捕获并通知父组件释放拖拽。 */
 const onPointerUp = (event: PointerEvent) => {
   if (activePointerId.value !== event.pointerId) return
   activePointerId.value = undefined
@@ -147,6 +158,7 @@ const onPointerUp = (event: PointerEvent) => {
   props.onDragEnd?.(props.id, event)
 }
 
+/** pointercancel：按释放流程收尾，避免浏览器取消事件后残留拖拽态。 */
 const onPointerCancel = (event: PointerEvent) => {
   if (activePointerId.value !== event.pointerId) return
   activePointerId.value = undefined
@@ -154,13 +166,13 @@ const onPointerCancel = (event: PointerEvent) => {
   props.onDragEnd?.(props.id, event)
 }
 
-// 位移大小等变化
+/** 从当前视觉位置过渡到新的 geo，同时处理 position 和 size 两层动画。 */
 const toTransform = (newGeo: Geo) => {
   const outer = positionRef.value
   const inner = sizeRef.value
   if (!outer || !inner) return
 
-  // 获取当前几何信息
+  /** 读取当前视觉几何，用作下一段 WAAPI 动画的起点。 */
   const getCurrentCenterGeo = () => {
     const rect = inner.getBoundingClientRect()
     // outer 是 absolute item，offsetParent 通常就是 .pr-adaptive-grid
@@ -178,6 +190,7 @@ const toTransform = (newGeo: Geo) => {
 
   const currentGeo = getCurrentCenterGeo() // 当前几何
 
+  // 开始新动画前先提交旧动画状态，保证连续重排时不会跳帧。
   outer.getAnimations().forEach((animate) => saveStyles(animate)) // 暂停动画
   inner.getAnimations().forEach((animate) => saveStyles(animate)) // 暂停动画
 
@@ -210,6 +223,7 @@ const toTransform = (newGeo: Geo) => {
     .catch(() => {})
 }
 
+// geo 变化时播放布局补位动画；拖拽项由 dragGeo 直接跟随指针，不参与普通补位。
 watch(
   () => ({ ...props.geo }),
   (geo) => {
@@ -218,6 +232,7 @@ watch(
   }
 )
 
+// 拖拽态切换：进入时停止旧动画，退出时从当前视觉位置过渡到最终 geo。
 watch(
   () => props.dragging,
   (dragging, oldDragging) => {
@@ -231,7 +246,7 @@ watch(
   }
 )
 
-// 退场动画
+/** 播放退场动画，并在完成或中断时通知父组件真正移除 item。 */
 const leavTransform = () => {
   const visual = visualRef.value
   if (!visual) {
@@ -243,7 +258,7 @@ const leavTransform = () => {
   const inner = sizeRef.value
   if (!outer || !inner) return
 
-  // 当前进出场信息
+  /** 获取 visual 当前透明度和缩放，保证退场动画可以从当前状态衔接。 */
   const getCurrentVisualState = () => {
     const visual = visualRef.value
     if (!visual) {
@@ -284,12 +299,12 @@ const leavTransform = () => {
     })
 }
 
-// 入场动画
+/** 播放入场/恢复动画，让 visual 从当前状态回到完整显示。 */
 const addTransform = () => {
   const visual = visualRef.value
   if (!visual) return
 
-  // 当前进出场信息
+  /** 获取 visual 当前透明度和缩放，避免打断退场后恢复时产生跳变。 */
   const getCurrentVisualState = () => {
     const visual = visualRef.value
     if (!visual) {
@@ -323,6 +338,7 @@ const addTransform = () => {
     .catch(() => {})
 }
 
+// leaving 变化时切换进出场动画。
 watch(
   () => props.leaving,
   (leaving, oldLeaving) => {
@@ -337,6 +353,7 @@ watch(
   }
 )
 
+// 首次挂载时播放入场动画。
 onMounted(() => {
   addTransform()
 })
