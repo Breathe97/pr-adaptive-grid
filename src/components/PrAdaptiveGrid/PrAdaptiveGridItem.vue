@@ -92,6 +92,9 @@ const visualRef = ref<HTMLElement>()
 const activePointerId = ref<number>()
 
 const isPositionAnimating = ref(false)
+const isSettlingAfterDrag = ref(false)
+const POSITION_ANIMATING_Z_INDEX = 21
+const SETTLING_AFTER_DRAG_Z_INDEX = 25
 
 /** 当前实际用于渲染的几何；拖拽优先，其次 sticky 视觉吸附，最后使用原始占位。 */
 const EffectiveGeo = computed(() => props.dragGeo ?? props.stickyGeo ?? props.geo)
@@ -111,6 +114,7 @@ const ItemClass = computed(() => {
     'pr-adaptive-grid-item-pinned': props.sticky,
     'pr-adaptive-grid-item-fixed': props.fixed,
     'pr-adaptive-grid-item-dragging': props.dragging,
+    'pr-adaptive-grid-item-settling': isSettlingAfterDrag.value,
     'pr-adaptive-grid-item-active-pointer': activePointerId.value !== undefined
   }
 })
@@ -119,7 +123,7 @@ const ItemClass = computed(() => {
 const ItemStyle = computed(() => {
   const { cx, cy } = EffectiveGeo.value
   return {
-    'z-index': props.dragging ? 22 : isPositionAnimating.value ? 21 : undefined, // 交给 CSS class 决定：普通 2 / pinned 20
+    'z-index': props.dragging ? 22 : isSettlingAfterDrag.value ? SETTLING_AFTER_DRAG_Z_INDEX : isPositionAnimating.value ? POSITION_ANIMATING_Z_INDEX : undefined, // 交给 CSS class 决定：普通 2 / pinned 20
     transform: `translate3d(${cx}px, ${cy}px, 0) translate(-50%, -50%)`
   }
 })
@@ -185,12 +189,20 @@ const onPointerCancel = (event: PointerEvent) => {
   props.onDragEnd?.(props.id, event)
 }
 
+type TransformOptions = {
+  /** 拖拽松手后的回弹动画，需要高于其它补位 item 的 21。 */
+  settlingAfterDrag?: boolean
+}
+
 /** 从当前视觉位置过渡到新的 geo，同时处理 position 和 size 两层动画。 */
-const toTransform = (newGeo: Geo) => {
+const toTransform = (newGeo: Geo, options?: TransformOptions) => {
   const outer = positionRef.value
   const inner = sizeRef.value
   if (!outer || !inner) return
+
+  const settlingAfterDrag = options?.settlingAfterDrag === true
   isPositionAnimating.value = true
+  isSettlingAfterDrag.value = settlingAfterDrag
 
   /** 读取当前视觉几何，用作下一段 WAAPI 动画的起点。 */
   const getCurrentCenterGeo = () => {
@@ -229,6 +241,7 @@ const toTransform = (newGeo: Geo) => {
     .catch(() => {})
     .finally(() => {
       isPositionAnimating.value = false
+      isSettlingAfterDrag.value = false
     })
 
   // 执行新动画
@@ -251,6 +264,8 @@ watch(
   () => ({ ...props.geo }),
   () => {
     if (props.dragging) return
+    // 拖拽松手后的回弹由 dragging watch 单独处理，避免 geo 二次触发把层级降回 21。
+    if (isSettlingAfterDrag.value) return
     toTransform(EffectiveGeo.value)
   }
 )
@@ -264,7 +279,7 @@ watch(
       return
     }
     if (oldDragging) {
-      toTransform(EffectiveGeo.value)
+      toTransform(EffectiveGeo.value, { settlingAfterDrag: true })
     }
   }
 )
@@ -423,6 +438,7 @@ onMounted(() => {
   cursor: default;
 }
 
+.pr-adaptive-grid-item-settling,
 .pr-adaptive-grid-item-dragging {
   z-index: 25; /* 高于 pinned 的 20 */
 }
