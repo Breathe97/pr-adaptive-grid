@@ -98,7 +98,7 @@ const changeUserCount = (delta: number) => {
     if (userCount.value < 1) return
     const id = `${Math.max(...ids.map(Number), 0) + 1}` // 递增数字 id
     let index = 0 // 插入下标，Pin 时避开首位
-    if (layoutMode.value === 2) index = 1
+    // if (layoutMode.value === 2) index = 1
     ensureTileColor(id)
     gridRef.value?.setItem(id, { index })
     ids.splice(index, 0, id)
@@ -107,7 +107,7 @@ const changeUserCount = (delta: number) => {
   }
   if (userCount.value <= 1) return
   const index = Math.ceil(Math.random() * (ids.length - 1))
-  const removeId = ids[index]
+  const removeId = ids[0]
   if (!removeId) return
   gridRef.value?.removeItems([removeId])
   ids.splice(ids.indexOf(removeId), 1)
