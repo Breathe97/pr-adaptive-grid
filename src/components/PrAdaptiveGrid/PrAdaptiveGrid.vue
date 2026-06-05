@@ -44,9 +44,14 @@ const getSpanGeos = async () => {
   const spans = pr_adaptive_grid_content_ref.value.childNodes
   const _spanGeos = []
   for (const span of spans) {
-    const { offsetTop, offsetLeft, clientWidth, clientHeight, className } = span as HTMLElement
+    const { className, offsetTop, offsetLeft, clientWidth, clientHeight } = span as HTMLElement
     if (className !== 'pr-adaptive-grid-item-span') continue
-    const geo: Geo = { top: offsetTop, left: offsetLeft, width: clientWidth, height: clientHeight }
+
+    const cx = offsetLeft + clientWidth / 2
+    const cy = offsetTop + clientHeight / 2
+
+    const geo: Geo = { cx, cy, width: clientWidth, height: clientHeight }
+
     _spanGeos.push(geo)
   }
   spanGeos.value = _spanGeos

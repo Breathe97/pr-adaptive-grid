@@ -46,12 +46,10 @@ const Info = computed(() => {
 })
 
 const ItemStyle = computed(() => {
-  const { top, left } = props.geo
+  const { cx, cy } = props.geo
 
-  const x = `${left}px`
-  const y = `${top}px`
   return {
-    transform: `translate3d(${x},${y},0)`
+    transform: `translate3d(${cx}px, ${cy}px, 0) translate(-50%, -50%)`
   }
 })
 
@@ -76,17 +74,15 @@ watch(
       return
     }
 
-    const { posDur, sizeDur, posEase, sizeEase } = readVars()
-
     // —— 位置:外层 transform 从旧 → 新 ——
-    if (oldGeo.left !== newGeo.left || oldGeo.top !== newGeo.top) {
+    if (oldGeo.cx !== newGeo.cx || oldGeo.cy !== newGeo.cy) {
       const anims = outer.getAnimations()
       if (anims.length) {
         anims[0].commitStyles() // 把当前动画帧写入 inline style，视觉位置不变
         anims.forEach((a) => a.cancel())
       }
       // 只设新目标即可
-      outer.animate([{ transform: `translate3d(${newGeo.left}px, ${newGeo.top}px, 0)` }], { duration: posDur, easing: posEase })
+      outer.animate([{ transform: `translate3d(${newGeo.cx}px, ${newGeo.cy}px, 0) translate(-50%, -50%)` }], {})
     }
     // —— 尺寸:内层 width/height 从旧 → 新 ——
     // if (oldGeo.width !== newGeo.width || oldGeo.height !== newGeo.height) {

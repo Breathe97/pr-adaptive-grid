@@ -15,8 +15,8 @@ export interface Layout {
 
 /** 真实渲染项（按 index 对应 layout.items 中的 span） */
 export interface Geo {
-  left: number
-  top: number
+  cx: number
+  cy: number
   width: number
   height: number
 }
