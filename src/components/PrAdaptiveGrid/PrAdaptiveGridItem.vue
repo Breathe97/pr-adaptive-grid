@@ -15,9 +15,9 @@ import type { Geo } from '../../types'
 
 const AG_DURATION_ENTER = 500
 const AG_EASING_ENTER = 'ease-out'
-const AG_DURATION_POSITION = 700
+const AG_DURATION_POSITION = 800
 const AG_EASING_POSITION = 'cubic-bezier(0.22, 1, 0.44, 1)'
-const AG_DURATION_SIZE = 700
+const AG_DURATION_SIZE = 800
 const AG_EASING_SIZE = 'cubic-bezier(0.22, 1, 0.44, 1)'
 
 const props = defineProps({
