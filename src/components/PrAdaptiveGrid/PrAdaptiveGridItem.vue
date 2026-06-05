@@ -13,7 +13,7 @@ import { computed, ref, watch, onMounted } from 'vue'
 import type { PropType } from 'vue'
 import type { Geo, PrAdaptiveGridItemDragEvent } from '../../types'
 
-const AG_DURATION_ENTER = 5000
+const AG_DURATION_ENTER = 500
 const AG_EASING_ENTER = 'ease-out'
 const AG_DURATION_POSITION = 800
 const AG_EASING_POSITION = 'cubic-bezier(0.22, 1, 0.44, 1)'
