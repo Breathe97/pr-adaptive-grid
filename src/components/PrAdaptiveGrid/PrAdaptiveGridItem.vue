@@ -96,7 +96,7 @@ const ItemClass = computed(() => {
 const ItemStyle = computed(() => {
   const { cx, cy } = EffectiveGeo.value
   return {
-    'z-index': props.dragging === true ? 100 : 2,
+    'z-index': props.dragging === true ? 30 : 2,
     transform: `translate3d(${cx}px, ${cy}px, 0) translate(-50%, -50%)`
   }
 })
@@ -186,7 +186,7 @@ const toTransform = (newGeo: Geo) => {
     .animate(
       [
         // 开始
-        { transform: `translate3d(${currentGeo.cx}px, ${currentGeo.cy}px, 0) translate(-50%, -50%)`, zIndex: 100 },
+        { transform: `translate3d(${currentGeo.cx}px, ${currentGeo.cy}px, 0) translate(-50%, -50%)`, zIndex: 30 },
         // 结束
         { transform: `translate3d(${newGeo.cx}px, ${newGeo.cy}px, 0) translate(-50%, -50%)`, zIndex: 2 }
       ],
