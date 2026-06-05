@@ -82,7 +82,13 @@ type DragState = {
 }
 
 const dragState = ref<DragState>()
+const SYNC_LAYOUT_DRAG_INTERVAL_MS = 300
 let syncLayoutToken = 0
+let syncLayoutRafId = 0
+let syncLayoutDragTimerId = 0
+let syncLayoutLastDragRunAt = 0
+let syncLayoutQueued = false
+let syncLayoutResolvers: Array<() => void> = []
 
 /** 读取所有 span 占位节点的几何信息，并用 spanIds 同步真实渲染 item 顺序。 */
 const getSpanGeos = async () => {
@@ -196,8 +202,8 @@ const DragGeo = computed(() => {
   }
 })
 
-/** 重新计算布局并在 DOM 更新后刷新 span 几何；token 用来丢弃过期异步结果。 */
-const syncLayout = async () => {
+/** 真正执行布局同步；token 用来丢弃过期异步结果。 */
+const executeSyncLayout = async () => {
   if (isReady.value === false) return
 
   const token = ++syncLayoutToken
@@ -205,6 +211,73 @@ const syncLayout = async () => {
   await nextTick()
   if (token !== syncLayoutToken) return
   await getSpanGeos()
+}
+
+const resolveSyncLayoutWaiters = () => {
+  const resolvers = syncLayoutResolvers
+  syncLayoutResolvers = []
+  resolvers.forEach((resolve) => resolve())
+}
+
+const runQueuedSyncLayout = async () => {
+  if (!syncLayoutQueued) return
+  syncLayoutQueued = false
+  await executeSyncLayout()
+  resolveSyncLayoutWaiters()
+}
+
+const cancelScheduledSyncLayout = () => {
+  if (syncLayoutRafId) {
+    cancelAnimationFrame(syncLayoutRafId)
+    syncLayoutRafId = 0
+  }
+  if (syncLayoutDragTimerId) {
+    clearTimeout(syncLayoutDragTimerId)
+    syncLayoutDragTimerId = 0
+  }
+}
+
+/** 非拖拽：同帧内多次请求合并为一次 rAF。 */
+const scheduleSyncLayoutRaf = () => {
+  if (syncLayoutRafId) return
+
+  syncLayoutRafId = requestAnimationFrame(async () => {
+    syncLayoutRafId = 0
+    await runQueuedSyncLayout()
+    if (syncLayoutQueued) scheduleSyncLayoutRaf()
+  })
+}
+
+/** 拖拽中：约每 100ms 最多执行一次布局同步。 */
+const scheduleSyncLayoutDrag = () => {
+  if (syncLayoutDragTimerId) return
+
+  const elapsed = Date.now() - syncLayoutLastDragRunAt
+  const delay = Math.max(0, SYNC_LAYOUT_DRAG_INTERVAL_MS - elapsed)
+
+  syncLayoutDragTimerId = window.setTimeout(async () => {
+    syncLayoutDragTimerId = 0
+    syncLayoutLastDragRunAt = Date.now()
+    await runQueuedSyncLayout()
+    if (syncLayoutQueued) scheduleSyncLayoutDrag()
+  }, delay)
+}
+
+/**
+ * 重新计算布局并在 DOM 更新后刷新 span 几何。
+ * @param duringDrag 拖拽移动触发的重排，使用 100ms 节流；其它场景走 rAF 合并。
+ */
+const syncLayout = (duringDrag = false) => {
+  syncLayoutQueued = true
+  return new Promise<void>((resolve) => {
+    syncLayoutResolvers.push(resolve)
+    if (duringDrag) {
+      scheduleSyncLayoutDrag()
+      return
+    }
+    cancelScheduledSyncLayout()
+    scheduleSyncLayoutRaf()
+  })
 }
 
 /** 将指定 id 移动到目标 span 下标，返回是否真的发生了排序变化。 */
@@ -292,7 +365,7 @@ const onItemDragMove = (id: string, event: PointerEvent) => {
 
   event.preventDefault()
   const { didReorder } = updateDragStateFromPointer(state, event)
-  if (didReorder) void syncLayout()
+  if (didReorder) void syncLayout(true)
 }
 
 /** 结束拖拽：先同步最终布局，再清理拖拽态触发 item 回到最终 geo。 */
@@ -431,6 +504,9 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   observer?.disconnect()
   if (resizeTimer) clearTimeout(resizeTimer)
+  cancelScheduledSyncLayout()
+  syncLayoutQueued = false
+  resolveSyncLayoutWaiters()
 })
 
 defineExpose({
