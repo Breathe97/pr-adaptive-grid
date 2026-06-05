@@ -34,6 +34,11 @@ const props = defineProps({
     type: Object as PropType<Geo>,
     default: undefined
   },
+  stickyGeo: {
+    required: false,
+    type: Object as PropType<Geo>,
+    default: undefined
+  },
   draggable: {
     required: false,
     type: Boolean,
@@ -86,8 +91,8 @@ const sizeRef = ref<HTMLElement>()
 const visualRef = ref<HTMLElement>()
 const activePointerId = ref<number>()
 
-/** 当前实际用于渲染的几何；拖拽时优先使用父组件传入的临时 dragGeo。 */
-const EffectiveGeo = computed(() => props.dragGeo ?? props.geo)
+/** 当前实际用于渲染的几何；拖拽优先，其次 sticky 视觉吸附，最后使用原始占位。 */
+const EffectiveGeo = computed(() => props.dragGeo ?? props.stickyGeo ?? props.geo)
 
 /** 暴露给默认插槽的 item 信息。 */
 const Info = computed(() => {
@@ -101,6 +106,8 @@ const Info = computed(() => {
 const ItemClass = computed(() => {
   return {
     'pr-adaptive-grid-item-leaving': props.leaving,
+    'pr-adaptive-grid-item-pinned': props.sticky,
+    'pr-adaptive-grid-item-fixed': props.fixed,
     'pr-adaptive-grid-item-dragging': props.dragging,
     'pr-adaptive-grid-item-active-pointer': activePointerId.value !== undefined
   }
@@ -236,9 +243,9 @@ const toTransform = (newGeo: Geo) => {
 // geo 变化时播放布局补位动画；拖拽项由 dragGeo 直接跟随指针，不参与普通补位。
 watch(
   () => ({ ...props.geo }),
-  (geo) => {
+  () => {
     if (props.dragging) return
-    toTransform(geo)
+    toTransform(EffectiveGeo.value)
   }
 )
 
@@ -251,7 +258,7 @@ watch(
       return
     }
     if (oldDragging) {
-      toTransform(props.geo)
+      toTransform(EffectiveGeo.value)
     }
   }
 )
@@ -403,6 +410,11 @@ onMounted(() => {
 
 .pr-adaptive-grid-item-pinned {
   z-index: 20;
+}
+
+.pr-adaptive-grid-item-fixed .pr-adaptive-grid-item-size,
+.pr-adaptive-grid-item-fixed .pr-adaptive-grid-item-visual {
+  cursor: default;
 }
 
 .pr-adaptive-grid-item-dragging {

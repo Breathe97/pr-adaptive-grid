@@ -54,7 +54,7 @@
 <script setup lang="ts">
 import { ref, onMounted, nextTick } from 'vue'
 import { PrAdaptiveGrid, getLayout, getLectureLayout } from '../../src/index.ts'
-import type { GetLayoutFn, PrAdaptiveGridExpose } from '../../src/index.ts'
+import type { Geo, GetLayoutFn, GridItemsOptions, PrAdaptiveGridExpose } from '../../src/index.ts'
 
 const DEFAULT_USER_COUNT = 4 // 演示初始 item 数量
 
@@ -69,6 +69,7 @@ const tileColorMap = ref(new Map<string, string>()) // 每个 id 对应的 tile 
 
 const ids: string[] = [] // 业务侧 id 顺序，与 gridItems 下标一致
 const pinnedSwapIndex = ref<number | null>(null) // Pin 时与 index 0 互换的下标，取消时换回
+type GridSlotItem = Geo & Required<GridItemsOptions> & { id: string }
 
 /** 高饱和度随机色，亮度偏高以对比黑色背景 */
 const pickContrastColor = (): string => {
@@ -89,8 +90,10 @@ const ensureTileColor = (id: string) => {
 /** 读取 tile 背景色，未分配时用默认色 */
 const getTileColor = (id: string): string => tileColorMap.value.get(id) ?? 'hsl(210 95% 72%)'
 
-/** Fixed 演示占位（后续步骤实现） */
-const setFixed = (_item: GridSlotItem) => {}
+/** 切换 Fixed：只锁定当前 id 的拖拽排序能力，不改变业务顺序。 */
+const setFixed = (item: GridSlotItem) => {
+  gridRef.value?.setItem(item.id, { fixed: !item.fixed })
+}
 
 /** 增减 item：+1 插入新 id，-1 随机移除一个 */
 const changeUserCount = (delta: number) => {
@@ -106,7 +109,6 @@ const changeUserCount = (delta: number) => {
     return
   }
   if (userCount.value <= 1) return
-  const index = Math.ceil(Math.random() * (ids.length - 1))
   const removeId = ids[0]
   if (!removeId) return
   gridRef.value?.removeItems([removeId])
@@ -170,14 +172,16 @@ const shuffleItems = () => {
 /** 一次 setItems + syncLayout（组件内分阶段：layout → mapRect → sticky） */
 const initGrid = async () => {
   if (!gridRef.value) return
-  const byId = new Map<string, { sticky?: boolean }>()
-  ids.forEach((id) => byId.set(id, { sticky: false }))
-  if (layoutMode.value === 2 && ids.length > 0) byId.set(ids[0], { sticky: true })
   gridRef.value.setItems(ids)
+  ids.forEach((id, index) => {
+    gridRef.value?.setItem(id, { sticky: layoutMode.value === 2 && index === 0 })
+  })
 }
 
 /** 主动触发组件重新测量 span 与绝对定位 */
-const syncGrid = () => {}
+const syncGrid = () => {
+  void initGrid()
+}
 
 /** 一次性 setItems 初始化演示数据 */
 onMounted(async () => {
@@ -189,7 +193,7 @@ onMounted(async () => {
     initialIds.push(id)
   }
   ids.push(...initialIds)
-  gridRef.value?.setItems(initialIds)
+  await initGrid()
   userCount.value = DEFAULT_USER_COUNT
 })
 </script>

@@ -3,7 +3,7 @@
     <div ref="pr_adaptive_grid_content_ref" class="pr-adaptive-grid-content" :style="ContainerStyle">
       <div v-for="(item, index) in layout.items" :key="index" class="pr-adaptive-grid-item-span" :data-grid-span-index="index" :style="ItemSpanStyle(item)"></div>
     </div>
-    <PrAdaptiveGridItem v-for="(id, index) in itemIds" :key="id" :id="id" :geo="ItemGeo(index)" :drag-geo="DragGeo(id)" :sticky="ItemOptions(id).sticky" :fixed="ItemOptions(id).fixed" :draggable="!ItemOptions(id).fixed" :dragging="DraggingId === id" :leaving="IsLeaving(id)" :on-drag-start="onItemDragStart" :on-drag-move="onItemDragMove" :on-drag-end="onItemDragEnd" :on-leave-end="onItemLeaveEnd">
+    <PrAdaptiveGridItem v-for="(id, index) in itemIds" :key="id" :id="id" :geo="ItemGeo(index)" :sticky-geo="StickyGeo(id, index)" :drag-geo="DragGeo(id)" :sticky="ItemOptions(id).sticky" :fixed="ItemOptions(id).fixed" :draggable="!ItemOptions(id).fixed" :dragging="DraggingId === id" :leaving="IsLeaving(id)" :on-drag-start="onItemDragStart" :on-drag-move="onItemDragMove" :on-drag-end="onItemDragEnd" :on-leave-end="onItemLeaveEnd">
       <template #default="slotProps">
         <slot v-bind="slotProps" />
       </template>
@@ -123,6 +123,30 @@ const ItemGeo = computed(() => {
   return (index: number) => {
     const geo = spanGeos.value[index]
     return geo
+  }
+})
+
+/** sticky 只调整视觉位置，不改 spanGeos / spanIds 的真实占位。 */
+const StickyGeo = computed(() => {
+  return (id: string, index: number) => {
+    if (!ItemOptions.value(id).sticky) return undefined
+    if (DraggingId.value === id) return undefined
+
+    const geo = spanGeos.value[index]
+    if (!geo) return undefined
+
+    const viewportHeight = pr_adaptive_grid_ref.value?.clientHeight ?? size.value.height
+    if (viewportHeight <= 0) return geo
+
+    const minCenterY = scrollTop.value + geo.height / 2
+    const maxCenterY = scrollTop.value + Math.max(geo.height / 2, viewportHeight - geo.height / 2)
+    const stickyCy = Math.min(Math.max(geo.cy, minCenterY), maxCenterY)
+
+    return {
+      ...geo,
+      top: stickyCy - geo.height / 2,
+      cy: stickyCy
+    }
   }
 })
 
@@ -356,6 +380,7 @@ const setItems = (ids: string[], options?: GridItemsOptions) => {
   leavingIds.value = []
   pruneItemOptions(nextIds)
   nextIds.forEach((id) => setItemOptions(id, options))
+  void syncLayout()
 }
 
 /** 移除 item 并重算布局 */
@@ -380,6 +405,7 @@ let resizeTimer = 0 // resize debounce 定时器
 /** 挂载后监听 content 容器尺寸变化 */
 onMounted(async () => {
   await nextTick()
+  onScroll()
 
   let _size = { width: 0, height: 0 }
 
