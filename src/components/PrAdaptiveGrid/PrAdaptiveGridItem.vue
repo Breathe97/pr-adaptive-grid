@@ -39,6 +39,16 @@ const props = defineProps({
     type: Boolean,
     default: () => false
   },
+  sticky: {
+    required: false,
+    type: Boolean,
+    default: () => false
+  },
+  fixed: {
+    required: false,
+    type: Boolean,
+    default: () => false
+  },
   dragging: {
     required: false,
     type: Boolean,
@@ -81,9 +91,9 @@ const EffectiveGeo = computed(() => props.dragGeo ?? props.geo)
 
 /** 暴露给默认插槽的 item 信息。 */
 const Info = computed(() => {
-  const { id } = props
+  const { id, sticky, fixed } = props
   const geo = EffectiveGeo.value
-  const info = { id, ...geo, sticky: true, fixed: true }
+  const info = { id, ...geo, sticky, fixed }
   return info
 })
 

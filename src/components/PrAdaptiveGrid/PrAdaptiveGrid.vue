@@ -3,7 +3,22 @@
     <div ref="pr_adaptive_grid_content_ref" class="pr-adaptive-grid-content" :style="ContainerStyle">
       <div v-for="(item, index) in layout.items" :key="index" class="pr-adaptive-grid-item-span" :data-grid-span-index="index" :style="ItemSpanStyle(item)"></div>
     </div>
-    <PrAdaptiveGridItem v-for="(id, index) in itemIds" :key="id" :id="id" :geo="ItemGeo(index)" :drag-geo="DragGeo(id)" :draggable="true" :dragging="DraggingId === id" :leaving="IsLeaving(id)" :on-drag-start="onItemDragStart" :on-drag-move="onItemDragMove" :on-drag-end="onItemDragEnd" :on-leave-end="onItemLeaveEnd">
+    <PrAdaptiveGridItem
+      v-for="(id, index) in itemIds"
+      :key="id"
+      :id="id"
+      :geo="ItemGeo(index)"
+      :drag-geo="DragGeo(id)"
+      :sticky="ItemOptions(id).sticky"
+      :fixed="ItemOptions(id).fixed"
+      :draggable="true"
+      :dragging="DraggingId === id"
+      :leaving="IsLeaving(id)"
+      :on-drag-start="onItemDragStart"
+      :on-drag-move="onItemDragMove"
+      :on-drag-end="onItemDragEnd"
+      :on-leave-end="onItemLeaveEnd"
+    >
       <template #default="slotProps">
         <slot v-bind="slotProps" />
       </template>
@@ -38,6 +53,33 @@ const spanIds = ref<string[]>([]) // 当前渲染的span
 const itemIds = ref<string[]>([]) // 当前渲染的item
 const leavingIds = ref<string[]>([]) // 当前退场的item
 const spanGeos = ref<Geo[]>([]) // 所有span的几何信息
+
+type StoredItemOptions = Required<GridItemsOptions>
+
+const DEFAULT_ITEM_OPTIONS: StoredItemOptions = { sticky: false, fixed: false }
+const itemOptionsById = ref(new Map<string, StoredItemOptions>()) // 每个 item 的 sticky/fixed 状态
+
+/** 只合并显式传入的 sticky / fixed，避免 index 或 undefined 覆盖已有状态。 */
+const normalizeItemOptions = (options?: GridItemsOptions): Partial<StoredItemOptions> => {
+  const next: Partial<StoredItemOptions> = {}
+  if (typeof options?.sticky === 'boolean') next.sticky = options.sticky
+  if (typeof options?.fixed === 'boolean') next.fixed = options.fixed
+  return next
+}
+
+/** 写入或合并指定 item 的状态；未传入时初始化为默认状态。 */
+const setItemOptions = (id: string, options?: GridItemsOptions) => {
+  const current = itemOptionsById.value.get(id) ?? DEFAULT_ITEM_OPTIONS
+  itemOptionsById.value.set(id, { ...current, ...normalizeItemOptions(options) })
+}
+
+/** 清理已经不再存在的 item 状态，避免 remove / setItems 后残留旧配置。 */
+const pruneItemOptions = (activeIds: string[]) => {
+  const activeIdSet = new Set(activeIds)
+  for (const id of itemOptionsById.value.keys()) {
+    if (!activeIdSet.has(id)) itemOptionsById.value.delete(id)
+  }
+}
 
 type DragState = {
   id: string
@@ -88,6 +130,7 @@ const onItemLeaveEnd = (id: string) => {
   if (spanIndex !== -1) spanIds.value.splice(spanIndex, 1)
   const itemIndex = itemIds.value.indexOf(id)
   if (itemIndex !== -1) itemIds.value.splice(itemIndex, 1)
+  itemOptionsById.value.delete(id)
 }
 
 /** 按渲染下标返回 item 对应的 span 几何。 */
@@ -108,6 +151,11 @@ const LayoutKey = computed(() => {
 /** 判断指定 item 是否正在退场。 */
 const IsLeaving = computed(() => {
   return (id: string) => leavingIds.value.includes(id)
+})
+
+/** 读取指定 item 的 sticky / fixed 状态，未设置时返回默认状态。 */
+const ItemOptions = computed(() => {
+  return (id: string): StoredItemOptions => itemOptionsById.value.get(id) ?? DEFAULT_ITEM_OPTIONS
 })
 
 /** 当前正在拖拽的 item id。 */
@@ -267,6 +315,7 @@ const ItemSpanStyle = computed(() => {
 
 /** 新增或更新 item；id 已存在时仅合并传入的 options */
 const setItem = (id: string, options?: GridItemOptions) => {
+  setItemOptions(id, options)
   const { index = 0 } = options ?? {}
   const leavingIndex = leavingIds.value.indexOf(id)
   // 情况 1：这个 id 正在退场，说明业务层又把它加回来了
@@ -289,8 +338,13 @@ const setItem = (id: string, options?: GridItemOptions) => {
 }
 
 /** 按 ids 一次性设置 */
-const setItems = (ids: string[], _options?: GridItemsOptions) => {
-  spanIds.value.push(...ids)
+const setItems = (ids: string[], options?: GridItemsOptions) => {
+  const nextIds = [...ids]
+  spanIds.value = [...nextIds]
+  itemIds.value = [...nextIds]
+  leavingIds.value = []
+  pruneItemOptions(nextIds)
+  nextIds.forEach((id) => setItemOptions(id, options))
 }
 
 /** 移除 item 并重算布局 */
