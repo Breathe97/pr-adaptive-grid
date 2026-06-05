@@ -42,7 +42,7 @@ const ItemStyle = computed(() => {
   const { cx, cy } = prevGeo
 
   return {
-    transform: `translate3d(${cx}px, ${cy}px, 0) translate(-50%, -50%)`
+    // transform: `translate3d(${cx}px, ${cy}px, 0) translate(-50%, -50%)`
   }
 })
 
@@ -62,10 +62,14 @@ const toTransform = (newGeo: Geo) => {
 
   // 获取当前几何信息
   const getCurrentCenterGeo = () => {
-    const rect = inner.getBoundingClientRect()
-    const { top, left, width, height } = rect
-    const cx = left + rect.width / 2
-    const cy = top + rect.height / 2
+    const outerRect = outer.getBoundingClientRect()
+    const innerRect = inner.getBoundingClientRect()
+    const left = innerRect.left - outerRect.left
+    const top = innerRect.top - outerRect.top
+    const width = innerRect.width
+    const height = innerRect.height
+    const cx = left + width / 2
+    const cy = top + height / 2
     return { top, left, cx, cy, width, height }
   }
 
