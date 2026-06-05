@@ -13,7 +13,7 @@ import { computed, ref, watch, nextTick, onMounted } from 'vue'
 import type { PropType } from 'vue'
 import type { Geo } from '../../types'
 
-const AG_DURATION_ENTER = 500
+const AG_DURATION_ENTER = 5000
 const AG_EASING_ENTER = 'ease-out'
 const AG_DURATION_POSITION = 700
 const AG_EASING_POSITION = 'cubic-bezier(0.22, 1, 0.44, 1)'
@@ -163,15 +163,6 @@ const leavTransform = () => {
     })
 }
 
-watch(
-  () => props.leaving,
-  (leaving, oldLeaving) => {
-    if (leaving === true && oldLeaving !== true) {
-      leavTransform()
-    }
-  }
-)
-
 // 入场动画
 const addTransform = () => {
   const visual = visualRef.value
@@ -191,6 +182,20 @@ const addTransform = () => {
     .finished.then((animate) => saveStyles(animate))
     .catch(() => {})
 }
+
+watch(
+  () => props.leaving,
+  (leaving, oldLeaving) => {
+    if (leaving === true && oldLeaving !== true) {
+      leavTransform()
+      return
+    }
+    if (leaving === false && oldLeaving === true) {
+      // 取消退场，恢复/入场
+      addTransform()
+    }
+  }
+)
 
 onMounted(() => {
   addTransform()

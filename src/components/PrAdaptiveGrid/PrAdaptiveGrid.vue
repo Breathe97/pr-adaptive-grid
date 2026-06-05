@@ -61,7 +61,9 @@ const getSpanGeos = async () => {
 
 const onItemLeaveEnd = (id: string) => {
   const leavingIndex = leavingIds.value.indexOf(id)
-  if (leavingIndex !== -1) leavingIds.value.splice(leavingIndex, 1)
+  // 已经被 setItem 复活了，忽略这次退场完成回调
+  if (leavingIndex === -1) return
+  leavingIds.value.splice(leavingIndex, 1)
   const spanIndex = spanIds.value.indexOf(id)
   if (spanIndex !== -1) spanIds.value.splice(spanIndex, 1)
   const itemIndex = itemIds.value.indexOf(id)
@@ -135,7 +137,24 @@ const ItemSpanStyle = computed(() => {
 
 /** 新增或更新 item；id 已存在时仅合并传入的 options */
 const setItem = (id: string, options?: GridItemOptions) => {
-  const { index = 0 } = options
+  const { index = 0 } = options ?? {}
+  const leavingIndex = leavingIds.value.indexOf(id)
+  // 情况 1：这个 id 正在退场，说明业务层又把它加回来了
+  if (leavingIndex !== -1) {
+    leavingIds.value.splice(leavingIndex, 1)
+    // 如果 spanIds 里还保留着它，就不要重复插入
+    if (spanIds.value.includes(id)) {
+      return
+    }
+    // 如果你 remove 时已经从 spanIds 删除了，则这里重新插入
+    spanIds.value.splice(index, 0, id)
+    return
+  }
+  // 情况 2：已经存在，避免重复添加
+  if (spanIds.value.includes(id)) {
+    return
+  }
+  // 情况 3：真正的新 item
   spanIds.value.splice(index, 0, id)
 }
 
