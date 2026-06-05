@@ -7,13 +7,15 @@
 </template>
 
 <script lang="ts" setup>
-import { computed, ref, watch, nextTick } from 'vue'
+import { computed, ref, watch, nextTick, onMounted } from 'vue'
 import type { PropType } from 'vue'
 import type { Geo } from '../../types'
 
-const AG_DURATION_POSITION = 7000
+const AG_DURATION_ENTER = 500
+const AG_EASING_ENTER = 'ease-out'
+const AG_DURATION_POSITION = 700
 const AG_EASING_POSITION = 'cubic-bezier(0.22, 1, 0.44, 1)'
-const AG_DURATION_SIZE = 7000
+const AG_DURATION_SIZE = 700
 const AG_EASING_SIZE = 'cubic-bezier(0.22, 1, 0.44, 1)'
 
 const props = defineProps({
@@ -118,6 +120,24 @@ watch(
   () => ({ ...props.geo }),
   (geo) => toTransform(geo)
 )
+
+const addTransform = () => {
+  const inner = innerRef.value
+  if (!inner) return
+  inner.animate(
+    [
+      // 开始
+      { opacity: 0, transform: 'scale(0.3)' },
+      // 结束
+      { opacity: 1, transform: 'scale(1)' }
+    ],
+    { duration: AG_DURATION_ENTER, easing: AG_EASING_ENTER, delay: 80 }
+  )
+}
+
+onMounted(() => {
+  addTransform()
+})
 </script>
 
 <style scoped>
