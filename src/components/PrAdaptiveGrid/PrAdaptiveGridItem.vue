@@ -1,13 +1,13 @@
 <template>
-  <div class="pr-adaptive-grid-item" :style="[ItemStyle]">
-    <div class="pr-adaptive-grid-item-inner" :style="[ItemInnerStyle]">
+  <div ref="outerRef" class="pr-adaptive-grid-item" :style="[ItemStyle]">
+    <div ref="innerRef" class="pr-adaptive-grid-item-inner" :style="[ItemInnerStyle]">
       <slot :item="Info" />
     </div>
   </div>
 </template>
 
 <script lang="ts" setup>
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { PropType } from 'vue'
 import type { Geo } from '../../types'
 
@@ -21,6 +21,23 @@ const props = defineProps({
     type: Object as PropType<Geo>
   }
 })
+
+const outerRef = ref<HTMLElement>()
+const innerRef = ref<HTMLElement>()
+
+let prevGeo: Geo = { ...props.geo }
+let isFirst = true // 首次挂载不做位移动画
+
+const readVars = () => {
+  const cs = getComputedStyle(outerRef.value!)
+  const num = (name: string, fallback: number) => parseFloat(cs.getPropertyValue(name)) || fallback
+  return {
+    posDur: num('--ag-duration-position', 700),
+    sizeDur: num('--ag-duration-size', 500),
+    posEase: cs.getPropertyValue('--ag-ease-position').trim() || 'cubic-bezier(0.22,1,0.44,1)',
+    sizeEase: cs.getPropertyValue('--ag-ease-size').trim() || 'ease'
+  }
+}
 
 const Info = computed(() => {
   const { id, geo } = props
@@ -45,6 +62,45 @@ const ItemInnerStyle = computed(() => {
     height: `${height}px`
   }
 })
+
+watch(
+  () => ({ ...props.geo }),
+  (oldGeo, newGeo) => {
+    const outer = outerRef.value
+    const inner = innerRef.value
+    if (!outer || !inner) return
+    // 首次挂载:不做位移,交给入场动画
+    if (isFirst) {
+      isFirst = false
+      prevGeo = newGeo
+      return
+    }
+
+    const { posDur, sizeDur, posEase, sizeEase } = readVars()
+
+    // —— 位置:外层 transform 从旧 → 新 ——
+    if (oldGeo.left !== newGeo.left || oldGeo.top !== newGeo.top) {
+      const anims = outer.getAnimations()
+      if (anims.length) {
+        anims[0].commitStyles() // 把当前动画帧写入 inline style，视觉位置不变
+        anims.forEach((a) => a.cancel())
+      }
+      // 只设新目标即可
+      outer.animate([{ transform: `translate3d(${newGeo.left}px, ${newGeo.top}px, 0)` }], { duration: posDur, easing: posEase })
+    }
+    // —— 尺寸:内层 width/height 从旧 → 新 ——
+    if (oldGeo.width !== newGeo.width || oldGeo.height !== newGeo.height) {
+      const anims = inner.getAnimations()
+      if (anims.length) {
+        anims[0].commitStyles()
+        anims.forEach((a) => a.cancel())
+      }
+      inner.animate([{ width: `${newGeo.width}px`, height: `${newGeo.height}px` }], { duration: sizeDur, easing: sizeEase })
+    }
+    prevGeo = newGeo
+  },
+  { flush: 'post' }
+)
 </script>
 
 <style scoped>
