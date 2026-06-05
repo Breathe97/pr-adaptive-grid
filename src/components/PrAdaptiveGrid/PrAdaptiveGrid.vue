@@ -326,7 +326,6 @@ const setItem = (id: string, options?: GridItemOptions) => {
 const setItems = (ids: string[], options?: GridItemsOptions) => {
   const nextIds = [...ids]
   spanIds.value = [...nextIds]
-  itemIds.value = [...nextIds]
   leavingIds.value = []
   pruneItemOptions(nextIds)
   nextIds.forEach((id) => setItemOptions(id, options))
