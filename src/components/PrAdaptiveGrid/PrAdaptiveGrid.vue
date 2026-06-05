@@ -3,22 +3,7 @@
     <div ref="pr_adaptive_grid_content_ref" class="pr-adaptive-grid-content" :style="ContainerStyle">
       <div v-for="(item, index) in layout.items" :key="index" class="pr-adaptive-grid-item-span" :data-grid-span-index="index" :style="ItemSpanStyle(item)"></div>
     </div>
-    <PrAdaptiveGridItem
-      v-for="(id, index) in itemIds"
-      :key="id"
-      :id="id"
-      :geo="ItemGeo(index)"
-      :drag-geo="DragGeo(id)"
-      :sticky="ItemOptions(id).sticky"
-      :fixed="ItemOptions(id).fixed"
-      :draggable="true"
-      :dragging="DraggingId === id"
-      :leaving="IsLeaving(id)"
-      :on-drag-start="onItemDragStart"
-      :on-drag-move="onItemDragMove"
-      :on-drag-end="onItemDragEnd"
-      :on-leave-end="onItemLeaveEnd"
-    >
+    <PrAdaptiveGridItem v-for="(id, index) in itemIds" :key="id" :id="id" :geo="ItemGeo(index)" :drag-geo="DragGeo(id)" :sticky="ItemOptions(id).sticky" :fixed="ItemOptions(id).fixed" :draggable="true" :dragging="DraggingId === id" :leaving="IsLeaving(id)" :on-drag-start="onItemDragStart" :on-drag-move="onItemDragMove" :on-drag-end="onItemDragEnd" :on-leave-end="onItemLeaveEnd">
       <template #default="slotProps">
         <slot v-bind="slotProps" />
       </template>
