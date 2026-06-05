@@ -3,7 +3,11 @@
     <div ref="pr_adaptive_grid_content_ref" class="pr-adaptive-grid-content" :style="ContainerStyle">
       <div v-for="(item, index) in layout.items" :key="index" class="pr-adaptive-grid-item-span" :data-grid-span-index="index" :style="ItemSpanStyle(item)"></div>
     </div>
-    <PrAdaptiveGridItem v-for="(id, index) in itemIds" :key="id" :id="id" :geo="ItemGeo(index)"> </PrAdaptiveGridItem>
+    <PrAdaptiveGridItem v-for="(id, index) in itemIds" :key="id" :id="id" :geo="ItemGeo(index)">
+      <template #default="slotProps">
+        <slot v-bind="slotProps" />
+      </template>
+    </PrAdaptiveGridItem>
   </div>
 </template>
 
