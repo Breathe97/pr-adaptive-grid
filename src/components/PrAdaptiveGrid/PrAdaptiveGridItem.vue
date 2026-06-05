@@ -89,14 +89,14 @@ watch(
       outer.animate([{ transform: `translate3d(${newGeo.left}px, ${newGeo.top}px, 0)` }], { duration: posDur, easing: posEase })
     }
     // —— 尺寸:内层 width/height 从旧 → 新 ——
-    if (oldGeo.width !== newGeo.width || oldGeo.height !== newGeo.height) {
-      const anims = inner.getAnimations()
-      if (anims.length) {
-        anims[0].commitStyles()
-        anims.forEach((a) => a.cancel())
-      }
-      inner.animate([{ width: `${newGeo.width}px`, height: `${newGeo.height}px` }], { duration: sizeDur, easing: sizeEase })
-    }
+    // if (oldGeo.width !== newGeo.width || oldGeo.height !== newGeo.height) {
+    //   const anims = inner.getAnimations()
+    //   if (anims.length) {
+    //     anims[0].commitStyles()
+    //     anims.forEach((a) => a.cancel())
+    //   }
+    //   inner.animate([{ width: `${newGeo.width}px`, height: `${newGeo.height}px` }], { duration: sizeDur, easing: sizeEase })
+    // }
     prevGeo = newGeo
   },
   { flush: 'post' }

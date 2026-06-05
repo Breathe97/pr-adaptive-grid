@@ -181,7 +181,7 @@ defineExpose({
 
 <style scoped>
 .pr-adaptive-grid {
-  --ag-duration-position: 700ms;
+  --ag-duration-position: 7000ms;
   --ag-duration-size: 500ms;
   --ag-duration-enter: 500ms;
   --ag-duration-exit: 500ms;
