@@ -1,5 +1,5 @@
 <template>
-  <div ref="positionRef" class="pr-adaptive-grid-item-position" :class="{ 'pr-adaptive-grid-item-leaving': leaving, 'pr-adaptive-grid-item-dragging': dragging }" :style="[ItemStyle]">
+  <div ref="positionRef" class="pr-adaptive-grid-item-position" :class="ItemClass" :style="[ItemStyle]">
     <div ref="sizeRef" class="pr-adaptive-grid-item-size" :style="[ItemInnerStyle]">
       <div ref="visualRef" class="pr-adaptive-grid-item-visual" @pointerdown="onPointerDown" @pointermove="onPointerMove" @pointerup="onPointerUp" @pointercancel="onPointerCancel">
         <slot :item="Info" />
@@ -85,9 +85,18 @@ const Info = computed(() => {
   return info
 })
 
+const ItemClass = computed(() => {
+  return {
+    'pr-adaptive-grid-item-leaving': props.leaving,
+    'pr-adaptive-grid-item-dragging': props.dragging,
+    'pr-adaptive-grid-item-active-pointer': activePointerId.value !== undefined
+  }
+})
+
 const ItemStyle = computed(() => {
   const { cx, cy } = EffectiveGeo.value
   return {
+    'z-index': props.dragging === true ? 100 : 2,
     transform: `translate3d(${cx}px, ${cy}px, 0) translate(-50%, -50%)`
   }
 })
@@ -177,9 +186,9 @@ const toTransform = (newGeo: Geo) => {
     .animate(
       [
         // 开始
-        { transform: `translate3d(${currentGeo.cx}px, ${currentGeo.cy}px, 0) translate(-50%, -50%)` },
+        { transform: `translate3d(${currentGeo.cx}px, ${currentGeo.cy}px, 0) translate(-50%, -50%)`, zIndex: 100 },
         // 结束
-        { transform: `translate3d(${newGeo.cx}px, ${newGeo.cy}px, 0) translate(-50%, -50%)` }
+        { transform: `translate3d(${newGeo.cx}px, ${newGeo.cy}px, 0) translate(-50%, -50%)`, zIndex: 2 }
       ],
       { duration: AG_DURATION_POSITION, easing: AG_EASING_POSITION }
     )
@@ -371,6 +380,13 @@ onMounted(() => {
 
 .pr-adaptive-grid-item-dragging {
   z-index: 25; /* 高于 pinned 的 20 */
+}
+.pr-adaptive-grid-item-dragging,
+.pr-adaptive-grid-item-active-pointer,
+.pr-adaptive-grid-item-dragging .pr-adaptive-grid-item-size,
+.pr-adaptive-grid-item-active-pointer .pr-adaptive-grid-item-size,
+.pr-adaptive-grid-item-dragging .pr-adaptive-grid-item-visual,
+.pr-adaptive-grid-item-active-pointer .pr-adaptive-grid-item-visual {
   cursor: grabbing;
 }
 </style>
