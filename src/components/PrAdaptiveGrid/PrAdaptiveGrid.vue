@@ -383,18 +383,15 @@ const onItemDragMove = (id: string, event: PointerEvent) => {
   if (didReorder) void syncLayout(true)
 }
 
-/** 结束拖拽：先同步最终布局，再清理拖拽态触发 item 回到最终 geo。 */
+/** 结束拖拽：先落位并立刻清 dragState 触发回弹，再异步同步布局。 */
 const onItemDragEnd = async (id: string, event: PointerEvent) => {
   const state = dragState.value
   if (!state || state.id !== id) return
   event.preventDefault()
 
   updateDragStateFromPointer(state, event)
-  await syncLayout()
-  // 等待期间可能已经被退场或下一次拖拽替换，避免清掉新的拖拽状态。
-  if (dragState.value?.id !== id) return
-
   dragState.value = undefined
+  await syncLayout()
 }
 
 // 布局受外部变量实时变化。

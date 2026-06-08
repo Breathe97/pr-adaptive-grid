@@ -1,7 +1,7 @@
 <template>
   <div ref="positionRef" class="pr-adaptive-grid-item-position" :class="ItemClass" :style="[ItemStyle]">
     <div ref="sizeRef" class="pr-adaptive-grid-item-size" :style="[ItemInnerStyle]">
-      <div ref="visualRef" class="pr-adaptive-grid-item-visual" @pointerdown="onPointerDown" @pointermove="onPointerMove" @pointerup="onPointerUp" @pointercancel="onPointerCancel">
+      <div ref="visualRef" class="pr-adaptive-grid-item-visual" @pointerdown="onPointerDown" @pointermove="onPointerMove" @pointerup="onPointerUp" @pointercancel="onPointerCancel" @lostpointercapture="onLostPointerCapture">
         <slot :item="Info" />
       </div>
     </div>
@@ -167,26 +167,38 @@ const onPointerDown = (event: PointerEvent) => {
   props.onDragStart?.(props.id, event)
 }
 
+/** 结束 pointer 捕获并通知父组件释放拖拽；重复调用会被 activePointerId 拦住。 */
+const finishPointerInteraction = (event: PointerEvent) => {
+  if (activePointerId.value !== event.pointerId) return
+  activePointerId.value = undefined
+  releasePointerCapture(event)
+  props.onDragEnd?.(props.id, event)
+}
+
 /** pointermove：只响应当前捕获的指针，交给父组件计算拖拽位置。 */
 const onPointerMove = (event: PointerEvent) => {
   if (activePointerId.value !== event.pointerId) return
+  // pointerup 丢失时，松手后的 move 仍可能带着旧 capture 进来，用 buttons 兜底结束拖拽。
+  if (event.buttons === 0) {
+    finishPointerInteraction(event)
+    return
+  }
   props.onDragMove?.(props.id, event)
 }
 
 /** pointerup：结束当前指针捕获并通知父组件释放拖拽。 */
 const onPointerUp = (event: PointerEvent) => {
-  if (activePointerId.value !== event.pointerId) return
-  activePointerId.value = undefined
-  releasePointerCapture(event)
-  props.onDragEnd?.(props.id, event)
+  finishPointerInteraction(event)
 }
 
 /** pointercancel：按释放流程收尾，避免浏览器取消事件后残留拖拽态。 */
 const onPointerCancel = (event: PointerEvent) => {
-  if (activePointerId.value !== event.pointerId) return
-  activePointerId.value = undefined
-  releasePointerCapture(event)
-  props.onDragEnd?.(props.id, event)
+  finishPointerInteraction(event)
+}
+
+/** lostpointercapture：capture 被浏览器收回时兜底收尾，避免 pointerup 未达时残留拖拽态。 */
+const onLostPointerCapture = (event: PointerEvent) => {
+  finishPointerInteraction(event)
 }
 
 type TransformOptions = {
@@ -264,9 +276,7 @@ watch(
   () => ({ ...props.geo }),
   () => {
     if (props.dragging) return
-    // 拖拽松手后的回弹由 dragging watch 单独处理，避免 geo 二次触发把层级降回 21。
-    if (isSettlingAfterDrag.value) return
-    toTransform(EffectiveGeo.value)
+    toTransform(EffectiveGeo.value, isSettlingAfterDrag.value ? { settlingAfterDrag: true } : undefined)
   }
 )
 
