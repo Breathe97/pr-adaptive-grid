@@ -175,9 +175,25 @@ const finishPointerInteraction = (event: PointerEvent) => {
   props.onDragEnd?.(props.id, event)
 }
 
+/** 意外丢失 capture 时尝试恢复；仅在按键已松开时才结束拖拽。 */
+const onLostPointerCapture = (event: PointerEvent) => {
+  if (activePointerId.value !== event.pointerId) return
+  if (event.buttons !== 0) {
+    visualRef.value?.setPointerCapture(event.pointerId)
+    return
+  }
+  finishPointerInteraction(event)
+}
+
 /** pointermove：只响应当前捕获的指针，交给父组件计算拖拽位置。 */
 const onPointerMove = (event: PointerEvent) => {
   if (activePointerId.value !== event.pointerId) return
+
+  const visual = visualRef.value
+  if (visual && !visual.hasPointerCapture(event.pointerId) && event.buttons !== 0) {
+    visual.setPointerCapture(event.pointerId)
+  }
+
   // pointerup 丢失时，松手后的 move 仍可能带着旧 capture 进来，用 buttons 兜底结束拖拽。
   if (event.buttons === 0) {
     finishPointerInteraction(event)
@@ -193,11 +209,6 @@ const onPointerUp = (event: PointerEvent) => {
 
 /** pointercancel：按释放流程收尾，避免浏览器取消事件后残留拖拽态。 */
 const onPointerCancel = (event: PointerEvent) => {
-  finishPointerInteraction(event)
-}
-
-/** lostpointercapture：capture 被浏览器收回时兜底收尾，避免 pointerup 未达时残留拖拽态。 */
-const onLostPointerCapture = (event: PointerEvent) => {
   finishPointerInteraction(event)
 }
 
