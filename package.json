@@ -1,7 +1,7 @@
 {
   "name": "pr-adaptive-grid",
   "description": "基于 vue3 封装的一个自适应网格布局组件。",
-  "version": "0.1.5",
+  "version": "0.2.2",
   "type": "module",
   "files": [
     "dist"
