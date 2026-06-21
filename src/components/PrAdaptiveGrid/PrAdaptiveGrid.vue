@@ -24,7 +24,7 @@ const props = defineProps({
     type: Function as PropType<GetLayoutFn>,
     default: () => getLayout
   }
-)
+})
 
 const pr_adaptive_grid_ref = ref<HTMLElement>() // 外部容器 滚动
 const pr_adaptive_grid_content_ref = ref<HTMLElement>() // Grid 内容容器 DOM
@@ -536,19 +536,14 @@ defineExpose({
   height: 100%;
   overflow: auto;
   box-sizing: border-box;
-  overflow: auto;
-  /* 保留滚动，隐藏滚动条及其占位 */
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
-
 .pr-adaptive-grid::-webkit-scrollbar {
   display: none;
-  width: 0;
-  height: 0;
 }
-
 .pr-adaptive-grid-content {
+  position: relative;
   box-sizing: border-box;
   display: grid;
   height: 100%;

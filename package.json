@@ -9,9 +9,6 @@
   "main": "./dist/index.umd.cjs",
   "module": "./dist/index.js",
   "types": "./dist/src/index.d.ts",
-  "sideEffects": [
-    "dist/**"
-  ],
   "exports": {
     ".": {
       "import": "./dist/index.js",
@@ -31,7 +28,6 @@
     "@vue/language-core": "^3.3.2",
     "typescript": "^6.0.3",
     "vite": "^8.0.14",
-    "vite-plugin-css-injected-by-js": "^5.0.1",
     "vite-plugin-libcss": "^1.1.2",
     "vue-tsc": "^3.3.2"
   },
@@ -42,6 +38,6 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Breathe97/pr-screen-adapter.git"
+    "url": "https://github.com/Breathe97/pr-screen-adapter"
   }
 }

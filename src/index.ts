@@ -2,9 +2,8 @@ import PrAdaptiveGrid from './components/PrAdaptiveGrid/PrAdaptiveGrid.vue' // �
 export { getLayout } from './layouts/layout.default'
 export { getLayout as getLectureLayout } from './layouts/layout.lecture'
 export * from './types.ts'
-export { packRowCounts } from './components/PrAdaptiveGrid/packRowCounts'
-export { resolveGridSizeSpec, resolveGridInsets } from './components/PrAdaptiveGrid/resolveGridSize'
 
+// 按需引入
 export { PrAdaptiveGrid }
 
 const component = [PrAdaptiveGrid]
