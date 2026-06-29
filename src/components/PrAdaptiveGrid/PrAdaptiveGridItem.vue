@@ -83,6 +83,11 @@ const props = defineProps({
     required: false,
     type: Function as PropType<(id: string) => void>,
     default: undefined
+  },
+  noEnterAnimation: {
+    required: false,
+    type: Boolean,
+    default: () => false
   }
 })
 
@@ -423,8 +428,16 @@ watch(
   }
 )
 
-// 首次挂载时播放入场动画。
+// 首次挂载时播放入场动画；noEnterAnimation 为 true 时直接显示，跳过动画。
 onMounted(() => {
+  if (props.noEnterAnimation) {
+    const visual = visualRef.value
+    if (visual) {
+      visual.style.opacity = '1'
+      visual.style.transform = 'scale(1)'
+    }
+    return
+  }
   addTransform()
 })
 </script>
