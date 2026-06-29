@@ -383,18 +383,29 @@ const addTransform = () => {
   const current = getCurrentVisualState() // 当前进出场信息
 
   visual.getAnimations().forEach((animate) => saveStyles(animate)) // 暂停动画
-  visual
-    .animate(
-      [
-        // 开始
-        { opacity: current.opacity, transform: current.transform },
-        // 结束
-        { opacity: 1, transform: 'scale(1)' }
-      ],
-      { duration: AG_DURATION_ENTER, easing: AG_EASING_ENTER, delay: 100 }
-    )
-    .finished.then((animate) => saveStyles(animate))
-    .catch(() => {})
+
+  const animation = visual.animate(
+    [
+      // 开始
+      { opacity: current.opacity, transform: current.transform },
+      // 结束
+      { opacity: 1, transform: 'scale(1)' }
+    ],
+    {
+      duration: AG_DURATION_ENTER,
+      easing: AG_EASING_ENTER,
+      delay: 100,
+      fill: 'forwards'
+    }
+  )
+
+  animation.finished
+    .then((animate) => saveStyles(animate))
+    .catch(() => {
+      // 兜底：动画失败时直接设置最终样式
+      visual.style.opacity = '1'
+      visual.style.transform = 'scale(1)'
+    })
 }
 
 // leaving 变化时切换进出场动画。
