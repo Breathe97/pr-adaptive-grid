@@ -3,7 +3,7 @@
     <div ref="pr_adaptive_grid_content_ref" class="pr-adaptive-grid-content" :style="ContainerStyle">
       <div v-for="(item, index) in layout.items" :key="index" class="pr-adaptive-grid-item-span" :data-grid-span-index="index" :style="ItemSpanStyle(item)"></div>
     </div>
-    <PrAdaptiveGridItem v-for="(id, index) in itemIds" :key="id" :id="id" :geo="ItemGeo(index)" :sticky-geo="StickyGeo(id, index)" :drag-geo="DragGeo(id)" :sticky="ItemOptions(id).sticky" :fixed="ItemOptions(id).fixed" :draggable="!ItemOptions(id).fixed" :dragging="DraggingId === id" :leaving="IsLeaving(id)" :on-drag-start="onItemDragStart" :on-drag-move="onItemDragMove" :on-drag-end="onItemDragEnd" :on-leave-end="onItemLeaveEnd">
+    <PrAdaptiveGridItem v-for="(id, index) in itemIds" :key="id" :id="id" :geo="ItemGeo(index)" :sticky-geo="StickyGeo(id, index)" :drag-geo="DragGeo(id)" :sticky="ItemOptions(id).sticky" :fixed="ItemOptions(id).fixed" :draggable="!ItemOptions(id).fixed" :dragging="DraggingId === id" :leaving="IsLeaving(id)" :no-enter-animation="props.noEnterAnimation || initializing" :on-drag-start="onItemDragStart" :on-drag-move="onItemDragMove" :on-drag-end="onItemDragEnd" :on-leave-end="onItemLeaveEnd">
       <template #default="slotProps">
         <slot v-bind="slotProps" />
       </template>
@@ -23,6 +23,11 @@ const props = defineProps({
     required: true,
     type: Function as PropType<GetLayoutFn>,
     default: () => getLayout
+  },
+  noEnterAnimation: {
+    required: false,
+    type: Boolean,
+    default: () => false
   }
 })
 
@@ -30,6 +35,7 @@ const pr_adaptive_grid_ref = ref<HTMLElement>() // 外部容器 滚动
 const pr_adaptive_grid_content_ref = ref<HTMLElement>() // Grid 内容容器 DOM
 
 const isReady = ref(false) // 是否准备就绪
+const initializing = ref(true) // 首次初始渲染中，item 跳过入场动画
 const layout = ref<Layout>({ gap: 8, cols: 1, rows: 1, items: [] }) // 仅 span 占位几何
 const size = ref({ width: 0, height: 0 }) // content 尺寸（行高与位移动画时长）
 const scrollTop = ref(0) // .pr-adaptive-grid 的 scrollTop，Pin 定位用
@@ -211,6 +217,10 @@ const executeSyncLayout = async () => {
   await nextTick()
   if (token !== syncLayoutToken) return
   await getSpanGeos()
+  if (initializing.value) {
+    await nextTick()
+    initializing.value = false
+  }
 }
 
 const resolveSyncLayoutWaiters = () => {

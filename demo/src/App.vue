@@ -48,6 +48,7 @@
       <div class="bar-mode" role="group" aria-label="布局模式">
         <button type="button" class="bar-mode-btn" :class="{ active: layoutMode === 1 }" @click="setLayoutMode(1)">布局 1</button>
         <button type="button" class="bar-mode-btn" :class="{ active: layoutMode === 2 }" @click="setLayoutMode(2)">布局 2</button>
+        <button type="button" class="bar-mode-btn" :class="{ active: layoutMode === 3 }" @click="setLayoutMode(3)">布局 3</button>
       </div>
       <span class="bar-sep" />
       <button type="button" class="bar-text" :disabled="userCount <= 1" @click="shuffleItems">打乱</button>
@@ -58,14 +59,32 @@
 
 <script setup lang="ts">
 import { computed, ref, onMounted, nextTick } from 'vue'
-import { PrAdaptiveGrid, getLayout, getLectureLayout } from '../../src/index.ts'
+import { PrAdaptiveGrid, getLayout, getLectureLayout, getMobileLayout } from '../../src/index.ts'
 import type { Geo, GetLayoutFn, GridItemsOptions, PrAdaptiveGridExpose } from '../../src/index.ts'
 
-const DEFAULT_USER_COUNT = 10 // 演示初始 item 数量
-const layoutMode = ref<1 | 2>(1) // 1 默认布局，2 讲座布局
+const DEFAULT_USER_COUNT = 9 // 演示初始 item 数量
+const layoutMode = ref<1 | 2 | 3>(3) // 1 默认布局，2 讲座布局，3 移动布局
 
 /** 闭包读取 layoutMode，组件只传 length */
-const resolveLayout: GetLayoutFn = (length) => (layoutMode.value === 2 ? getLectureLayout(length) : getLayout(length))
+const resolveLayout: GetLayoutFn = (length) => {
+  let layout
+  switch (layoutMode.value) {
+    case 1:
+      layout = getLayout(length)
+      break
+    case 2:
+      layout = getLectureLayout(length)
+      break
+    case 3:
+      layout = getMobileLayout(length)
+      break
+    default:
+      layout = getLayout(length)
+      break
+  }
+
+  return layout
+}
 
 const gridRef = ref<PrAdaptiveGridExpose>() // 网格组件实例
 const userCount = ref(DEFAULT_USER_COUNT) // 工具栏显示的数量
@@ -83,7 +102,7 @@ const getRemovableCandidates = () => {
   return pool
 }
 
-const canRemoveItem = computed(() => userCount.value > 1 && getRemovableCandidates().length > 0)
+const canRemoveItem = computed(() => userCount.value > 1)
 
 /** 高饱和度随机色，亮度偏高以对比黑色背景 */
 const pickContrastColor = (): string => {
@@ -142,10 +161,10 @@ const applyPinToId = (targetId: string) => {
 }
 
 /** 切换布局模式：布局 1 取消 Pin，布局 2 自动 Pin 第一项。 */
-const setLayoutMode = async (mode: 1 | 2) => {
+const setLayoutMode = async (mode: 1 | 2 | 3) => {
   if (layoutMode.value === mode) return
 
-  if (mode === 1) clearPin()
+  if (mode !== 1) clearPin()
   else applyPinToId(ids[0])
 
   layoutMode.value = mode
@@ -707,7 +726,7 @@ onMounted(async () => {
   color: #fff;
 }
 
-@media (max-width: 480px) {
+@media (max-width: 660px) {
   .float-bar {
     width: calc(100% - 24px);
     flex-wrap: wrap;
