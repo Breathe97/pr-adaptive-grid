@@ -17,8 +17,8 @@
               <span>h: {{ Math.round(item.height) }}</span>
             </div>
             <div class="tile-ops">
-              <button type="button" class="op" :class="{ active: item.sticky }" data-type="pin" @pointerdown.stop @click.stop="setPin(item)">Pin</button>
-              <button type="button" class="op" :class="{ active: item.fixed }" data-type="fix" @pointerdown.stop @click.stop="setFixed(item)">Fixed</button>
+              <div class="op" :class="{ active: item.sticky }" data-type="pin" @click.stop="setPin(item)">Pin</div>
+              <div class="op" :class="{ active: item.fixed }" data-type="fix" @click.stop="setFixed(item)">Fixed</div>
             </div>
           </div>
         </template>

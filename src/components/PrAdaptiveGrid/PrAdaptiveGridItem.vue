@@ -91,10 +91,14 @@ const props = defineProps({
   }
 })
 
+const DRAG_THRESHOLD = 5 // px，指针移动超过此值才进入拖拽
+
 const positionRef = ref<HTMLElement>()
 const sizeRef = ref<HTMLElement>()
 const visualRef = ref<HTMLElement>()
-const activePointerId = ref<number>()
+const activePointerId = ref<number>() // 已进入拖拽状态的 pointer id
+const pendingPointerId = ref<number>() // pointerdown 后等待判断的 pointer id
+const pendingStartPos = ref({ x: 0, y: 0 })
 
 const isPositionAnimating = ref(false)
 const isSettlingAfterDrag = ref(false)
@@ -163,10 +167,15 @@ const releasePointerCapture = (event: PointerEvent) => {
   visual.releasePointerCapture(event.pointerId)
 }
 
-/** pointerdown：捕获当前指针并通知父组件进入拖拽。 */
-const onPointerDown = (event: PointerEvent) => {
-  if (!props.draggable || props.leaving) return
+/** 清理 pending 状态（pointerdown 已记录但尚未进入拖拽）。 */
+const cancelPending = (event: PointerEvent) => {
+  if (pendingPointerId.value !== event.pointerId) return
+  pendingPointerId.value = undefined
+}
 
+/** 从 pending 进入正式拖拽：捕获指针并通知父组件。 */
+const commitDrag = (event: PointerEvent) => {
+  cancelPending(event)
   activePointerId.value = event.pointerId
   visualRef.value?.setPointerCapture(event.pointerId)
   props.onDragStart?.(props.id, event)
@@ -180,6 +189,57 @@ const finishPointerInteraction = (event: PointerEvent) => {
   props.onDragEnd?.(props.id, event)
 }
 
+/** pointerdown：记录起始位置，不立即捕获，等足够移动才进入拖拽。 */
+const onPointerDown = (event: PointerEvent) => {
+  if (!props.draggable || props.leaving) return
+
+  pendingPointerId.value = event.pointerId
+  pendingStartPos.value = { x: event.clientX, y: event.clientY }
+}
+
+/** pointermove：拖拽中→通知父组件；pending 且超阈值→进入拖拽；纯点击不拦截。 */
+const onPointerMove = (event: PointerEvent) => {
+  // 已进入拖拽状态
+  if (activePointerId.value === event.pointerId) {
+    const visual = visualRef.value
+    if (visual && !visual.hasPointerCapture(event.pointerId) && event.buttons !== 0) {
+      visual.setPointerCapture(event.pointerId)
+    }
+    if (event.buttons === 0) {
+      finishPointerInteraction(event)
+      return
+    }
+    props.onDragMove?.(props.id, event)
+    return
+  }
+
+  // pending 态：检查移动距离是否达到拖拽阈值
+  if (pendingPointerId.value !== event.pointerId) return
+  const dx = event.clientX - pendingStartPos.value.x
+  const dy = event.clientY - pendingStartPos.value.y
+  if (dx * dx + dy * dy >= DRAG_THRESHOLD * DRAG_THRESHOLD) {
+    commitDrag(event)
+  }
+}
+
+/** pointerup：拖拽中则结束拖拽；pending 中则仅取消 pending，click 正常触发。 */
+const onPointerUp = (event: PointerEvent) => {
+  if (activePointerId.value === event.pointerId) {
+    finishPointerInteraction(event)
+    return
+  }
+  cancelPending(event)
+}
+
+/** pointercancel：同 pointerup。 */
+const onPointerCancel = (event: PointerEvent) => {
+  if (activePointerId.value === event.pointerId) {
+    finishPointerInteraction(event)
+    return
+  }
+  cancelPending(event)
+}
+
 /** 意外丢失 capture 时尝试恢复；仅在按键已松开时才结束拖拽。 */
 const onLostPointerCapture = (event: PointerEvent) => {
   if (activePointerId.value !== event.pointerId) return
@@ -187,33 +247,6 @@ const onLostPointerCapture = (event: PointerEvent) => {
     visualRef.value?.setPointerCapture(event.pointerId)
     return
   }
-  finishPointerInteraction(event)
-}
-
-/** pointermove：只响应当前捕获的指针，交给父组件计算拖拽位置。 */
-const onPointerMove = (event: PointerEvent) => {
-  if (activePointerId.value !== event.pointerId) return
-
-  const visual = visualRef.value
-  if (visual && !visual.hasPointerCapture(event.pointerId) && event.buttons !== 0) {
-    visual.setPointerCapture(event.pointerId)
-  }
-
-  // pointerup 丢失时，松手后的 move 仍可能带着旧 capture 进来，用 buttons 兜底结束拖拽。
-  if (event.buttons === 0) {
-    finishPointerInteraction(event)
-    return
-  }
-  props.onDragMove?.(props.id, event)
-}
-
-/** pointerup：结束当前指针捕获并通知父组件释放拖拽。 */
-const onPointerUp = (event: PointerEvent) => {
-  finishPointerInteraction(event)
-}
-
-/** pointercancel：按释放流程收尾，避免浏览器取消事件后残留拖拽态。 */
-const onPointerCancel = (event: PointerEvent) => {
   finishPointerInteraction(event)
 }
 
@@ -447,7 +480,7 @@ onMounted(() => {
   position: absolute;
   left: 0;
   top: 0;
-  z-index: 2;
+  z-index: 3;
   box-sizing: border-box;
   will-change: transform;
 }
