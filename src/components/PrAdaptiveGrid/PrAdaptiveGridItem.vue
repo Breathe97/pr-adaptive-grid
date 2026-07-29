@@ -20,6 +20,9 @@ const AG_EASING_POSITION = 'cubic-bezier(0.22, 1, 0.44, 1)'
 const AG_DURATION_SIZE = 800
 const AG_EASING_SIZE = 'cubic-bezier(0.22, 1, 0.44, 1)'
 
+/** 基础层级，叠加计算：普通1 + 位移10 + 拖拽10 + 回弹5 */
+const Z_INDEX_BASE = 1
+
 const props = defineProps({
   id: {
     required: true,
@@ -88,6 +91,16 @@ const props = defineProps({
     required: false,
     type: Boolean,
     default: () => false
+  },
+  settlingCount: {
+    required: false,
+    type: Number,
+    default: () => 0
+  },
+  onSettlingChange: {
+    required: false,
+    type: Function as PropType<(id: string, isSettling: boolean) => void>,
+    default: undefined
   }
 })
 
@@ -102,8 +115,7 @@ const pendingStartPos = ref({ x: 0, y: 0 })
 
 const isPositionAnimating = ref(false)
 const isSettlingAfterDrag = ref(false)
-const POSITION_ANIMATING_Z_INDEX = 21
-const SETTLING_AFTER_DRAG_Z_INDEX = 25
+let _animVersion = 0 // 递增 token，防止过期 .finally 覆盖状态
 
 /** 当前实际用于渲染的几何；拖拽优先，其次 sticky 视觉吸附，最后使用原始占位。 */
 const EffectiveGeo = computed(() => props.dragGeo ?? props.stickyGeo ?? props.geo)
@@ -128,11 +140,21 @@ const ItemClass = computed(() => {
   }
 })
 
-/** position 层只负责中心点定位和层级。 */
+/** position 层只负责中心点定位和层级。叠加计算：pin+1，拖拽=拖拽10+位移10+n，回弹=回弹5+位移10+n，被挤压=位移10，普通=1 */
 const ItemStyle = computed(() => {
   const { cx, cy } = EffectiveGeo.value
+  const n = props.settlingCount
+  let z = Z_INDEX_BASE
+  if (props.sticky) z += 1 // Pin 额外 +1
+  if (props.dragging) {
+    z += 20 + n // 拖拽10 + 位移10 + n
+  } else if (isSettlingAfterDrag.value) {
+    z += 15 + n // 回弹5 + 位移10 + n
+  } else if (isPositionAnimating.value) {
+    z += 10 // 仅位移（被挤压）
+  }
   return {
-    'z-index': props.dragging ? 22 : isSettlingAfterDrag.value ? SETTLING_AFTER_DRAG_Z_INDEX : isPositionAnimating.value ? POSITION_ANIMATING_Z_INDEX : undefined, // 交给 CSS class 决定：普通 2 / pinned 20
+    'z-index': z,
     transform: `translate3d(${cx}px, ${cy}px, 0) translate(-50%, -50%)`
   }
 })
@@ -287,8 +309,9 @@ const toTransform = (newGeo: Geo, options?: TransformOptions) => {
   outer.getAnimations().forEach((animate) => saveStyles(animate)) // 暂停动画
   inner.getAnimations().forEach((animate) => saveStyles(animate)) // 暂停动画
 
-  // 执行新动画
-  outer
+  // 两个动画都完成后才清除动画状态，避免一方提前结束导致 z-index 降级被其它 item 盖住
+  const version = ++_animVersion
+  const outerAnim = outer
     .animate(
       [
         // 开始
@@ -298,15 +321,7 @@ const toTransform = (newGeo: Geo, options?: TransformOptions) => {
       ],
       { duration: AG_DURATION_POSITION, easing: AG_EASING_POSITION }
     )
-    .finished.then((animate) => saveStyles(animate))
-    .catch(() => {})
-    .finally(() => {
-      isPositionAnimating.value = false
-      isSettlingAfterDrag.value = false
-    })
-
-  // 执行新动画
-  inner
+  const innerAnim = inner
     .animate(
       [
         // 开始
@@ -316,8 +331,15 @@ const toTransform = (newGeo: Geo, options?: TransformOptions) => {
       ],
       { duration: AG_DURATION_SIZE, easing: AG_EASING_SIZE }
     )
-    .finished.then((animate) => saveStyles(animate))
+
+  Promise.all([outerAnim.finished, innerAnim.finished])
+    .then(([outerResult]) => saveStyles(outerResult))
     .catch(() => {})
+    .finally(() => {
+      if (version !== _animVersion) return // 过期调用，忽略
+      isPositionAnimating.value = false
+      isSettlingAfterDrag.value = false
+    })
 }
 
 // geo 变化时播放布局补位动画；拖拽项由 dragGeo 直接跟随指针，不参与普通补位。
@@ -342,6 +364,12 @@ watch(
     }
   }
 )
+
+// 回弹状态变化时通知父组件更新 settlingCount
+watch(isSettlingAfterDrag, (now, prev) => {
+  if (now === prev) return
+  props.onSettlingChange?.(props.id, now)
+})
 
 /** 播放退场动画，并在完成或中断时通知父组件真正移除 item。 */
 const leavTransform = () => {
@@ -480,7 +508,7 @@ onMounted(() => {
   position: absolute;
   left: 0;
   top: 0;
-  z-index: 3;
+  z-index: 1;
   box-sizing: border-box;
   will-change: transform;
 }
@@ -516,9 +544,11 @@ onMounted(() => {
   cursor: default;
 }
 
-.pr-adaptive-grid-item-settling,
 .pr-adaptive-grid-item-dragging {
-  z-index: 25; /* 高于 pinned 的 20 */
+  /* z-index 由内联样式叠加计算：1 + 拖拽10 + ... */
+}
+.pr-adaptive-grid-item-settling {
+  /* z-index 由内联样式叠加计算：1 + 回弹5 + ... */
 }
 .pr-adaptive-grid-item-dragging,
 .pr-adaptive-grid-item-active-pointer,

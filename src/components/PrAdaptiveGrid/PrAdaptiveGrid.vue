@@ -1,30 +1,36 @@
 <template>
-  <div ref="pr_adaptive_grid_ref" class="pr-adaptive-grid" @scroll="onScroll">
-    <div ref="pr_adaptive_grid_content_ref" class="pr-adaptive-grid-content" :style="ContainerStyle">
-      <div v-for="(item, index) in layout.items" :key="index" class="pr-adaptive-grid-item-span" :data-grid-span-index="index" :style="ItemSpanStyle(item)"></div>
+  <div class="pr-adaptive-grid-wrapper" @pointermove="onWrapperPointerMove">
+    <div ref="pr_adaptive_grid_ref" class="pr-adaptive-grid" @scroll="onScroll">
+      <div ref="pr_adaptive_grid_content_ref" class="pr-adaptive-grid-content" :style="ContainerStyle"></div>
+      <PrAdaptiveGridItem
+        v-for="idx in visibleIndicesWithDrag"
+        :key="spanIds[idx]"
+        :id="spanIds[idx]"
+        :geo="ItemGeo(idx)"
+        :sticky-geo="StickyGeo(spanIds[idx], idx)"
+        :drag-geo="DragGeo(spanIds[idx])"
+        :sticky="ItemOptions(spanIds[idx]).sticky"
+        :fixed="ItemOptions(spanIds[idx]).fixed"
+        :draggable="!ItemOptions(spanIds[idx]).fixed"
+        :dragging="DraggingId === spanIds[idx]"
+        :leaving="IsLeaving(spanIds[idx])"
+        :no-enter-animation="props.noEnterAnimation || initializing"
+        :on-drag-start="onItemDragStart"
+        :on-drag-move="onItemDragMove"
+        :on-drag-end="onItemDragEnd"
+        :on-leave-end="onItemLeaveEnd"
+        :settling-count="settlingCount"
+        :on-settling-change="onItemSettlingChange"
+      >
+        <template #default="slotProps">
+          <slot v-bind="slotProps" />
+        </template>
+      </PrAdaptiveGridItem>
     </div>
-    <PrAdaptiveGridItem
-      v-for="(id, index) in itemIds"
-      :key="id"
-      :id="id"
-      :geo="ItemGeo(index)"
-      :sticky-geo="StickyGeo(id, index)"
-      :drag-geo="DragGeo(id)"
-      :sticky="ItemOptions(id).sticky"
-      :fixed="ItemOptions(id).fixed"
-      :draggable="!ItemOptions(id).fixed"
-      :dragging="DraggingId === id"
-      :leaving="IsLeaving(id)"
-      :no-enter-animation="props.noEnterAnimation || initializing"
-      :on-drag-start="onItemDragStart"
-      :on-drag-move="onItemDragMove"
-      :on-drag-end="onItemDragEnd"
-      :on-leave-end="onItemLeaveEnd"
-    >
-      <template #default="slotProps">
-        <slot v-bind="slotProps" />
-      </template>
-    </PrAdaptiveGridItem>
+    <!-- iOS 风格虚拟滚动条（在 overflow 容器外，避免被裁剪） -->
+    <div class="pr-adaptive-grid-scrollbar-track" :class="{ 'is-visible': scrollbarVisible }" @pointerenter="onScrollbarEnter" @pointerleave="onScrollbarLeave" @pointerdown="onScrollbarPointerDown">
+      <div class="pr-adaptive-grid-scrollbar-thumb" :style="scrollbarThumbStyle"></div>
+    </div>
   </div>
 </template>
 
@@ -45,22 +51,158 @@ const props = defineProps({
     required: false,
     type: Boolean,
     default: () => false
+  },
+  /** 虚拟列表溢出渲染屏数 */
+  overScan: {
+    required: false,
+    type: Number,
+    default: 1
   }
 })
 
 const pr_adaptive_grid_ref = ref<HTMLElement>() // 外部容器 滚动
-const pr_adaptive_grid_content_ref = ref<HTMLElement>() // Grid 内容容器 DOM
+const pr_adaptive_grid_content_ref = ref<HTMLElement>() // 模板 ref（仅在 template 使用）
+void pr_adaptive_grid_content_ref
 
 const isReady = ref(false) // 是否准备就绪
 const initializing = ref(true) // 首次初始渲染中，item 跳过入场动画
 const layout = ref<Layout>({ gap: 8, cols: 1, rows: 1, items: [] }) // 仅 span 占位几何
 const size = ref({ width: 0, height: 0 }) // content 尺寸（行高与位移动画时长）
 const scrollTop = ref(0) // .pr-adaptive-grid 的 scrollTop，Pin 定位用
+const scrollbarVisible = ref(false)
+const scrollbarHover = ref(false)
+const SCROLLBAR_EDGE_ZONE = 24 // px，鼠标/触摸在此距离右边缘内时显示滚动条
+let _scrollbarTimer = 0
+let _scrollbarDragging = false
+let _scrollbarEdgeTimer = 0
+let _scrollbarDragOffset = 0 // 拖拽时指针相对于滑块顶部的偏移
+
+const showScrollbar = () => {
+  scrollbarVisible.value = true
+  clearTimeout(_scrollbarTimer)
+}
+const hideScrollbar = () => {
+  if (scrollbarHover.value || _scrollbarDragging) return
+  scrollbarVisible.value = false
+}
+const delayHideScrollbar = () => {
+  clearTimeout(_scrollbarTimer)
+  _scrollbarTimer = window.setTimeout(hideScrollbar, 1000)
+}
+
+const SCROLLBAR_TRACK_PAD = 10 // 与 CSS top/bottom 一致
+const scrollbarThumbStyle = computed(() => {
+  const el = pr_adaptive_grid_ref.value
+  const totalH = totalContentHeight.value
+  if (!el || totalH <= 0) return {}
+  const { clientHeight } = el
+  if (totalH <= clientHeight) return {}
+  const p = SCROLLBAR_TRACK_PAD
+  const trackH = clientHeight - p * 2
+  const thumbH = Math.max(40, (clientHeight / totalH) * trackH)
+  const travel = trackH - thumbH
+  const thumbTop = (scrollTop.value / (totalH - clientHeight)) * travel
+  return {
+    height: `${thumbH}px`,
+    transform: `translateY(${thumbTop}px)`
+  }
+})
 
 const spanIds = ref<string[]>([]) // 当前渲染的span
 const itemIds = ref<string[]>([]) // 当前渲染的item
 const leavingIds = ref<string[]>([]) // 当前退场的item
-const spanGeos = ref<Geo[]>([]) // 所有span的几何信息
+const settlingCount = ref(0) // 当前正在回弹的 item 数量
+const forcedVisibleId = ref<string | null>(null)
+
+/** 列宽 */
+const colWidth = computed(() => {
+  const { gap, cols } = layout.value
+  if (cols <= 0 || size.value.width <= 0) return 0
+  return (size.value.width - (cols - 1) * gap) / cols
+})
+
+/** 总内容高度：取最后一个 item 的底部位置，不受 layout.rows 限制 */
+const totalContentHeight = computed(() => {
+  const geos = itemGeos.value
+  if (geos.length === 0) return 0
+  const last = geos[geos.length - 1]
+  return last.top + last.height
+})
+
+/** 从 LayoutCell 计算像素几何 */
+const computeItemGeo = (cell: LayoutCell): Geo => {
+  const { gap } = layout.value
+  const { x, y, w, h } = cell
+  const cw = colWidth.value
+  const ih = ItemHeight.value
+  const left = (x - 1) * (cw + gap)
+  const top = (y - 1) * (ih + gap)
+  const width = w * cw + (w - 1) * gap
+  const height = h * ih + (h - 1) * gap
+  return { cx: left + width / 2, cy: top + height / 2, left, top, width, height }
+}
+
+/** 所有 item 的几何数据（用 for 循环代替 .map，减少大数组下函数调用开销） */
+const itemGeos = computed(() => {
+  const cells = layout.value.items
+  const n = cells.length
+  const result = new Array<Geo>(n)
+  for (let i = 0; i < n; i++) {
+    result[i] = computeItemGeo(cells[i])
+  }
+  return result
+})
+
+/** 当前可见的 item 原始索引（含 overScan 缓冲）。二分查找 + 局部扫描，避免全量遍历。 */
+const visibleIndices = computed(() => {
+  const geos = itemGeos.value
+  const n = geos.length
+  if (n === 0) return []
+
+  const viewH = pr_adaptive_grid_ref.value?.clientHeight ?? size.value.height
+  const rangeStart = scrollTop.value - props.overScan * viewH
+  const rangeEnd = scrollTop.value + viewH + props.overScan * viewH
+
+  // 二分：第一个 top > rangeStart 的 item
+  let lo = 0,
+    hi = n
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1
+    if (geos[mid].top < rangeStart) lo = mid + 1
+    else hi = mid
+  }
+  const scanStart = Math.max(0, lo - 20) // 回退一行，防止前一行大高度 item 漏掉
+
+  // 二分：第一个 top > rangeEnd 的 item
+  lo = 0
+  hi = n
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1
+    if (geos[mid].top <= rangeEnd) lo = mid + 1
+    else hi = mid
+  }
+  const scanEnd = lo
+
+  // 只在 scanStart~scanEnd 范围内做完整判断，通常几十个 item
+  const result: number[] = []
+  for (let i = scanStart; i < scanEnd; i++) {
+    const geo = geos[i]
+    if (geo.top + geo.height >= rangeStart && geo.top <= rangeEnd) {
+      result.push(i)
+    }
+  }
+  return result
+})
+
+/** visibleIndices + 强制包含拖拽中的 item */
+const visibleIndicesWithDrag = computed(() => {
+  const set = new Set(visibleIndices.value)
+  if (forcedVisibleId.value) {
+    const idx = spanIds.value.indexOf(forcedVisibleId.value)
+    if (idx !== -1) set.add(idx)
+  }
+  return [...set].sort((a, b) => a - b)
+})
 
 type StoredItemOptions = Required<GridItemsOptions>
 
@@ -75,10 +217,12 @@ const normalizeItemOptions = (options?: GridItemsOptions): Partial<StoredItemOpt
   return next
 }
 
-/** 写入或合并指定 item 的状态；未传入时初始化为默认状态。 */
+/** 写入或合并指定 item 的状态；未传入任何选项时跳过，避免无谓的对象创建。 */
 const setItemOptions = (id: string, options?: GridItemsOptions) => {
+  const merged = normalizeItemOptions(options)
+  if (Object.keys(merged).length === 0) return
   const current = itemOptionsById.value.get(id) ?? DEFAULT_ITEM_OPTIONS
-  itemOptionsById.value.set(id, { ...current, ...normalizeItemOptions(options) })
+  itemOptionsById.value.set(id, { ...current, ...merged })
 }
 
 /** 清理已经不再存在的 item 状态，避免 remove / setItems 后残留旧配置。 */
@@ -113,23 +257,8 @@ let syncLayoutLastDragRunAt = 0
 let syncLayoutQueued = false
 let syncLayoutResolvers: Array<() => void> = []
 
-/** 读取所有 span 占位节点的几何信息，并用 spanIds 同步真实渲染 item 顺序。 */
+/** 同步 spanIds 到 itemIds */
 const getSpanGeos = async () => {
-  if (pr_adaptive_grid_content_ref.value === undefined) return
-  const spans = pr_adaptive_grid_content_ref.value.childNodes
-  const _spanGeos = []
-  for (const span of spans) {
-    const { className, offsetTop, offsetLeft, clientWidth, clientHeight } = span as HTMLElement
-    if (className !== 'pr-adaptive-grid-item-span') continue
-
-    const cx = offsetLeft + clientWidth / 2
-    const cy = offsetTop + clientHeight / 2
-
-    const geo: Geo = { cx, cy, top: offsetTop, left: offsetLeft, width: clientWidth, height: clientHeight }
-
-    _spanGeos.push(geo)
-  }
-  spanGeos.value = _spanGeos
   itemIds.value = [...spanIds.value]
 }
 
@@ -147,12 +276,15 @@ const onItemLeaveEnd = (id: string) => {
   itemOptionsById.value.delete(id)
 }
 
-/** 按渲染下标返回 item 对应的 span 几何。 */
+/** 跟踪 item 回弹状态变化，维护 settlingCount。 */
+const onItemSettlingChange = (_id: string, isSettling: boolean) => {
+  settlingCount.value += isSettling ? 1 : -1
+}
+
+/** 按渲染下标返回 item 对应的几何 */
+const DEFAULT_GEO: Geo = { cx: 0, cy: 0, left: 0, top: 0, width: 0, height: 0 }
 const ItemGeo = computed(() => {
-  return (index: number) => {
-    const geo = spanGeos.value[index]
-    return geo
-  }
+  return (index: number) => itemGeos.value[index] ?? DEFAULT_GEO
 })
 
 /** sticky 只调整视觉位置，不改 spanGeos / spanIds 的真实占位。 */
@@ -161,7 +293,7 @@ const StickyGeo = computed(() => {
     if (!ItemOptions.value(id).sticky) return undefined
     if (DraggingId.value === id) return undefined
 
-    const geo = spanGeos.value[index]
+    const geo = itemGeos.value[index]
     if (!geo) return undefined
 
     const viewportHeight = pr_adaptive_grid_ref.value?.clientHeight ?? size.value.height
@@ -356,7 +488,7 @@ const getNearestSpanIndex = (center: { x: number; y: number }, fallbackIndex: nu
   let nearestIndex = fallbackIndex
   let nearestScore = Number.POSITIVE_INFINITY
 
-  spanGeos.value.forEach((geo, index) => {
+  itemGeos.value.forEach((geo, index) => {
     const id = spanIds.value[index]
     // 正在退场的 item 不参与拖拽目标判断，避免拖到即将移除的槽位。
     if (id !== undefined && leavingIds.value.includes(id)) return
@@ -393,9 +525,10 @@ const onItemDragStart = (id: string, event: PointerEvent) => {
   if (IsFixedItem(id)) return
 
   const fromIndex = itemIds.value.indexOf(id)
-  const startGeo = fromIndex === -1 ? undefined : spanGeos.value[fromIndex]
+  const startGeo = fromIndex === -1 ? undefined : itemGeos.value[fromIndex]
   if (!startGeo) return
 
+  forcedVisibleId.value = id // 虚拟模式下确保拖拽 item 始终渲染
   event.preventDefault()
   dragState.value = { id, startPointer: { x: event.clientX, y: event.clientY }, startGeo, currentCenter: { x: startGeo.cx, y: startGeo.cy }, fromIndex, overIndex: fromIndex }
 }
@@ -418,6 +551,7 @@ const onItemDragEnd = async (id: string, event: PointerEvent) => {
 
   updateDragStateFromPointer(state, event)
   dragState.value = undefined
+  forcedVisibleId.value = null
   await syncLayout()
 }
 
@@ -428,43 +562,58 @@ watch(
   {}
 )
 
-/** Grid 容器的列、行、间距样式 */
+/** Grid 容器的列、行、间距样式（虚拟模式直接用 content 容器撑高度） */
+/** content 容器撑开滚动高度 */
 const ContainerStyle = computed(() => {
-  const { gap, cols, rows } = layout.value
-  return {
-    gap: `${gap}px`,
-    'grid-template-columns': `repeat(${cols}, 1fr)`,
-    'grid-template-rows': `repeat(${rows}, 1fr)`
-  }
+  return { height: `${totalContentHeight.value}px` }
 })
 
-/** 根据容器高度与行数计算单行高度 */
+/**
+ * 虚拟模式行高：基于「视口内目标行数」计算，不随总行数变化。
+ * 保证总内容高度可滚动，且 item 尺寸稳定。
+ */
+const VIRTUAL_TARGET_ROWS = 5
 const ItemHeight = computed(() => {
   const { gap, rows } = layout.value
   const { height } = size.value
-  const num = (height - (rows - 1) * gap) / rows
-  return num
+  const targetRows = Math.min(rows, VIRTUAL_TARGET_ROWS)
+  if (targetRows <= 0) return 60
+  return Math.max(60, (height - (targetRows - 1) * gap) / targetRows)
 })
 
-/** 占位 span 在 Grid 中的位置与高度 */
-const ItemSpanStyle = computed(() => {
-  return (item: LayoutCell) => {
-    const { gap } = layout.value
-    const { x, y, w, h } = item
-    return {
-      'grid-column-start': x,
-      'grid-column-end': x + w,
-      'grid-row-start': y,
-      'grid-row-end': y + h,
-      height: `${h * ItemHeight.value + (h - 1) * gap}px`
+/** 计算跳过 fixed item 后的实际插入下标 */
+/**
+ * 在非 fixed 序列的第 index 位插入 id，fixed item 保持原索引不动。
+ * 返回新的 spanIds 数组。
+ */
+const insertNonFixedId = (ids: string[], targetId: string, index: number): string[] => {
+  // 记录每个 fixed item 的原始索引
+  const fixedSlots = new Map<number, string>()
+  ids.forEach((id, i) => {
+    if (IsFixedItem(id)) fixedSlots.set(i, id)
+  })
+  // 非 fixed 序列
+  const nonFixed = ids.filter((id) => !IsFixedItem(id))
+  // 在指定位置插入
+  nonFixed.splice(index, 0, targetId)
+  // 重建：fixed 保持原槽位，非 fixed 按顺序填充
+  const result: string[] = []
+  let nfIdx = 0
+  for (let i = 0; i < ids.length + 1; i++) {
+    if (fixedSlots.has(i)) {
+      result.push(fixedSlots.get(i)!)
+    } else {
+      result.push(nonFixed[nfIdx++])
     }
   }
-})
+  return result
+}
 
 /** 新增或更新 item；id 已存在时仅合并传入的 options */
 const setItem = (id: string, options?: GridItemOptions) => {
   setItemOptions(id, options)
   const { index = 0 } = options ?? {}
+  const isFixed = options?.fixed === true
   const leavingIndex = leavingIds.value.indexOf(id)
   // 情况 1：这个 id 正在退场，说明业务层又把它加回来了
   if (leavingIndex !== -1) {
@@ -473,8 +622,12 @@ const setItem = (id: string, options?: GridItemOptions) => {
     if (spanIds.value.includes(id)) {
       return
     }
-    // 如果你 remove 时已经从 spanIds 删除了，则这里重新插入
-    spanIds.value.splice(index, 0, id)
+    // fixed item 追加到末尾，不挤压任何已有 item
+    if (isFixed) {
+      spanIds.value.push(id)
+    } else {
+      spanIds.value = insertNonFixedId(spanIds.value, id, index)
+    }
     return
   }
   // 情况 2：已经存在，避免重复添加
@@ -482,7 +635,11 @@ const setItem = (id: string, options?: GridItemOptions) => {
     return
   }
   // 情况 3：真正的新 item
-  spanIds.value.splice(index, 0, id)
+  if (isFixed) {
+    spanIds.value.push(id)
+  } else {
+    spanIds.value = insertNonFixedId(spanIds.value, id, index)
+  }
 }
 
 /** 按 ids 一次性设置 */
@@ -491,7 +648,9 @@ const setItems = (ids: string[], options?: GridItemsOptions) => {
   spanIds.value = [...nextIds]
   leavingIds.value = []
   pruneItemOptions(nextIds)
-  nextIds.forEach((id) => setItemOptions(id, options))
+  if (options !== undefined) {
+    nextIds.forEach((id) => setItemOptions(id, options))
+  }
   void syncLayout()
 }
 
@@ -504,11 +663,105 @@ const removeItems = (removeIds: string[]) => {
   }
 }
 
-/** 记录滚动偏移 */
+/** 记录滚动偏移，显示虚拟滚动条并在停止后自动隐藏 */
 const onScroll = () => {
   const el = pr_adaptive_grid_ref.value
   if (!el) return
   scrollTop.value = el.scrollTop
+  if (totalContentHeight.value > el.clientHeight) {
+    showScrollbar()
+    delayHideScrollbar()
+  }
+}
+
+/** 鼠标进入滚动条区域 → 保持显示 */
+const onScrollbarEnter = () => {
+  scrollbarHover.value = true
+  if (totalContentHeight.value > (pr_adaptive_grid_ref.value?.clientHeight ?? 0)) {
+    showScrollbar()
+  }
+}
+/** 鼠标离开滚动条区域 → 恢复自动隐藏 */
+const onScrollbarLeave = () => {
+  scrollbarHover.value = false
+  if (!_scrollbarDragging) delayHideScrollbar()
+}
+
+/** 鼠标/触摸在 wrapper 上移动：检测是否靠近右边缘以显示滚动条 */
+const onWrapperPointerMove = (e: PointerEvent) => {
+  if (_scrollbarDragging) return
+  const el = pr_adaptive_grid_ref.value
+  if (!el || totalContentHeight.value <= el.clientHeight) return
+  const rect = el.getBoundingClientRect()
+  const dist = rect.right - e.clientX
+  if (dist >= 0 && dist <= SCROLLBAR_EDGE_ZONE) {
+    showScrollbar()
+    clearTimeout(_scrollbarEdgeTimer)
+  } else {
+    // 离开边缘区域后延迟隐藏（给短暂离开再回来的缓冲）
+    if (!scrollbarHover.value && !_scrollbarDragging) {
+      clearTimeout(_scrollbarEdgeTimer)
+      _scrollbarEdgeTimer = window.setTimeout(() => {
+        if (!scrollbarHover.value && !_scrollbarDragging) delayHideScrollbar()
+      }, 300)
+    }
+  }
+}
+
+/** 开始拖拽滚动条 */
+const onScrollbarPointerDown = (e: PointerEvent) => {
+  const el = pr_adaptive_grid_ref.value
+  const totalH = totalContentHeight.value
+  if (!el || totalH <= el.clientHeight) return
+  e.preventDefault()
+
+  const { top, height } = el.getBoundingClientRect()
+  const p = SCROLLBAR_TRACK_PAD
+  const clickY = e.clientY - top - p // 相对于轨道顶部的 Y
+  const trackH = height - p * 2
+  const scrollRange = totalH - el.clientHeight
+  const thumbH = Math.max(40, (el.clientHeight / totalH) * trackH)
+  const travel = trackH - thumbH
+  const currentThumbTop = (scrollTop.value / scrollRange) * travel
+
+  if (clickY >= currentThumbTop && clickY <= currentThumbTop + thumbH) {
+    // 点在滑块上 → 记录指针相对滑块顶部的偏移，不跳转位置
+    _scrollbarDragOffset = clickY - currentThumbTop
+  } else {
+    // 点在轨道上 → 跳到点击位置（以滑块中心为拖拽起点）
+    const ratio = travel > 0 ? Math.max(0, Math.min((clickY - thumbH / 2) / travel, 1)) : 0
+    el.scrollTop = ratio * scrollRange
+    scrollTop.value = el.scrollTop
+    _scrollbarDragOffset = thumbH / 2
+  }
+
+  ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+  _scrollbarDragging = true
+}
+
+/** 拖拽中 pointermove */
+const onScrollbarPointerMove = (e: PointerEvent) => {
+  if (!_scrollbarDragging) return
+  const el = pr_adaptive_grid_ref.value
+  const totalH = totalContentHeight.value
+  if (!el || totalH <= el.clientHeight) return
+
+  const { top, height } = el.getBoundingClientRect()
+  const p = SCROLLBAR_TRACK_PAD
+  const trackH = height - p * 2
+  const thumbH = Math.max(40, (el.clientHeight / totalH) * trackH)
+  const travel = trackH - thumbH
+  const pointerY = e.clientY - top - p - _scrollbarDragOffset
+  const ratio = travel > 0 ? Math.max(0, Math.min(pointerY / travel, 1)) : 0
+  el.scrollTop = ratio * (totalH - el.clientHeight)
+  scrollTop.value = el.scrollTop
+}
+
+/** 拖拽结束 pointerup */
+const onScrollbarPointerUp = () => {
+  if (!_scrollbarDragging) return
+  _scrollbarDragging = false
+  if (!scrollbarHover.value) delayHideScrollbar()
 }
 
 let observer: ResizeObserver // 监听 content 容器尺寸变化
@@ -534,13 +787,18 @@ onMounted(async () => {
       return setSize()
     }
     if (resizeTimer) clearTimeout(resizeTimer)
-    resizeTimer = setTimeout(setSize, 500) // 节流
+    resizeTimer = setTimeout(setSize, 50) // 节流
   })
+  // 全局 pointermove/up 监听拖拽
+  document.addEventListener('pointermove', onScrollbarPointerMove)
+  document.addEventListener('pointerup', onScrollbarPointerUp)
   if (pr_adaptive_grid_ref.value) observer.observe(pr_adaptive_grid_ref.value)
 })
 
 /** 卸载时断开监听并清理定时器 */
 onBeforeUnmount(() => {
+  document.removeEventListener('pointermove', onScrollbarPointerMove)
+  document.removeEventListener('pointerup', onScrollbarPointerUp)
   observer?.disconnect()
   if (resizeTimer) clearTimeout(resizeTimer)
   cancelScheduledSyncLayout()
@@ -556,6 +814,11 @@ defineExpose({
 </script>
 
 <style scoped>
+.pr-adaptive-grid-wrapper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
 .pr-adaptive-grid {
   --ag-ease-position: cubic-bezier(0.22, 1, 0.44, 1);
   position: relative;
@@ -572,19 +835,49 @@ defineExpose({
 .pr-adaptive-grid-content {
   position: relative;
   box-sizing: border-box;
-  display: grid;
-  height: 100%;
   width: 100%;
 }
-.pr-adaptive-grid-item-span {
-  min-width: 0;
-  min-height: 0;
-  grid-auto-flow: row dense;
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  /* box-shadow: 0 0 0 1px red inset; */
-  pointer-events: none;
+
+/* ── iOS 风格虚拟滚动条 ── */
+.pr-adaptive-grid-scrollbar-track {
+  position: absolute;
+  top: 10px;
+  right: 4px;
+  bottom: 10px;
+  width: 8px;
+  z-index: 100;
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity 0.25s ease,
+    background 0.2s ease,
+    width 0.2s ease;
+  touch-action: none;
+  border-radius: 5px;
+}
+.pr-adaptive-grid-scrollbar-track.is-visible {
+  opacity: 1;
+}
+.pr-adaptive-grid-scrollbar-track:hover {
+  background: rgba(20, 20, 20, 0.2);
+  width: 16px;
+  /* right: 0; */
+  border-radius: 8px;
+}
+.pr-adaptive-grid-scrollbar-thumb {
+  width: 100%;
+  border-radius: 6px;
+  background: rgba(20, 20, 20, 0.6);
+  will-change: transform;
+  transition:
+    background 0.2s ease,
+    border-radius 0.2s ease;
+  align-self: flex-start;
+  flex-shrink: 0;
+  backdrop-filter: blur(20px);
+}
+.pr-adaptive-grid-scrollbar-track:hover .pr-adaptive-grid-scrollbar-thumb {
+  background: rgba(20, 20, 20, 0.5);
+  border-radius: 8px;
 }
 </style>
