@@ -14,7 +14,7 @@
         :draggable="!ItemOptions(spanIds[idx]).fixed"
         :dragging="DraggingId === spanIds[idx]"
         :leaving="IsLeaving(spanIds[idx])"
-        :no-enter-animation="props.noEnterAnimation || initializing"
+        :no-enter-animation="props.noEnterAnimation || initializing || !_recentlyAddedIds.has(spanIds[idx])"
         :on-drag-start="onItemDragStart"
         :on-drag-move="onItemDragMove"
         :on-drag-end="onItemDragEnd"
@@ -114,6 +114,9 @@ const leavingIds = ref<string[]>([]) // 当前退场的item
 const settlingCount = ref(0) // 当前正在回弹的 item 数量
 const forcedVisibleId = ref<string | null>(null)
 
+/** 最近通过 setItem 添加的 item id，用于入场动画判断 */
+const _recentlyAddedIds = new Set<string>()
+
 /** 列宽 */
 const colWidth = computed(() => {
   const { gap, cols } = layout.value
@@ -194,14 +197,15 @@ const visibleIndices = computed(() => {
   return result
 })
 
-/** visibleIndices + 强制包含拖拽中的 item */
+/** visibleIndices + 强制包含拖拽中的 item（过滤越界索引） */
 const visibleIndicesWithDrag = computed(() => {
   const set = new Set(visibleIndices.value)
   if (forcedVisibleId.value) {
     const idx = spanIds.value.indexOf(forcedVisibleId.value)
     if (idx !== -1) set.add(idx)
   }
-  return [...set].sort((a, b) => a - b)
+  const max = spanIds.value.length
+  return [...set].filter((i) => i >= 0 && i < max).sort((a, b) => a - b)
 })
 
 type StoredItemOptions = Required<GridItemsOptions>
@@ -251,7 +255,6 @@ type DragState = {
 const dragState = ref<DragState>()
 const SYNC_LAYOUT_DRAG_INTERVAL_MS = 300
 let syncLayoutToken = 0
-let syncLayoutRafId = 0
 let syncLayoutDragTimerId = 0
 let syncLayoutLastDragRunAt = 0
 let syncLayoutQueued = false
@@ -366,6 +369,7 @@ const executeSyncLayout = async () => {
   await nextTick()
   if (token !== syncLayoutToken) return
   await getSpanGeos()
+  _recentlyAddedIds.clear()
   if (initializing.value) {
     await nextTick()
     initializing.value = false
@@ -386,25 +390,10 @@ const runQueuedSyncLayout = async () => {
 }
 
 const cancelScheduledSyncLayout = () => {
-  if (syncLayoutRafId) {
-    cancelAnimationFrame(syncLayoutRafId)
-    syncLayoutRafId = 0
-  }
   if (syncLayoutDragTimerId) {
     clearTimeout(syncLayoutDragTimerId)
     syncLayoutDragTimerId = 0
   }
-}
-
-/** 非拖拽：同帧内多次请求合并为一次 rAF。 */
-const scheduleSyncLayoutRaf = () => {
-  if (syncLayoutRafId) return
-
-  syncLayoutRafId = requestAnimationFrame(async () => {
-    syncLayoutRafId = 0
-    await runQueuedSyncLayout()
-    if (syncLayoutQueued) scheduleSyncLayoutRaf()
-  })
 }
 
 /** 拖拽中：约每 100ms 最多执行一次布局同步。 */
@@ -424,7 +413,7 @@ const scheduleSyncLayoutDrag = () => {
 
 /**
  * 重新计算布局并在 DOM 更新后刷新 span 几何。
- * @param duringDrag 拖拽移动触发的重排，使用 100ms 节流；其它场景走 rAF 合并。
+ * @param duringDrag 拖拽移动触发的重排，使用 100ms 节流；非拖拽直接同步执行。
  */
 const syncLayout = (duringDrag = false) => {
   syncLayoutQueued = true
@@ -434,8 +423,8 @@ const syncLayout = (duringDrag = false) => {
       scheduleSyncLayoutDrag()
       return
     }
-    cancelScheduledSyncLayout()
-    scheduleSyncLayoutRaf()
+    // 非拖拽：立即执行，避免 spanIds 已变但 layout 未更新导致 visibleIndices 不同步
+    runQueuedSyncLayout().then(resolve)
   })
 }
 
@@ -572,7 +561,7 @@ const ContainerStyle = computed(() => {
  * 虚拟模式行高：基于「视口内目标行数」计算，不随总行数变化。
  * 保证总内容高度可滚动，且 item 尺寸稳定。
  */
-const VIRTUAL_TARGET_ROWS = 5
+const VIRTUAL_TARGET_ROWS = 12
 const ItemHeight = computed(() => {
   const { gap, rows } = layout.value
   const { height } = size.value
@@ -618,11 +607,10 @@ const setItem = (id: string, options?: GridItemOptions) => {
   // 情况 1：这个 id 正在退场，说明业务层又把它加回来了
   if (leavingIndex !== -1) {
     leavingIds.value.splice(leavingIndex, 1)
-    // 如果 spanIds 里还保留着它，就不要重复插入
+    _recentlyAddedIds.add(id)
     if (spanIds.value.includes(id)) {
       return
     }
-    // fixed item 追加到末尾，不挤压任何已有 item
     if (isFixed) {
       spanIds.value.push(id)
     } else {
@@ -635,6 +623,7 @@ const setItem = (id: string, options?: GridItemOptions) => {
     return
   }
   // 情况 3：真正的新 item
+  _recentlyAddedIds.add(id)
   if (isFixed) {
     spanIds.value.push(id)
   } else {
