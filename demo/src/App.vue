@@ -1,5 +1,5 @@
 <template>
-  <div class="demo">
+  <div class="demo" :style="demoStyle">
     <div class="grid-wrap">
       <PrAdaptiveGrid ref="gridRef" :get-layout="resolveLayout">
         <template #default="{ item }">
@@ -53,17 +53,56 @@
       <span class="bar-sep" />
       <button type="button" class="bar-text" :disabled="userCount <= 1" @click="shuffleItems">打乱</button>
       <button type="button" class="bar-text" @click="resetGrid">重置</button>
+      <span class="bar-sep" />
+      <!-- 四边边距调试：点击按钮弹出面板控制 -->
+      <div ref="paddingControlRef" class="padding-control">
+        <button type="button" class="bar-text" :class="{ 'is-active': paddingOpen }" @click="paddingOpen = !paddingOpen">边距</button>
+        <div class="padding-panel" :class="{ 'is-open': paddingOpen }">
+          <div class="padding-panel-body">
+            <label v-for="d in paddingDirs" :key="d.key" class="pad-slider">
+              <span class="pad-slider-dir">{{ d.label }}</span>
+              <input type="range" min="0" max="80" v-model.number="padding[d.key]" />
+              <span class="pad-slider-val">{{ padding[d.key] }}</span>
+            </label>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted, nextTick } from 'vue'
+import { computed, ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { PrAdaptiveGrid, getLayout, getLectureLayout, getMobileLayout } from '../../src/index.ts'
 import type { Geo, GetLayoutFn, GridItemsOptions, PrAdaptiveGridExpose } from '../../src/index.ts'
 
 const DEFAULT_USER_COUNT = 10 // 演示初始 item 数量
 const layoutMode = ref<1 | 2 | 3>(1) // 1 默认布局，2 讲座布局，3 移动布局
+
+/** .demo 四边边距，滑块实时调试用，范围 0~80px，默认 0 */
+const padding = ref({ top: 0, right: 0, bottom: 0, left: 0 })
+const paddingDirs = [
+  { key: 'top', label: '上' },
+  { key: 'right', label: '右' },
+  { key: 'bottom', label: '下' },
+  { key: 'left', label: '左' }
+] as const
+/** 应用到 .demo 内联样式 */
+const demoStyle = computed(() => ({
+  paddingTop: `${padding.value.top}px`,
+  paddingRight: `${padding.value.right}px`,
+  paddingBottom: `${padding.value.bottom}px`,
+  paddingLeft: `${padding.value.left}px`
+}))
+
+const paddingOpen = ref(false) // 边距面板是否展开
+const paddingControlRef = ref<HTMLElement>() // 边距控制容器（按钮+面板），用于点击外部关闭
+/** 点击边距面板外部时收起面板 */
+const onDocClick = (e: MouseEvent) => {
+  if (!paddingOpen.value) return
+  const el = paddingControlRef.value
+  if (el && !el.contains(e.target as Node)) paddingOpen.value = false
+}
 
 /** 闭包读取 layoutMode，组件只传 length */
 const resolveLayout: GetLayoutFn = (length) => {
@@ -298,16 +337,23 @@ const resetGrid = async () => {
 
 /** 一次性 setItems 初始化演示数据 */
 onMounted(async () => {
+  document.addEventListener('click', onDocClick)
   await nextTick()
   const newIds = await getDefaultIds()
   for (let i = 0; i < newIds.length; i++) ids.push(newIds[i])
   await initGrid()
   userCount.value = DEFAULT_USER_COUNT
 })
+
+/** 卸载时移除 Padding 面板的外部点击监听 */
+onBeforeUnmount(() => {
+  document.removeEventListener('click', onDocClick)
+})
 </script>
 
 <style scoped>
 .demo {
+  box-sizing: border-box;
   position: relative;
   width: 100vw;
   height: 100vh;
@@ -316,8 +362,8 @@ onMounted(async () => {
 }
 
 .grid-wrap {
-  position: absolute;
-  inset: 0;
+  width: 100%;
+  height: 100%;
   padding: 8px;
   box-sizing: border-box;
 }
@@ -506,6 +552,7 @@ onMounted(async () => {
 /* ── 底部悬浮工具栏 ── */
 .float-bar {
   width: max-content;
+  max-width: calc(100% - 24px);
   position: fixed;
   left: 50%;
   bottom: calc(16px + env(safe-area-inset-bottom));
@@ -513,6 +560,8 @@ onMounted(async () => {
   z-index: 30;
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
   gap: 8px;
   padding: 10px 18px;
   border-radius: 999px;
@@ -705,6 +754,78 @@ onMounted(async () => {
 .bar-text:disabled {
   opacity: 0.35;
   cursor: not-allowed;
+}
+
+/* ── Padding 四边留白调试（点击弹窗） ── */
+.padding-control {
+  position: relative;
+  flex-shrink: 0;
+}
+.bar-text.is-active {
+  background: rgba(37, 99, 235, 0.35);
+  color: #fff;
+}
+.padding-panel {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(28, 28, 30, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(20px) saturate(1.5);
+  -webkit-backdrop-filter: blur(20px) saturate(1.5);
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-50%) translateY(8px) scale(0.96);
+  transform-origin: bottom center;
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease,
+    visibility 0.2s;
+}
+.padding-panel.is-open {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(-50%) translateY(0) scale(1);
+}
+.padding-panel-body {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.pad-slider {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.pad-slider-dir {
+  width: 14px;
+  text-align: center;
+  font-size: 0.625rem;
+  font-weight: 700;
+  color: rgba(245, 245, 245, 0.75);
+}
+.pad-slider input[type='range'] {
+  width: 64px;
+  height: 16px;
+  accent-color: #2563eb;
+  cursor: pointer;
+}
+.pad-slider-val {
+  min-width: 22px;
+  text-align: right;
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+  color: rgba(245, 245, 245, 0.75);
 }
 
 .bar-mode {

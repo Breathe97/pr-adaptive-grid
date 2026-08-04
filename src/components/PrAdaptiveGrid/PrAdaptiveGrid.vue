@@ -1,6 +1,6 @@
 <template>
   <div class="pr-adaptive-grid-wrapper" @pointermove="onWrapperPointerMove">
-    <div ref="pr_adaptive_grid_ref" class="pr-adaptive-grid" @scroll="onScroll">
+    <div ref="pr_adaptive_grid_ref" class="pr-adaptive-grid" :class="{ 'is-dragging-overflow': overflowVisible }" @scroll="onScroll">
       <div ref="pr_adaptive_grid_content_ref" class="pr-adaptive-grid-content" :style="ContainerStyle"></div>
       <PrAdaptiveGridItem
         v-for="idx in visibleIndicesWithDrag"
@@ -112,6 +112,7 @@ const spanIds = ref<string[]>([]) // 当前渲染的span
 const itemIds = ref<string[]>([]) // 当前渲染的item
 const leavingIds = ref<string[]>([]) // 当前退场的item
 const settlingCount = ref(0) // 当前正在回弹的 item 数量
+const overflowVisible = ref(false) // 拖拽期间容器不裁剪溢出 item
 const forcedVisibleId = ref<string | null>(null)
 
 /** 最近通过 setItem 添加的 item id，用于入场动画判断 */
@@ -270,7 +271,10 @@ const onItemLeaveEnd = (id: string) => {
   const leavingIndex = leavingIds.value.indexOf(id)
   // 已经被 setItem 复活了，忽略这次退场完成回调
   if (leavingIndex === -1) return
-  if (dragState.value?.id === id) dragState.value = undefined
+  if (dragState.value?.id === id) {
+    dragState.value = undefined
+    maybeRestoreOverflow()
+  }
   leavingIds.value.splice(leavingIndex, 1)
   const spanIndex = spanIds.value.indexOf(id)
   if (spanIndex !== -1) spanIds.value.splice(spanIndex, 1)
@@ -282,6 +286,12 @@ const onItemLeaveEnd = (id: string) => {
 /** 跟踪 item 回弹状态变化，维护 settlingCount。 */
 const onItemSettlingChange = (_id: string, isSettling: boolean) => {
   settlingCount.value += isSettling ? 1 : -1
+  maybeRestoreOverflow()
+}
+
+/** 拖拽结束且所有 item 回弹完成后，恢复容器 overflow，避免拖出网格的 item 被裁剪。 */
+const maybeRestoreOverflow = () => {
+  if (!dragState.value && settlingCount.value <= 0) overflowVisible.value = false
 }
 
 /** 按渲染下标返回 item 对应的几何 */
@@ -519,6 +529,7 @@ const onItemDragStart = (id: string, event: PointerEvent) => {
 
   forcedVisibleId.value = id // 虚拟模式下确保拖拽 item 始终渲染
   event.preventDefault()
+  overflowVisible.value = true // 拖拽期间不裁剪，让拖出网格的 item 完整显示
   dragState.value = { id, startPointer: { x: event.clientX, y: event.clientY }, startGeo, currentCenter: { x: startGeo.cx, y: startGeo.cy }, fromIndex, overIndex: fromIndex }
 }
 
@@ -559,15 +570,17 @@ const ContainerStyle = computed(() => {
 
 /**
  * 虚拟模式行高：基于「视口内目标行数」计算，不随总行数变化。
- * 保证总内容高度可滚动，且 item 尺寸稳定。
+ * 去掉最小 60px 保底，行高随容器自适应填满可视区，
+ * 避免矮容器下多行布局（如 lecture 的 11 行）内容溢出出现滚动条、item 被拉成竖条。
  */
 const VIRTUAL_TARGET_ROWS = 12
 const ItemHeight = computed(() => {
   const { gap, rows } = layout.value
   const { height } = size.value
   const targetRows = Math.min(rows, VIRTUAL_TARGET_ROWS)
-  if (targetRows <= 0) return 60
-  return Math.max(60, (height - (targetRows - 1) * gap) / targetRows)
+  if (targetRows <= 0) return 0
+  // 向下取整并防负值：保证总内容高度不超过可视高度，不产生多余滚动条
+  return Math.max(0, Math.floor((height - (targetRows - 1) * gap) / targetRows))
 })
 
 /** 计算跳过 fixed item 后的实际插入下标 */
@@ -817,6 +830,10 @@ defineExpose({
   box-sizing: border-box;
   scrollbar-width: none;
   -ms-overflow-style: none;
+}
+/* 拖拽期间临时改为 visible，让拖出网格的 item 完整显示，不被滚动容器裁剪 */
+.pr-adaptive-grid.is-dragging-overflow {
+  overflow: visible;
 }
 .pr-adaptive-grid::-webkit-scrollbar {
   display: none;
