@@ -153,7 +153,11 @@ const ItemStyle = computed(() => {
   } else if (isPositionAnimating.value) {
     z += 10 // 仅位移（被挤压）
   }
+  // 拖拽项使用 fixed 定位：坐标是父层换算的屏幕坐标，相对视口、不受滚动容器 overflow 裁剪，
+  // 拖出网格边界也能完整显示；其余 item 用内容坐标 + absolute，随容器滚动。
+  const isFloating = !!props.dragGeo
   return {
+    position: (isFloating ? 'fixed' : 'absolute') as 'fixed' | 'absolute',
     'z-index': z,
     transform: `translate3d(${cx}px, ${cy}px, 0) translate(-50%, -50%)`
   }
@@ -287,11 +291,13 @@ const toTransform = (newGeo: Geo, options?: TransformOptions) => {
   isPositionAnimating.value = true
   isSettlingAfterDrag.value = settlingAfterDrag
 
-  /** 读取当前视觉几何，用作下一段 WAAPI 动画的起点。 */
+  /** 读取当前视觉几何，用作下一段 WAAPI 动画的起点（内容坐标）。 */
   const getCurrentCenterGeo = () => {
     const rect = inner.getBoundingClientRect()
-    // outer 是 absolute item，offsetParent 通常就是 .pr-adaptive-grid
-    const parent = outer.offsetParent as HTMLElement | null
+    // outer 是 absolute item，offsetParent 通常就是 .pr-adaptive-grid；
+    // 拖拽项是 fixed 定位，offsetParent 为 null，回退到父元素拿到同一个 grid 容器，
+    // 从而把当前屏幕坐标换算回内容坐标，避免回弹动画起点被当成终点、瞬间闪到槽位。
+    const parent = (outer.offsetParent ?? outer.parentElement) as HTMLElement | null
     if (!parent) return { ...newGeo }
     const parentRect = parent.getBoundingClientRect()
     const left = rect.left - parentRect.left + parent.scrollLeft
@@ -303,7 +309,16 @@ const toTransform = (newGeo: Geo, options?: TransformOptions) => {
     return { top, left, cx, cy, width, height }
   }
 
-  const currentGeo = getCurrentCenterGeo() // 当前几何
+  const currentGeo = getCurrentCenterGeo() // 当前几何（内容坐标）
+
+  // 松手回弹时，元素可能仍停留在 fixed（屏幕坐标）状态，而动画 keyframe 值是内容坐标。
+  // 若两者基准不一致，瞬间从 fixed 切到 absolute 会导致起点错位、看起来"闪到最终位置"。
+  // 这里在启动动画前，先把 outer 预定位到内容坐标起点（absolute），保证动画起点精确。
+  const _position = getComputedStyle(outer).position
+  if (_position === 'fixed') {
+    outer.style.position = 'absolute'
+    outer.style.transform = `translate3d(${currentGeo.cx}px, ${currentGeo.cy}px, 0) translate(-50%, -50%)`
+  }
 
   // 开始新动画前先提交旧动画状态，保证连续重排时不会跳帧。
   outer.getAnimations().forEach((animate) => saveStyles(animate)) // 暂停动画
