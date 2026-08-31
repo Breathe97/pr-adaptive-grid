@@ -3,9 +3,9 @@
     <div class="grid-wrap">
       <PrAdaptiveGrid ref="gridRef" :get-layout="resolveLayout">
         <template #default="{ item }">
-          <div class="tile" :class="{ 'is-pinned': item.sticky, 'is-fixed': item.fixed }" :style="{ backgroundColor: getTileColor(item.id) }">
+          <div class="tile" :class="{ 'is-sticky': item.sticky, 'is-fixed': item.fixed }" :style="{ backgroundColor: getTileColor(item.id) }">
             <div v-if="item.sticky || item.fixed" class="tile-badges">
-              <span v-if="item.sticky" class="badge badge-pin">📌 Pin</span>
+              <span v-if="item.sticky" class="badge badge-sticky">📌 Sticky</span>
               <span v-if="item.fixed" class="badge badge-fixed">🔒 Fixed</span>
             </div>
             <span class="tile-id">{{ item.id }}</span>
@@ -17,7 +17,7 @@
               <span>h: {{ Math.round(item.height) }}</span>
             </div>
             <div class="tile-ops">
-              <div class="op" :class="{ active: item.sticky }" data-type="pin" @click.stop="setPin(item)">Pin</div>
+              <div class="op" :class="{ active: item.sticky }" data-type="sticky" @click.stop="setSticky(item)">Sticky</div>
               <div class="op" :class="{ active: item.fixed }" data-type="fix" @click.stop="setFixed(item)">Fixed</div>
             </div>
           </div>
@@ -27,12 +27,12 @@
 
     <div class="float-bar">
       <div class="help-wrap">
-        <button type="button" class="help-btn" aria-label="Pin 与 Fixed 说明">?</button>
+        <button type="button" class="help-btn" aria-label="Sticky 与 Fixed 说明">?</button>
         <div class="help-panel" role="tooltip" aria-label="按钮说明">
           <p class="help-title">按钮说明</p>
           <div class="help-item">
-            <span class="help-tag help-tag-pin">📌 Pin</span>
-            <p class="help-desc">滚动时固定在网格可视区域。模式 1/3 可随意 Pin 多个；模式 2 只能 Pin 一个，点击时自动排到首位。</p>
+            <span class="help-tag help-tag-sticky">📌 Sticky</span>
+            <p class="help-desc">滚动时固定在网格可视区域。模式 1/3 可随意 Sticky 多个；模式 2 只能 Sticky 一个，点击时自动排到首位。</p>
           </div>
           <div class="help-item">
             <span class="help-tag help-tag-fixed">🔒 Fixed</span>
@@ -130,14 +130,14 @@ const userCount = ref(DEFAULT_USER_COUNT) // 工具栏显示的数量
 const tileColorMap = ref(new Map<string, string>()) // 每个 id 对应的 tile 背景色
 
 const ids: string[] = [] // 业务侧 id 顺序，与 gridItems 下标一致
-const pinnedId = ref<string | null>(null) // 当前唯一 Pin 的 item id
-const pinnedSwapIndex = ref<number | null>(null) // Pin 时与 index 0 互换的原下标
+const stickyId = ref<string | null>(null) // 当前唯一 Sticky 的 item id
+const stickySwapIndex = ref<number | null>(null) // Sticky 时与 index 0 互换的原下标
 type GridSlotItem = Geo & Required<GridItemsOptions> & { id: string }
 
-/** 从前 10 项中筛选可移除候选；保护当前 Pin 的 item。 */
+/** 从前 10 项中筛选可移除候选；保护当前 Sticky 的 item。 */
 const getRemovableCandidates = () => {
   const pool = ids.slice(0, Math.min(10, ids.length))
-  if (pinnedId.value) return pool.filter((id) => id !== pinnedId.value)
+  if (stickyId.value) return pool.filter((id) => id !== stickyId.value)
   return pool
 }
 
@@ -169,22 +169,22 @@ const swapIdsAt = (a: number, b: number) => {
   ids[b] = tmp
 }
 
-/** 取消当前 Pin 并还原换位。 */
-const clearPin = () => {
-  const prevId = pinnedId.value
-  if (pinnedSwapIndex.value != null) swapIdsAt(0, pinnedSwapIndex.value)
-  pinnedId.value = null
-  pinnedSwapIndex.value = null
+/** 取消当前 Sticky 并还原换位。 */
+const clearSticky = () => {
+  const prevId = stickyId.value
+  if (stickySwapIndex.value != null) swapIdsAt(0, stickySwapIndex.value)
+  stickyId.value = null
+  stickySwapIndex.value = null
   if (prevId) gridRef.value?.setItem(prevId, { sticky: false })
 }
 
-/** 将指定 id 设为唯一 Pin，并换到 index 0。 */
-const applyPinToId = (targetId: string) => {
+/** 将指定 id 设为唯一 Sticky，并换到 index 0。 */
+const applyStickyToId = (targetId: string) => {
   if (ids.length === 0) return
-  const wasPinned = pinnedId.value === targetId
+  const wasSticky = stickyId.value === targetId
 
-  if (pinnedId.value && pinnedId.value !== targetId && pinnedSwapIndex.value != null) {
-    swapIdsAt(0, pinnedSwapIndex.value)
+  if (stickyId.value && stickyId.value !== targetId && stickySwapIndex.value != null) {
+    swapIdsAt(0, stickySwapIndex.value)
   }
 
   const index = ids.indexOf(targetId)
@@ -192,24 +192,24 @@ const applyPinToId = (targetId: string) => {
 
   if (index !== 0) {
     swapIdsAt(0, index)
-    pinnedSwapIndex.value = index
-  } else if (!wasPinned || pinnedSwapIndex.value == null) {
-    pinnedSwapIndex.value = null
+    stickySwapIndex.value = index
+  } else if (!wasSticky || stickySwapIndex.value == null) {
+    stickySwapIndex.value = null
   }
 
-  pinnedId.value = targetId
+  stickyId.value = targetId
 }
 
-/** 切换布局模式：切到模式 2 时自动清除所有 Pin 并 Pin 第一个 item。 */
+/** 切换布局模式：切到模式 2 时自动清除所有 Sticky 并 Sticky 第一个 item。 */
 const setLayoutMode = async (mode: 1 | 2 | 3) => {
   if (layoutMode.value === mode) return
   layoutMode.value = mode
 
   if (mode === 2) {
-    pinnedId.value = null
-    pinnedSwapIndex.value = null
+    stickyId.value = null
+    stickySwapIndex.value = null
     if (ids.length > 0) {
-      applyPinToId(ids[0])
+      applyStickyToId(ids[0])
       gridRef.value?.setItem(ids[0], { fixed: true })
     }
   }
@@ -228,7 +228,7 @@ const changeUserCount = (delta: number) => {
   if (delta === 1) {
     if (userCount.value < 1) return
     const id = `${Math.max(...ids.map(Number), 0) + 1}` // 递增数字 id
-    let index = 0 // 插入下标，Pin 时避开首位
+    let index = 0 // 插入下标，Sticky 时避开首位
     // if (layoutMode.value === 2) index = 1
     ensureTileColor(id)
     gridRef.value?.setItem(id, { index })
@@ -242,23 +242,23 @@ const changeUserCount = (delta: number) => {
   if (!removeId) return
   gridRef.value?.removeItems([removeId])
   ids.splice(ids.indexOf(removeId), 1)
-  if (pinnedId.value === removeId) {
-    pinnedId.value = null
-    pinnedSwapIndex.value = null
+  if (stickyId.value === removeId) {
+    stickyId.value = null
+    stickySwapIndex.value = null
   }
   userCount.value -= 1
 }
 
-/** 切换 Pin：模式 1/3 自由切换不影响布局；模式 2 唯一 Pin + 自动排到 index 0。 */
-const setPin = async (target: GridSlotItem) => {
+/** 切换 Sticky：模式 1/3 自由切换不影响布局；模式 2 唯一 Sticky + 自动排到 index 0。 */
+const setSticky = async (target: GridSlotItem) => {
   if (ids.indexOf(target.id) < 0) return
 
   if (layoutMode.value === 2) {
-    // 模式 2：唯一 Pin，点击时排到 index 0
+    // 模式 2：唯一 Sticky，点击时排到 index 0
     if (target.sticky) {
-      clearPin()
+      clearSticky()
     } else {
-      applyPinToId(target.id)
+      applyStickyToId(target.id)
     }
     await nextTick()
     await initGrid()
@@ -285,14 +285,14 @@ const shuffleItems = () => {
   void initGrid()
 }
 
-/** 一次 setItems，模式 2 时强制唯一 Pin，模式 1/3 保留已有 sticky 不动。 */
+/** 一次 setItems，模式 2 时强制唯一 Sticky，模式 1/3 保留已有 sticky 不动。 */
 const initGrid = async () => {
   if (!gridRef.value) return
   gridRef.value.setItems(ids)
-  // 模式 2：强制只有 pinnedId 是 sticky，清除其他
+  // 模式 2：强制只有 stickyId 是 sticky，清除其他
   if (layoutMode.value === 2) {
     ids.forEach((id) => {
-      gridRef.value?.setItem(id, { sticky: id === pinnedId.value })
+      gridRef.value?.setItem(id, { sticky: id === stickyId.value })
     })
   }
 }
@@ -318,15 +318,15 @@ const getDefaultIds = async () => {
   return next
 }
 
-/** 重置为初始默认 ids，并清除 Pin / Fixed 与布局模式。 */
+/** 重置为初始默认 ids，并清除 Sticky / Fixed 与布局模式。 */
 const resetGrid = async () => {
   if (!gridRef.value) return
   const newIds = await getDefaultIds()
   ids.length = 0
   for (let i = 0; i < newIds.length; i++) ids.push(newIds[i])
   layoutMode.value = 1
-  pinnedId.value = null
-  pinnedSwapIndex.value = null
+  stickyId.value = null
+  stickySwapIndex.value = null
   userCount.value = DEFAULT_USER_COUNT
   await nextTick()
   gridRef.value.setItems(ids)
@@ -385,7 +385,7 @@ onBeforeUnmount(() => {
   isolation: isolate;
 }
 
-/* Pin / Fixed 内阴影层（::before = Pin，::after = Fixed） */
+/* Sticky / Fixed 内阴影层（::before = Sticky，::after = Fixed） */
 .tile::before,
 .tile::after {
   content: '';
@@ -398,7 +398,7 @@ onBeforeUnmount(() => {
   transition: opacity 0.2s ease;
 }
 
-.is-pinned::before {
+.is-sticky::before {
   opacity: 1;
   box-shadow: inset 0 0 40px 8px rgba(37, 99, 235, 0.28);
 }
@@ -408,11 +408,11 @@ onBeforeUnmount(() => {
   box-shadow: inset 0 0 40px 8px rgba(217, 119, 6, 0.28);
 }
 
-.is-pinned.is-fixed::before {
+.is-sticky.is-fixed::before {
   box-shadow: inset 0 0 36px 6px rgba(37, 99, 235, 0.22);
 }
 
-.is-pinned.is-fixed::after {
+.is-sticky.is-fixed::after {
   box-shadow: inset 0 0 36px 6px rgba(217, 119, 6, 0.22);
 }
 
@@ -462,7 +462,7 @@ onBeforeUnmount(() => {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
-.badge-pin {
+.badge-sticky {
   background: #2563eb;
   color: #fff;
 }
@@ -523,14 +523,14 @@ onBeforeUnmount(() => {
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
 }
 
-.op.active[data-type='pin'] {
+.op.active[data-type='sticky'] {
   background: #2563eb;
   border-color: #1d4ed8;
   color: #fff;
   box-shadow: 0 2px 12px rgba(37, 99, 235, 0.45);
 }
 
-.op.active[data-type='pin']:hover {
+.op.active[data-type='sticky']:hover {
   background: #1d4ed8;
   border-color: #1e40af;
   color: #fff;
@@ -678,7 +678,7 @@ onBeforeUnmount(() => {
   line-height: 1.3;
 }
 
-.help-tag-pin {
+.help-tag-sticky {
   background: #2563eb;
   color: #fff;
 }

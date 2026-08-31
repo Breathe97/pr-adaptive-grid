@@ -68,7 +68,7 @@ const isReady = ref(false) // 是否准备就绪
 const initializing = ref(true) // 首次初始渲染中，item 跳过入场动画
 const layout = ref<Layout>({ gap: 8, cols: 1, rows: 1, items: [] }) // 仅 span 占位几何
 const size = ref({ width: 0, height: 0 }) // content 尺寸（行高与位移动画时长）
-const scrollTop = ref(0) // .pr-adaptive-grid 的 scrollTop，Pin 定位用
+const scrollTop = ref(0) // .pr-adaptive-grid 的 scrollTop，Sticky 定位用
 const scrollbarVisible = ref(false)
 const scrollbarHover = ref(false)
 const SCROLLBAR_EDGE_ZONE = 24 // px，鼠标/触摸在此距离右边缘内时显示滚动条
@@ -462,6 +462,20 @@ const moveSpanId = (id: string, toIndex: number) => {
 
   const prevSpanIds = [...spanIds.value]
 
+  // 碰撞双方任一为 sticky item 时优先交换而不是挤压：sticky 的视觉位置被吸附在视口内，
+  // 挤压会让它从吸附位长途奔袭到新槽位，轨迹过长看起来像动画丢失；交换只需短距离过渡。
+  const targetId = spanIds.value[targetIndex]
+  const isDragSticky = itemOptionsById.value.get(id)?.sticky
+  const isTargetSticky = targetId && targetId !== id && itemOptionsById.value.get(targetId)?.sticky
+  if (isDragSticky || isTargetSticky) {
+    const nextSpanIds = [...spanIds.value]
+    nextSpanIds[fromIndex] = targetId
+    nextSpanIds[targetIndex] = id
+    spanIds.value = nextSpanIds
+    applySlotOptionsAfterReorder(prevSpanIds, nextSpanIds)
+    return true
+  }
+
   const fixedSlots = new Map<number, string>()
   spanIds.value.forEach((spanId, index) => {
     if (spanId !== id && IsFixedItem(spanId)) fixedSlots.set(index, spanId)
@@ -488,15 +502,26 @@ const getNearestSpanIndex = (center: { x: number; y: number }, fallbackIndex: nu
   let nearestIndex = fallbackIndex
   let nearestScore = Number.POSITIVE_INFINITY
 
+  const viewportHeight = pr_adaptive_grid_ref.value?.clientHeight ?? 0
+
   itemGeos.value.forEach((geo, index) => {
     const id = spanIds.value[index]
     // 正在退场的 item 不参与拖拽目标判断，避免拖到即将移除的槽位。
     if (id !== undefined && leavingIds.value.includes(id)) return
     if (IsFixedItem(id)) return
 
+    // sticky item 的视觉位置被吸附在视口内，与槽位占位不同；
+    // 距离判定必须用吸附后的视觉 cy，否则滚动越多偏差越大，拖到看得见的 Sticky item 上会判定到别的槽位。
+    let cy = geo.cy
+    if (viewportHeight > 0 && itemOptionsById.value.get(id)?.sticky) {
+      const minCenterY = scrollTop.value + geo.height / 2
+      const maxCenterY = scrollTop.value + Math.max(geo.height / 2, viewportHeight - geo.height / 2)
+      cy = Math.min(Math.max(geo.cy, minCenterY), maxCenterY)
+    }
+
     // 用平方距离比较即可，不需要开方，结果排序一致且计算更轻。
     const dx = center.x - geo.cx
-    const dy = center.y - geo.cy
+    const dy = center.y - cy
     const score = dx * dx + dy * dy
     if (score >= nearestScore) return
 
@@ -521,17 +546,32 @@ const updateDragStateFromPointer = (state: DragState, event: PointerEvent) => {
 }
 
 /** 开始拖拽：记录指针起点、item 初始 geo 与原始下标。 */
-const onItemDragStart = (id: string, event: PointerEvent) => {
+const onItemDragStart = (id: string, event: PointerEvent, origin?: { x: number; y: number }) => {
   if (IsFixedItem(id)) return
 
   const fromIndex = itemIds.value.indexOf(id)
-  const startGeo = fromIndex === -1 ? undefined : itemGeos.value[fromIndex]
-  if (!startGeo) return
+  const slotGeo = fromIndex === -1 ? undefined : itemGeos.value[fromIndex]
+  if (!slotGeo) return
+
+  // sticky item 的视觉位置被吸附在视口内，与槽位占位不同；滚动越多偏差越大。
+  // 拖拽跟随必须从视觉位置起步，否则 currentCenter 以槽位为基准会向上/向下偏移。
+  const startGeo = StickyGeo.value(id, fromIndex) ?? slotGeo
 
   forcedVisibleId.value = id // 虚拟模式下确保拖拽 item 始终渲染
   event.preventDefault()
   // 注意：不能在此处把滚动容器的 overflow 切成 visible，否则 scrollTop 会被重置为 0，已滚动的网格整体坍塌。
-  dragState.value = { id, startPointer: { x: event.clientX, y: event.clientY }, startGeo, currentCenter: { x: startGeo.cx, y: startGeo.cy }, fromIndex, overIndex: fromIndex }
+  // 参考基准用 pointerdown 坐标而非阈值触发时的坐标：
+  // 这样提交拖拽瞬间 currentCenter 就已包含阈值内的位移，item 精确贴合鼠标，无滞后。
+  const originX = origin?.x ?? event.clientX
+  const originY = origin?.y ?? event.clientY
+  dragState.value = {
+    id,
+    startPointer: { x: originX, y: originY },
+    startGeo,
+    currentCenter: { x: startGeo.cx + (event.clientX - originX), y: startGeo.cy + (event.clientY - originY) },
+    fromIndex,
+    overIndex: fromIndex
+  }
 }
 
 /** 拖拽移动：更新临时 geo，并在目标槽位变化时让其他 item 补位。 */

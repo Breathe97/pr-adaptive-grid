@@ -4,6 +4,8 @@
 
 [在线预览](https://pryun.vip/pr-adaptive-grid/)
 
+另有 React 版演示项目 [demo-react](./demo-react/README.md)，与 Vue 版 demo 在功能与 UI 上对齐。
+
 ---
 
 ## 安装
@@ -128,6 +130,8 @@ gridRef.value.removeItems(['user-001'])
 
 - **fixed** 为 `true` 的 item 不可拖拽，也不作为拖拽落点。
 - **sticky** 为 `true` 的 item 在拖拽期间跟随指针，不参与 sticky 吸附。
+- 拖拽涉及 sticky item 时优先交换槽位而非挤压，避免 sticky item 视觉吸附位置与槽位不一致导致的长途位移。
+- 拖拽跟随以 `pointerdown` 按下点为参考基准，越过触发阈值后 item 立即贴合鼠标，无滞后。
 
 ---
 
@@ -148,7 +152,7 @@ item 层级采用叠加计算方式：
 | 状态 | 叠加值 |
 |------|--------|
 | 基础 | 1 |
-| sticky (pin) | +1 |
+| sticky | +1 |
 | 被挤压位移 | +10 |
 | 回弹中 | +5 + 位移10 |
 | 拖拽中 | +10 + 位移10 |

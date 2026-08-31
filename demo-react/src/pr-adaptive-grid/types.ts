@@ -47,7 +47,7 @@ export type GridItemOptions = GridItemsOptions & {
 
 export type GeoItem = Geo & Required<GridItemOptions>
 
-/** PrAdaptiveGrid 组件 expose 的方法 */
+/** PrAdaptiveGrid 组件 ref 暴露的方法 */
 export type PrAdaptiveGridExpose = {
   setItem: (id: string, option?: GridItemOptions) => void
   setItems: (ids: string[], option?: GridItemsOptions) => void

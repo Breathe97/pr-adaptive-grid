@@ -11,7 +11,7 @@
 <script lang="ts" setup>
 import { computed, ref, watch, onMounted } from 'vue'
 import type { PropType } from 'vue'
-import type { Geo, PrAdaptiveGridItemDragEvent } from '../../types'
+import type { Geo, PrAdaptiveGridItemDragEvent, PrAdaptiveGridItemDragStartEvent } from '../../types'
 
 const AG_DURATION_ENTER = 500
 const AG_EASING_ENTER = 'ease-out'
@@ -69,7 +69,7 @@ const props = defineProps({
   },
   onDragStart: {
     required: false,
-    type: Function as PropType<PrAdaptiveGridItemDragEvent>,
+    type: Function as PropType<PrAdaptiveGridItemDragStartEvent>,
     default: undefined
   },
   onDragMove: {
@@ -132,7 +132,7 @@ const Info = computed(() => {
 const ItemClass = computed(() => {
   return {
     'pr-adaptive-grid-item-leaving': props.leaving,
-    'pr-adaptive-grid-item-pinned': props.sticky,
+    'pr-adaptive-grid-item-sticky': props.sticky,
     'pr-adaptive-grid-item-fixed': props.fixed,
     'pr-adaptive-grid-item-dragging': props.dragging,
     'pr-adaptive-grid-item-settling': isSettlingAfterDrag.value,
@@ -140,12 +140,12 @@ const ItemClass = computed(() => {
   }
 })
 
-/** position 层只负责中心点定位和层级。叠加计算：pin+1，拖拽=拖拽10+位移10+n，回弹=回弹5+位移10+n，被挤压=位移10，普通=1 */
+/** position 层只负责中心点定位和层级。叠加计算：sticky+1，拖拽=拖拽10+位移10+n，回弹=回弹5+位移10+n，被挤压=位移10，普通=1 */
 const ItemStyle = computed(() => {
   const { cx, cy } = EffectiveGeo.value
   const n = props.settlingCount
   let z = Z_INDEX_BASE
-  if (props.sticky) z += 1 // Pin 额外 +1
+  if (props.sticky) z += 1 // Sticky 额外 +1
   if (props.dragging) {
     z += 20 + n // 拖拽10 + 位移10 + n
   } else if (isSettlingAfterDrag.value) {
@@ -199,12 +199,12 @@ const cancelPending = (event: PointerEvent) => {
   pendingPointerId.value = undefined
 }
 
-/** 从 pending 进入正式拖拽：捕获指针并通知父组件。 */
+/** 从 pending 进入正式拖拽：捕获指针并通知父组件（附带按下点坐标，供父级消除阈值滞后）。 */
 const commitDrag = (event: PointerEvent) => {
   cancelPending(event)
   activePointerId.value = event.pointerId
   visualRef.value?.setPointerCapture(event.pointerId)
-  props.onDragStart?.(props.id, event)
+  props.onDragStart?.(props.id, event, { ...pendingStartPos.value })
 }
 
 /** 结束 pointer 捕获并通知父组件释放拖拽；重复调用会被 activePointerId 拦住。 */
@@ -550,7 +550,7 @@ onMounted(() => {
   transform: scale(0.3) translate3d(0, 100px, 0);
 }
 
-.pr-adaptive-grid-item-pinned {
+.pr-adaptive-grid-item-sticky {
   z-index: 20;
 }
 
