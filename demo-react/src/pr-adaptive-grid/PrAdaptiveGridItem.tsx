@@ -22,6 +22,7 @@ export interface PrAdaptiveGridItemProps {
   id: string
   geo: Geo
   dragGeo?: Geo
+  dragUseFixed?: boolean
   stickyGeo?: Geo
   draggable?: boolean
   sticky?: boolean
@@ -49,6 +50,7 @@ export function PrAdaptiveGridItem(props: PrAdaptiveGridItemProps) {
     id,
     geo,
     dragGeo,
+    dragUseFixed = false,
     stickyGeo,
     draggable = false,
     sticky = false,
@@ -68,8 +70,8 @@ export function PrAdaptiveGridItem(props: PrAdaptiveGridItemProps) {
   const positionRef = useRef<HTMLDivElement>(null)
   const sizeRef = useRef<HTMLDivElement>(null)
   const visualRef = useRef<HTMLDivElement>(null)
-  const activePointerIdRef = useRef<number>() // 已进入拖拽状态的 pointer id
-  const pendingPointerIdRef = useRef<number>() // pointerdown 后等待判断的 pointer id
+  const activePointerIdRef = useRef<number | undefined>(undefined) // 已进入拖拽状态的 pointer id
+  const pendingPointerIdRef = useRef<number | undefined>(undefined) // pointerdown 后等待判断的 pointer id
   const pendingStartPosRef = useRef({ x: 0, y: 0 })
 
   const [isPositionAnimating, setIsPositionAnimating] = useState(false)
@@ -147,8 +149,8 @@ export function PrAdaptiveGridItem(props: PrAdaptiveGridItemProps) {
       z += 10 // 仅位移（被挤压）
     }
     // 拖拽与回弹都使用 fixed 定位：坐标是视口坐标，不受滚动容器 overflow 裁剪，
-    // 拖出网格边界、回弹穿过边界都能完整显示；其余 item 用内容坐标 + absolute，随容器滚动。
-    const isFloating = !!floatingGeo
+    // 拖出网格边界、回弹穿过边界都能完整显示；关闭 dragUseFixed 时拖拽用内容坐标 + absolute，超出部分被容器裁剪。
+    const isFloating = (!!floatingGeo && dragUseFixed) || isSettlingAfterDrag
     return {
       position: isFloating ? 'fixed' : 'absolute',
       zIndex: z,

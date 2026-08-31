@@ -517,6 +517,135 @@
   color: #fff;
 }
 
+.padding-control {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.bar-text.is-active {
+  background: rgba(37, 99, 235, 0.35);
+  color: #fff;
+}
+
+.padding-panel {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(28, 28, 30, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(20px) saturate(1.5);
+  -webkit-backdrop-filter: blur(20px) saturate(1.5);
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-50%) translateY(8px) scale(0.96);
+  transform-origin: bottom center;
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease,
+    visibility 0.2s;
+}
+
+.padding-panel.is-open {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(-50%) translateY(0) scale(1);
+}
+
+.padding-panel-body {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.pad-slider {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.pad-slider-dir {
+  width: 14px;
+  text-align: center;
+  font-size: 0.625rem;
+  font-weight: 700;
+  color: rgba(245, 245, 245, 0.75);
+}
+
+.pad-slider input[type='range'] {
+  width: 64px;
+  height: 16px;
+  accent-color: #2563eb;
+  cursor: pointer;
+}
+
+.pad-slider-val {
+  min-width: 22px;
+  text-align: right;
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+  color: rgba(245, 245, 245, 0.75);
+}
+
+.pad-toggle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.pad-toggle-label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: rgba(245, 245, 245, 0.75);
+  white-space: nowrap;
+}
+
+.pad-toggle-input {
+  display: none;
+}
+
+.pad-toggle-switch {
+  position: relative;
+  width: 30px;
+  height: 17px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  transition: background 0.2s ease;
+  flex-shrink: 0;
+}
+
+.pad-toggle-switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  transition: transform 0.2s cubic-bezier(0.22, 1, 0.44, 1);
+}
+
+.pad-toggle-input:checked + .pad-toggle-switch {
+  background: #2563eb;
+}
+
+.pad-toggle-input:checked + .pad-toggle-switch::after {
+  transform: translateX(13px);
+}
+
 @media (max-width: 660px) {
   .float-bar {
     width: calc(100% - 24px);

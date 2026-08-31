@@ -37,6 +37,12 @@ const props = defineProps({
     type: Object as PropType<Geo>,
     default: undefined
   },
+  /** 拖拽跟随时是否用 fixed 定位（dragGeo 为视口坐标）；关闭时用 absolute（内容坐标） */
+  dragUseFixed: {
+    required: false,
+    type: Boolean,
+    default: () => false
+  },
   stickyGeo: {
     required: false,
     type: Object as PropType<Geo>,
@@ -159,7 +165,9 @@ const ItemStyle = computed(() => {
   }
   // 拖拽与回弹都使用 fixed 定位：坐标是视口坐标，不受滚动容器 overflow 裁剪，
   // 拖出网格边界、回弹穿过边界都能完整显示；其余 item 用内容坐标 + absolute，随容器滚动。
-  const isFloating = !!props.dragGeo || isSettlingAfterDrag.value
+  // fixed 定位场景：开启 dragFixed 时的拖拽跟随，以及拖拽松手后的回弹；
+  // 关闭 dragFixed 时拖拽跟随用内容坐标 + absolute，超出部分被容器裁剪。
+  const isFloating = (isSettlingAfterDrag.value || (!!props.dragGeo && props.dragUseFixed)) as boolean
   return {
     position: (isFloating ? 'fixed' : 'absolute') as 'fixed' | 'absolute',
     'z-index': z,

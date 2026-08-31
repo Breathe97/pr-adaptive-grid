@@ -28,6 +28,7 @@ export default function App() {
   }
 
   const [paddingOpen, setPaddingOpen] = useState(false) // 边距面板是否展开
+  const [dragUseFixed, setDragUseFixed] = useState(false) // 拖拽时是否启用 fixed 定位以超出边界显示
   const paddingControlRef = useRef<HTMLDivElement>(null) // 边距控制容器（按钮+面板），用于点击外部关闭
 
   const gridRef = useRef<PrAdaptiveGridExpose>(null) // 网格组件实例
@@ -300,7 +301,7 @@ export default function App() {
   return (
     <div className="demo" style={demoStyle}>
       <div className="grid-wrap">
-        <PrAdaptiveGrid ref={gridRef} getLayout={resolveLayout}>
+        <PrAdaptiveGrid ref={gridRef} getLayout={resolveLayout} overScan={0} dragUseFixed={dragUseFixed}>
           {(item) => (
             <div
               className={`tile${item.sticky ? ' is-sticky' : ''}${item.fixed ? ' is-fixed' : ''}`}
@@ -416,6 +417,11 @@ export default function App() {
                   <span className="pad-slider-val">{padding[d.key]}</span>
                 </label>
               ))}
+              <label className="pad-toggle">
+                <span className="pad-toggle-label">拖拽超出</span>
+                <input type="checkbox" checked={dragUseFixed} onChange={(e) => setDragUseFixed(e.target.checked)} className="pad-toggle-input" />
+                <span className="pad-toggle-switch" aria-hidden="true" />
+              </label>
             </div>
           </div>
         </div>

@@ -33,6 +33,10 @@ export interface PrAdaptiveGridProps {
   noEnterAnimation?: boolean
   /** 虚拟列表溢出渲染屏数。设为负数禁用虚拟列表，渲染全部 item */
   overScan?: number
+  /** 拖拽 item 时是否启用 fixed 定位，允许超出容器显示；默认关闭 */
+  dragUseFixed?: boolean
+  /** @deprecated 兼容旧命名，优先使用 dragUseFixed */
+  dragFixed?: boolean
   /** 渲染函数，接收 item 信息（对应 Vue 的默认插槽） */
   children: (item: Geo & { id: string; sticky: boolean; fixed: boolean }) => ReactNode
 }
@@ -56,7 +60,8 @@ const computeItemGeo = (cell: LayoutCell, gap: number, colWidth: number, itemHei
 }
 
 const PrAdaptiveGrid = forwardRef<PrAdaptiveGridExpose, PrAdaptiveGridProps>(function PrAdaptiveGrid(props, ref) {
-  const { noEnterAnimation = false, overScan = 1, children } = props
+  const { noEnterAnimation = false, overScan = 1, dragUseFixed: dragUseFixedProp, dragFixed, children } = props
+  const dragUseFixedEnabled = dragUseFixedProp ?? dragFixed ?? false
 
   const wrapperRef = useRef<HTMLDivElement>(null) // 外层 wrapper（滚动条挂这里）
   const scrollRef = useRef<HTMLDivElement>(null) // 滚动容器
@@ -85,13 +90,13 @@ const PrAdaptiveGrid = forwardRef<PrAdaptiveGridExpose, PrAdaptiveGridProps>(fun
   const [itemOptionsById, setItemOptionsByIdState] = useState(() => new Map<string, StoredItemOptions>())
   const itemOptionsRef = useRef(itemOptionsById) // 同步镜像，供事件回调读取最新值
 
-  const [dragState, setDragState] = useState<DragState>()
-  const dragStateRef = useRef<DragState | undefined>() // 同步镜像，供事件回调读取最新值
+  const [dragState, setDragState] = useState<DragState | undefined>(undefined)
+  const dragStateRef = useRef<DragState | undefined>(undefined) // 同步镜像，供事件回调读取最新值
 
   /** 拖拽期间缓存的容器视口信息（left/top/clientHeight）。
    *  render 里逐 item 读 getBoundingClientRect 会强制同步布局，
    *  内容复杂 + 低性能设备时是拖拽卡顿/闪烁的主要来源，缓存后拖拽几何变纯 state 计算。 */
-  const dragViewportRef = useRef<{ left: number; top: number; clientHeight: number }>()
+  const dragViewportRef = useRef<{ left: number; top: number; clientHeight: number } | undefined>(undefined)
   const refreshDragViewport = () => {
     const el = scrollRef.current
     if (!el) return
@@ -785,8 +790,10 @@ const PrAdaptiveGrid = forwardRef<PrAdaptiveGridExpose, PrAdaptiveGridProps>(fun
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  const getItemOrder = () => [...spanIdsRef.current]
+
   // 暴露方法（对应 Vue defineExpose）
-  useImperativeHandle(ref, () => ({ setItem, setItems, removeItems }))
+  useImperativeHandle(ref, () => ({ setItem, setItems, removeItems, getItemOrder }))
 
   // ── 渲染 ──
 
@@ -839,12 +846,23 @@ const PrAdaptiveGrid = forwardRef<PrAdaptiveGridExpose, PrAdaptiveGridProps>(fun
 
   /**
    * 根据拖拽中心点生成临时 geo，让拖拽项直接跟随指针。
-   * 返回的是「屏幕坐标」：拖拽项在 item 层使用 fixed 定位，相对视口、
-   * 不受滚动容器 overflow 裁剪，因此可拖出网格边界仍完整显示。
+   * dragFixed 开启时返回「屏幕坐标」：拖拽项使用 fixed 定位，可超出网格边界显示。
+   * 关闭时返回内容坐标：拖拽项仍用 absolute 渲染，超出部分被容器裁剪。
    */
   const dragGeoFor = (id: string): Geo | undefined => {
     const state = dragState
     if (!state || state.id !== id) return undefined
+
+    if (!dragUseFixedEnabled) {
+      const { x, y } = state.currentCenter
+      return {
+        ...state.startGeo,
+        cx: x,
+        cy: y,
+        left: x - state.startGeo.width / 2,
+        top: y - state.startGeo.height / 2
+      }
+    }
 
     // 优先用拖拽开始时缓存的容器视口信息：render 里逐 item 读 getBoundingClientRect
     // 会在内容复杂时造成强制同步布局抖动，是低性能设备拖拽卡顿/闪烁的主要来源
@@ -882,6 +900,7 @@ const PrAdaptiveGrid = forwardRef<PrAdaptiveGridExpose, PrAdaptiveGridProps>(fun
               geo={itemGeos[idx] ?? DEFAULT_GEO}
               stickyGeo={stickyGeoFor(id, idx)}
               dragGeo={dragGeoFor(id)}
+              dragUseFixed={dragUseFixedEnabled}
               sticky={opts.sticky}
               fixed={opts.fixed}
               draggable={!opts.fixed}

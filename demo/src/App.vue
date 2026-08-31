@@ -1,7 +1,7 @@
 <template>
   <div class="demo" :style="demoStyle">
     <div class="grid-wrap">
-      <PrAdaptiveGrid ref="gridRef" :get-layout="resolveLayout">
+      <PrAdaptiveGrid ref="gridRef" :get-layout="resolveLayout" :drag-use-fixed="dragUseFixed">
         <template #default="{ item }">
           <div class="tile" :class="{ 'is-sticky': item.sticky, 'is-fixed': item.fixed }" :style="{ backgroundColor: getTileColor(item.id) }">
             <div v-if="item.sticky || item.fixed" class="tile-badges">
@@ -64,6 +64,11 @@
               <input type="range" min="0" max="80" v-model.number="padding[d.key]" />
               <span class="pad-slider-val">{{ padding[d.key] }}</span>
             </label>
+            <label class="pad-toggle">
+              <span class="pad-toggle-label">拖拽超出</span>
+              <input type="checkbox" v-model="dragUseFixed" class="pad-toggle-input" />
+              <span class="pad-toggle-switch" aria-hidden="true"></span>
+            </label>
           </div>
         </div>
       </div>
@@ -96,6 +101,7 @@ const demoStyle = computed(() => ({
 }))
 
 const paddingOpen = ref(false) // 边距面板是否展开
+const dragUseFixed = ref(false) // 拖拽时是否启用 fixed 定位以超出边界显示
 const paddingControlRef = ref<HTMLElement>() // 边距控制容器（按钮+面板），用于点击外部关闭
 /** 点击边距面板外部时收起面板 */
 const onDocClick = (e: MouseEvent) => {
@@ -826,6 +832,51 @@ onBeforeUnmount(() => {
   font-size: 0.6875rem;
   font-variant-numeric: tabular-nums;
   color: rgba(245, 245, 245, 0.75);
+}
+
+/* ── 拖拽超出 iOS 风格开关 ── */
+.pad-toggle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  user-select: none;
+}
+.pad-toggle-label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: rgba(245, 245, 245, 0.75);
+  white-space: nowrap;
+}
+.pad-toggle-input {
+  display: none;
+}
+.pad-toggle-switch {
+  position: relative;
+  width: 30px;
+  height: 17px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  transition: background 0.2s ease;
+  flex-shrink: 0;
+}
+.pad-toggle-switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  transition: transform 0.2s cubic-bezier(0.22, 1, 0.44, 1);
+}
+.pad-toggle-input:checked + .pad-toggle-switch {
+  background: #2563eb;
+}
+.pad-toggle-input:checked + .pad-toggle-switch::after {
+  transform: translateX(13px);
 }
 
 .bar-mode {

@@ -9,6 +9,7 @@
         :geo="ItemGeo(idx)"
         :sticky-geo="StickyGeo(spanIds[idx], idx)"
         :drag-geo="DragGeo(spanIds[idx])"
+        :drag-use-fixed="dragUseFixedEnabled"
         :sticky="ItemOptions(spanIds[idx]).sticky"
         :fixed="ItemOptions(spanIds[idx]).fixed"
         :draggable="!ItemOptions(spanIds[idx]).fixed"
@@ -57,6 +58,18 @@ const props = defineProps({
     required: false,
     type: Number,
     default: 1
+  },
+  /** 拖拽 item 时是否启用 fixed 定位（视口坐标），使 item 可超出网格边界显示；默认关闭（内容坐标 + absolute） */
+  dragUseFixed: {
+    required: false,
+    type: Boolean,
+    default: () => false
+  },
+  /** @deprecated 兼容旧命名，优先使用 dragUseFixed */
+  dragFixed: {
+    required: false,
+    type: Boolean,
+    default: undefined
   }
 })
 
@@ -113,6 +126,7 @@ const itemIds = ref<string[]>([]) // 当前渲染的item
 const leavingIds = ref<string[]>([]) // 当前退场的item
 const settlingCount = ref(0) // 当前正在回弹的 item 数量
 const forcedVisibleId = ref<string | null>(null)
+const dragUseFixedEnabled = computed(() => props.dragUseFixed || props.dragFixed === true)
 
 /** 最近通过 setItem 添加的 item id，用于入场动画判断 */
 const _recentlyAddedIds = new Set<string>()
@@ -346,14 +360,26 @@ const DraggingId = computed(() => dragState.value?.id)
 
 /**
  * 根据拖拽中心点生成临时 geo，让拖拽项直接跟随指针。
- * 返回的是「屏幕坐标」：拖拽项在 item 层使用 fixed 定位，相对视口、
+ * dragFixed 开启时返回「屏幕坐标」：拖拽项在 item 层使用 fixed 定位，相对视口、
  * 不受滚动容器 overflow 裁剪，因此可拖出网格边界仍完整显示。
+ * 关闭时返回内容坐标：拖拽项跟随容器内容坐标系，超出部分被裁剪。
  * 换位判定仍由拖拽项的内容坐标（dragState.currentCenter）负责，互不干扰。
  */
 const DragGeo = computed(() => {
   return (id: string) => {
     const state = dragState.value
     if (!state || state.id !== id) return undefined
+    if (!dragUseFixedEnabled.value) {
+      // 关闭 fixed：直接输出内容坐标，item 层用 absolute 渲染
+      const { x, y } = state.currentCenter
+      return {
+        ...state.startGeo,
+        cx: x,
+        cy: y,
+        left: x - state.startGeo.width / 2,
+        top: y - state.startGeo.height / 2
+      }
+    }
     const el = pr_adaptive_grid_ref.value
     if (!el) return undefined
 
@@ -849,10 +875,16 @@ onBeforeUnmount(() => {
   resolveSyncLayoutWaiters()
 })
 
+/** 获取当前网格中 item 的顺序，按槽位（从 0 开始）返回所有 id。 */
+const getItemOrder = (): string[] => {
+  return [...spanIds.value]
+}
+
 defineExpose({
   setItem,
   setItems,
-  removeItems
+  removeItems,
+  getItemOrder
 })
 </script>
 

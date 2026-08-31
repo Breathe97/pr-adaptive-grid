@@ -52,4 +52,5 @@ export type PrAdaptiveGridExpose = {
   setItem: (id: string, option?: GridItemOptions) => void
   setItems: (ids: string[], option?: GridItemsOptions) => void
   removeItems: (ids: string[]) => void
+  getItemOrder: () => string[]
 }
