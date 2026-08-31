@@ -304,13 +304,19 @@ const PrAdaptiveGrid = forwardRef<PrAdaptiveGridExpose, PrAdaptiveGridProps>(
       return result;
     }, [itemGeos, scrollTop, overScan, size.height]);
 
-    /** visibleIndices + 强制包含拖拽中的 item（过滤越界索引） */
+    /** visibleIndices + 强制渲染集合（过滤越界索引）。
+     *  sticky item 永久渲染，不受虚拟窗口排除：
+     *  否则滚动后 sticky item 被卸载/重建，吸附位置与层级会错乱。 */
     const visibleIndicesWithDrag = (() => {
       const set = new Set(visibleIndices);
       if (forcedVisibleId) {
         const idx = spanIds.indexOf(forcedVisibleId);
         if (idx !== -1) set.add(idx);
       }
+      // sticky 不参与动态渲染排除，始终加入渲染集合
+      spanIds.forEach((id, i) => {
+        if (itemOptionsById.get(id)?.sticky) set.add(i);
+      });
       const max = spanIds.length;
       return [...set].filter((i) => i >= 0 && i < max).sort((a, b) => a - b);
     })();

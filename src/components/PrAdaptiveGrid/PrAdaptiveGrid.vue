@@ -197,13 +197,19 @@ const visibleIndices = computed(() => {
   return result
 })
 
-/** visibleIndices + 强制包含拖拽中的 item（过滤越界索引） */
+/** visibleIndices + 强制渲染集合（过滤越界索引）。
+ *  sticky item 永久渲染，不受虚拟窗口排除：
+ *  否则滚动后 sticky item 被卸载/重建，吸附位置与层级会错乱。 */
 const visibleIndicesWithDrag = computed(() => {
   const set = new Set(visibleIndices.value)
   if (forcedVisibleId.value) {
     const idx = spanIds.value.indexOf(forcedVisibleId.value)
     if (idx !== -1) set.add(idx)
   }
+  // sticky 不参与动态渲染排除，始终加入渲染集合
+  spanIds.value.forEach((id, i) => {
+    if (itemOptionsById.value.get(id)?.sticky) set.add(i)
+  })
   const max = spanIds.value.length
   return [...set].filter((i) => i >= 0 && i < max).sort((a, b) => a - b)
 })

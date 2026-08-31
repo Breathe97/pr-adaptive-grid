@@ -301,7 +301,7 @@ export default function App() {
   return (
     <div className="demo" style={demoStyle}>
       <div className="grid-wrap">
-        <PrAdaptiveGrid ref={gridRef} getLayout={resolveLayout} overScan={0}>
+        <PrAdaptiveGrid ref={gridRef} getLayout={resolveLayout}>
           {(item) => (
             <div
               className={`tile${item.sticky ? ' is-sticky' : ''}${item.fixed ? ' is-fixed' : ''}`}
