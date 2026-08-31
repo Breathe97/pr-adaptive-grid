@@ -88,6 +88,17 @@ const PrAdaptiveGrid = forwardRef<PrAdaptiveGridExpose, PrAdaptiveGridProps>(fun
   const [dragState, setDragState] = useState<DragState>()
   const dragStateRef = useRef<DragState | undefined>() // 同步镜像，供事件回调读取最新值
 
+  /** 拖拽期间缓存的容器视口信息（left/top/clientHeight）。
+   *  render 里逐 item 读 getBoundingClientRect 会强制同步布局，
+   *  内容复杂 + 低性能设备时是拖拽卡顿/闪烁的主要来源，缓存后拖拽几何变纯 state 计算。 */
+  const dragViewportRef = useRef<{ left: number; top: number; clientHeight: number }>()
+  const refreshDragViewport = () => {
+    const el = scrollRef.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    dragViewportRef.current = { left: rect.left, top: rect.top, clientHeight: el.clientHeight }
+  }
+
   // 布局同步节流机制（拖拽期间约每 300ms 最多执行一次）
   const syncLayoutTokenRef = useRef(0)
   const syncLayoutDragTimerIdRef = useRef(0)
@@ -448,6 +459,8 @@ const PrAdaptiveGrid = forwardRef<PrAdaptiveGridExpose, PrAdaptiveGridProps>(fun
     const slotGeo = fromIndex === -1 ? undefined : derivedRef.current.itemGeos[fromIndex]
     if (!slotGeo) return
 
+    refreshDragViewport() // 缓存容器视口信息，拖拽期间的渲染不再逐 item 读布局
+
     // sticky item 的视觉位置被吸附在视口内，与槽位占位不同；滚动越多偏差越大。
     // 拖拽跟随必须从视觉位置起步，否则 currentCenter 以槽位为基准会向上/向下偏移。
     const startGeo = stickyGeoFor(id, fromIndex) ?? slotGeo
@@ -488,6 +501,7 @@ const PrAdaptiveGrid = forwardRef<PrAdaptiveGridExpose, PrAdaptiveGridProps>(fun
     updateDragStateFromPointer(state, event)
     updateDragState(undefined)
     setForcedVisibleId(null)
+    dragViewportRef.current = undefined // 拖拽结束，释放缓存
     void syncLayout()
   }
 
@@ -629,6 +643,8 @@ const PrAdaptiveGrid = forwardRef<PrAdaptiveGridExpose, PrAdaptiveGridProps>(fun
     const el = scrollRef.current
     if (!el) return
     setScrollTop(el.scrollTop)
+    // 拖拽中滚动会改变容器视口位置，同步刷新缓存，保证拖拽几何不漂移
+    if (dragStateRef.current) refreshDragViewport()
     if (derivedRef.current.totalContentHeight > el.clientHeight) {
       showScrollbar()
       delayHideScrollbar()
@@ -738,7 +754,11 @@ const PrAdaptiveGrid = forwardRef<PrAdaptiveGridExpose, PrAdaptiveGridProps>(fun
       const { width, height } = entries[0].contentRect
       pendingSize = { width, height }
       /** 写入最新容器尺寸，驱动 layoutKey 变化后重算布局。 */
-      const applySize = () => setSize(pendingSize)
+      const applySize = () => {
+        setSize(pendingSize)
+        // 拖拽中容器尺寸变化会改变视口位置，同步刷新缓存
+        if (dragStateRef.current) refreshDragViewport()
+      }
       if (isReadyRef.current === false) {
         isReadyRef.current = true
         applySize()
@@ -799,7 +819,11 @@ const PrAdaptiveGrid = forwardRef<PrAdaptiveGridExpose, PrAdaptiveGridProps>(fun
     const geo = itemGeos[index]
     if (!geo) return undefined
 
-    const viewportHeight = scrollRef.current?.clientHeight ?? size.height
+    // 拖拽中用缓存的 clientHeight，避免 render 里逐 item 触发同步布局
+    const viewportHeight =
+      (dragState ? dragViewportRef.current?.clientHeight : undefined) ??
+      scrollRef.current?.clientHeight ??
+      size.height
     if (viewportHeight <= 0) return geo
 
     const minCenterY = scrollTop + geo.height / 2
@@ -821,13 +845,19 @@ const PrAdaptiveGrid = forwardRef<PrAdaptiveGridExpose, PrAdaptiveGridProps>(fun
   const dragGeoFor = (id: string): Geo | undefined => {
     const state = dragState
     if (!state || state.id !== id) return undefined
-    const el = scrollRef.current
-    if (!el) return undefined
 
-    const rect = el.getBoundingClientRect()
+    // 优先用拖拽开始时缓存的容器视口信息：render 里逐 item 读 getBoundingClientRect
+    // 会在内容复杂时造成强制同步布局抖动，是低性能设备拖拽卡顿/闪烁的主要来源
+    let vp = dragViewportRef.current
+    if (!vp) {
+      refreshDragViewport()
+      vp = dragViewportRef.current
+    }
+    if (!vp) return undefined
+
     // 内容坐标 → 屏幕坐标：x 相对容器左边，y 额外减去已滚动的 scrollTop
-    const cx = rect.left + state.currentCenter.x
-    const cy = rect.top + state.currentCenter.y - scrollTop
+    const cx = vp.left + state.currentCenter.x
+    const cy = vp.top + state.currentCenter.y - scrollTop
     return {
       ...state.startGeo,
       cx,

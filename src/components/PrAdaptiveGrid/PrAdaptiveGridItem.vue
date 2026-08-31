@@ -115,6 +115,8 @@ const pendingStartPos = ref({ x: 0, y: 0 })
 
 const isPositionAnimating = ref(false)
 const isSettlingAfterDrag = ref(false)
+/** 回弹期间的视口坐标几何：回弹全程保持 fixed 定位，避免切回 absolute 时被滚动容器立即裁剪 */
+const settleGeo = ref<Geo>()
 let _animVersion = 0 // 递增 token，防止过期 .finally 覆盖状态
 
 /** 当前实际用于渲染的几何；拖拽优先，其次 sticky 视觉吸附，最后使用原始占位。 */
@@ -142,7 +144,9 @@ const ItemClass = computed(() => {
 
 /** position 层只负责中心点定位和层级。叠加计算：sticky+1，拖拽=拖拽10+位移10+n，回弹=回弹5+位移10+n，被挤压=位移10，普通=1 */
 const ItemStyle = computed(() => {
-  const { cx, cy } = EffectiveGeo.value
+  // 渲染几何优先级：拖拽视口坐标 > 回弹视口坐标 > 内容坐标（EffectiveGeo）
+  const geo = props.dragGeo ?? (isSettlingAfterDrag.value ? settleGeo.value : undefined) ?? EffectiveGeo.value
+  const { cx, cy } = geo
   const n = props.settlingCount
   let z = Z_INDEX_BASE
   if (props.sticky) z += 1 // Sticky 额外 +1
@@ -153,9 +157,9 @@ const ItemStyle = computed(() => {
   } else if (isPositionAnimating.value) {
     z += 10 // 仅位移（被挤压）
   }
-  // 拖拽项使用 fixed 定位：坐标是父层换算的屏幕坐标，相对视口、不受滚动容器 overflow 裁剪，
-  // 拖出网格边界也能完整显示；其余 item 用内容坐标 + absolute，随容器滚动。
-  const isFloating = !!props.dragGeo
+  // 拖拽与回弹都使用 fixed 定位：坐标是视口坐标，不受滚动容器 overflow 裁剪，
+  // 拖出网格边界、回弹穿过边界都能完整显示；其余 item 用内容坐标 + absolute，随容器滚动。
+  const isFloating = !!props.dragGeo || isSettlingAfterDrag.value
   return {
     position: (isFloating ? 'fixed' : 'absolute') as 'fixed' | 'absolute',
     'z-index': z,
@@ -291,38 +295,66 @@ const toTransform = (newGeo: Geo, options?: TransformOptions) => {
   isPositionAnimating.value = true
   isSettlingAfterDrag.value = settlingAfterDrag
 
-  /** 读取当前视觉几何，用作下一段 WAAPI 动画的起点（内容坐标）。 */
-  const getCurrentCenterGeo = () => {
-    const rect = inner.getBoundingClientRect()
-    // outer 是 absolute item，offsetParent 通常就是 .pr-adaptive-grid；
-    // 拖拽项是 fixed 定位，offsetParent 为 null，回退到父元素拿到同一个 grid 容器，
-    // 从而把当前屏幕坐标换算回内容坐标，避免回弹动画起点被当成终点、瞬间闪到槽位。
-    const parent = (outer.offsetParent ?? outer.parentElement) as HTMLElement | null
-    if (!parent) return { ...newGeo }
-    const parentRect = parent.getBoundingClientRect()
+  const rect = inner.getBoundingClientRect()
+
+  /** 当前中心的视口坐标（fixed 坐标系），回弹动画的起点 */
+  const currentViewport: Geo = {
+    top: rect.top,
+    left: rect.left,
+    cx: rect.left + rect.width / 2,
+    cy: rect.top + rect.height / 2,
+    width: rect.width,
+    height: rect.height
+  }
+
+  /** 网格滚动容器的屏幕位置与滚动量，内容坐标 → 视口坐标的换算基准 */
+  const parent = (outer.offsetParent ?? outer.parentElement) as HTMLElement | null
+  const parentRect = parent?.getBoundingClientRect()
+
+  /** 内容坐标 → 视口坐标（回弹动画目标用，保持 fixed 坐标系一致） */
+  const toViewport = (geo: Geo): Geo => {
+    if (!parent || !parentRect) return geo
+    const left = parentRect.left + geo.left - parent.scrollLeft
+    const top = parentRect.top + geo.top - parent.scrollTop
+    return { ...geo, left, top, cx: left + geo.width / 2, cy: top + geo.height / 2 }
+  }
+
+  // 回弹：保持 fixed，在视口坐标系里从当前位置动画到目标槽位，
+  // 动画结束后（见 finally）才切回 absolute，避免被滚动容器 overflow 立即裁剪
+  if (settlingAfterDrag) {
+    settleGeo.value = currentViewport
+    outer.style.position = 'fixed'
+    outer.style.transform = `translate3d(${currentViewport.cx}px, ${currentViewport.cy}px, 0) translate(-50%, -50%)`
+  }
+
+  /** 动画起点（内容坐标）：把屏幕坐标换算回内容坐标，避免起点被当成终点、瞬间闪到槽位 */
+  const currentGeo = (() => {
+    if (!parent || !parentRect) return { ...newGeo }
     const left = rect.left - parentRect.left + parent.scrollLeft
     const top = rect.top - parentRect.top + parent.scrollTop
     const width = rect.width
     const height = rect.height
-    const cx = left + width / 2
-    const cy = top + height / 2
-    return { top, left, cx, cy, width, height }
-  }
+    return { top, left, cx: left + width / 2, cy: top + height / 2, width, height }
+  })()
 
-  const currentGeo = getCurrentCenterGeo() // 当前几何（内容坐标）
-
-  // 松手回弹时，元素可能仍停留在 fixed（屏幕坐标）状态，而动画 keyframe 值是内容坐标。
-  // 若两者基准不一致，瞬间从 fixed 切到 absolute 会导致起点错位、看起来"闪到最终位置"。
-  // 这里在启动动画前，先把 outer 预定位到内容坐标起点（absolute），保证动画起点精确。
-  const _position = getComputedStyle(outer).position
-  if (_position === 'fixed') {
-    outer.style.position = 'absolute'
-    outer.style.transform = `translate3d(${currentGeo.cx}px, ${currentGeo.cy}px, 0) translate(-50%, -50%)`
+  // 普通补位动画：元素可能残留 fixed 状态，而动画 keyframe 值是内容坐标，
+  // 先预定位到内容坐标起点（absolute），保证动画起点精确
+  if (!settlingAfterDrag) {
+    const _position = getComputedStyle(outer).position
+    if (_position === 'fixed') {
+      outer.style.position = 'absolute'
+      outer.style.transform = `translate3d(${currentGeo.cx}px, ${currentGeo.cy}px, 0) translate(-50%, -50%)`
+    }
   }
 
   // 开始新动画前先提交旧动画状态，保证连续重排时不会跳帧。
   outer.getAnimations().forEach((animate) => saveStyles(animate)) // 暂停动画
   inner.getAnimations().forEach((animate) => saveStyles(animate)) // 暂停动画
+
+  // 回弹动画的目标也换算到视口坐标系；普通补位直接用内容坐标。
+  // 起点：回弹时元素保持 fixed，必须用视口坐标；普通补位是 absolute，用内容坐标。
+  const animStart = settlingAfterDrag ? currentViewport : currentGeo
+  const animTarget = settlingAfterDrag ? toViewport(newGeo) : newGeo
 
   // 两个动画都完成后才清除动画状态，避免一方提前结束导致 z-index 降级被其它 item 盖住
   const version = ++_animVersion
@@ -330,9 +362,9 @@ const toTransform = (newGeo: Geo, options?: TransformOptions) => {
     .animate(
       [
         // 开始
-        { transform: `translate3d(${currentGeo.cx}px, ${currentGeo.cy}px, 0) translate(-50%, -50%)` },
+        { transform: `translate3d(${animStart.cx}px, ${animStart.cy}px, 0) translate(-50%, -50%)` },
         // 结束
-        { transform: `translate3d(${newGeo.cx}px, ${newGeo.cy}px, 0) translate(-50%, -50%)` }
+        { transform: `translate3d(${animTarget.cx}px, ${animTarget.cy}px, 0) translate(-50%, -50%)` }
       ],
       { duration: AG_DURATION_POSITION, easing: AG_EASING_POSITION }
     )
@@ -342,7 +374,7 @@ const toTransform = (newGeo: Geo, options?: TransformOptions) => {
         // 开始
         { width: `${currentGeo.width}px`, height: `${currentGeo.height}px` },
         // 结束
-        { width: `${newGeo.width}px`, height: `${newGeo.height}px` }
+        { width: `${animTarget.width}px`, height: `${animTarget.height}px` }
       ],
       { duration: AG_DURATION_SIZE, easing: AG_EASING_SIZE }
     )
@@ -353,6 +385,9 @@ const toTransform = (newGeo: Geo, options?: TransformOptions) => {
     .finally(() => {
       if (version !== _animVersion) return // 过期调用，忽略
       isPositionAnimating.value = false
+      // 回弹结束：此刻 item 已落在网格内，一次性切回内容坐标 + absolute，
+      // fixed 视口坐标与 absolute 内容坐标渲染位置重合，肉眼无感、不会闪剪
+      if (settlingAfterDrag) settleGeo.value = undefined
       isSettlingAfterDrag.value = false
     })
 }
