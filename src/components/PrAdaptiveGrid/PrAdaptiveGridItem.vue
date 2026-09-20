@@ -37,6 +37,15 @@ const props = defineProps({
     type: Object as PropType<Geo>,
     default: undefined
   },
+  /** 网格滚动容器（坐标换算基准）。
+   *  必须显式传入：fixed 定位的 offsetParent 语义在「祖先含 contain/transform」时
+   *  会指向该祖先（如 PC 端 shell 的 #app-frame { contain: layout }），而不是 null，
+   *  导致按 offsetParent/parentElement 取坐标基准时拿到错误容器 → 回弹终点飞向左上角。 */
+  scrollEl: {
+    required: false,
+    type: Object as PropType<HTMLElement | null>,
+    default: null
+  },
   stickyGeo: {
     required: false,
     type: Object as PropType<Geo>,
@@ -309,8 +318,11 @@ const toTransform = (newGeo: Geo, options?: TransformOptions) => {
     height: rect.height
   }
 
-  /** 网格滚动容器的屏幕位置与滚动量，内容坐标 → 视口坐标的换算基准 */
-  const parent = (outer.offsetParent ?? outer.parentElement) as HTMLElement | null
+  /** 网格滚动容器的屏幕位置与滚动量，内容坐标 → 视口坐标的换算基准。
+   *  基准必须是显式传入的滚动容器：fixed item 在「祖先含 contain/layout 或 transform」时
+   *  offsetParent 会指向那个祖先（PC 端 shell #app-frame { contain: layout }），
+   *  坐标换算基准错乱 → 回弹动画终点飞向窗口左上角。 */
+  const parent = (props.scrollEl ?? outer.parentElement) as HTMLElement | null
   const parentRect = parent?.getBoundingClientRect()
 
   /** 内容坐标 → 视口坐标（回弹动画目标用，保持 fixed 坐标系一致） */

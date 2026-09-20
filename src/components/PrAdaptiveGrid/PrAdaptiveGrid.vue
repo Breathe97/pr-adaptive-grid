@@ -7,6 +7,7 @@
         :key="spanIds[idx]"
         :id="spanIds[idx]"
         :geo="ItemGeo(idx)"
+        :scroll-el="pr_adaptive_grid_ref ?? null"
         :sticky-geo="StickyGeo(spanIds[idx], idx)"
         :drag-geo="DragGeo(spanIds[idx])"
         :sticky="ItemOptions(spanIds[idx]).sticky"
@@ -14,7 +15,7 @@
         :draggable="!ItemOptions(spanIds[idx]).fixed"
         :dragging="DraggingId === spanIds[idx]"
         :leaving="IsLeaving(spanIds[idx])"
-        :no-enter-animation="props.noEnterAnimation || initializing || !_recentlyAddedIds.has(spanIds[idx])"
+        :no-enter-animation="skipEnterBatch || !_recentlyAddedIds.has(spanIds[idx])"
         :on-drag-start="onItemDragStart"
         :on-drag-move="onItemDragMove"
         :on-drag-end="onItemDragEnd"
@@ -37,35 +38,19 @@
 <script lang="ts" setup>
 import PrAdaptiveGridItem from './PrAdaptiveGridItem.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import type { PropType } from 'vue'
-import type { Geo, GetLayoutFn, GridItemOptions, GridItemsOptions, Layout, LayoutCell } from '../../types'
-import { getLayout } from '../../layouts/layout.default.ts'
-
-const props = defineProps({
-  getLayout: {
-    required: true,
-    type: Function as PropType<GetLayoutFn>,
-    default: () => getLayout
-  },
-  noEnterAnimation: {
-    required: false,
-    type: Boolean,
-    default: () => false
-  },
-  /** 虚拟列表溢出渲染屏数 */
-  overScan: {
-    required: false,
-    type: Number,
-    default: 1
-  }
-})
+import type { Geo, GridItemInput, GridItemsOptions, Layout, LayoutCell, LayoutFactory, ResizeHandler, SetLayoutOptions } from '../../types'
+import { getLayout as defaultLayout } from '../../layouts/layout.pc-speaker.ts'
 
 const pr_adaptive_grid_ref = ref<HTMLElement>() // 外部容器 滚动
 const pr_adaptive_grid_content_ref = ref<HTMLElement>() // 模板 ref（仅在 template 使用）
 void pr_adaptive_grid_content_ref
 
 const isReady = ref(false) // 是否准备就绪
-const initializing = ref(true) // 首次初始渲染中，item 跳过入场动画
+const layoutFactory = ref<LayoutFactory>(defaultLayout) // 当前布局工厂，外部通过 setLayout 替换
+const layoutVersion = ref(0) // 工厂被替换时自增，驱动 LayoutKey 变化后重算
+const overScan = ref(1) // 虚拟列表溢出渲染屏数
+const skipEnterBatch = ref(false) // 本批新增项是否跳过入场动画；渲染完成后自动恢复
+let resizeHandler: ResizeHandler | undefined // 尺寸变化回调（覆盖式，只保留最后一个）
 const layout = ref<Layout>({ gap: 8, cols: 1, rows: 1, items: [] }) // 仅 span 占位几何
 const size = ref({ width: 0, height: 0 }) // content 尺寸（行高与位移动画时长）
 const scrollTop = ref(0) // .pr-adaptive-grid 的 scrollTop，Sticky 定位用
@@ -109,7 +94,6 @@ const scrollbarThumbStyle = computed(() => {
 })
 
 const spanIds = ref<string[]>([]) // 当前渲染的span
-const itemIds = ref<string[]>([]) // 当前渲染的item
 const leavingIds = ref<string[]>([]) // 当前退场的item
 const settlingCount = ref(0) // 当前正在回弹的 item 数量
 const forcedVisibleId = ref<string | null>(null)
@@ -124,24 +108,42 @@ const colWidth = computed(() => {
   return (size.value.width - (cols - 1) * gap) / cols
 })
 
-/** 总内容高度：取最后一个 item 的底部位置，不受 layout.rows 限制 */
+/** 总内容高度：取所有 item 底部的最大值，不受 layout.rows 限制。
+ *  不能用「数组最后一个 item」—— layout.items 的顺序不保证按行递增，
+ *  末位 item 若不在最低行，容器就会少算高度，底部直接露出黑边。 */
 const totalContentHeight = computed(() => {
   const geos = itemGeos.value
-  if (geos.length === 0) return 0
-  const last = geos[geos.length - 1]
-  return last.top + last.height
+  let bottom = 0
+  for (let i = 0; i < geos.length; i++) {
+    const itemBottom = geos[i].top + geos[i].height
+    if (itemBottom > bottom) bottom = itemBottom
+  }
+  return bottom
 })
+
+/** 第 y 行（1 起）的顶部偏移：前 extra 行各多占 1px */
+const rowTop = (y: number): number => {
+  const { base, extra, gap } = RowMetrics.value
+  return (y - 1) * (base + gap) + Math.min(y - 1, extra)
+}
+
+/** 第 y 行起跨 h 行的格子高度：只把落在跨度内的补足像素算进来 */
+const rowSpanHeight = (y: number, h: number): number => {
+  const { base, extra, gap } = RowMetrics.value
+  const extraBefore = Math.min(y - 1, extra)
+  const extraAfter = Math.min(y + h - 1, extra)
+  return h * base + (h - 1) * gap + Math.max(0, extraAfter - extraBefore)
+}
 
 /** 从 LayoutCell 计算像素几何 */
 const computeItemGeo = (cell: LayoutCell): Geo => {
   const { gap } = layout.value
   const { x, y, w, h } = cell
   const cw = colWidth.value
-  const ih = ItemHeight.value
   const left = (x - 1) * (cw + gap)
-  const top = (y - 1) * (ih + gap)
+  const top = rowTop(y)
   const width = w * cw + (w - 1) * gap
-  const height = h * ih + (h - 1) * gap
+  const height = rowSpanHeight(y, h)
   return { cx: left + width / 2, cy: top + height / 2, left, top, width, height }
 }
 
@@ -156,32 +158,53 @@ const itemGeos = computed(() => {
   return result
 })
 
-/** 当前可见的 item 原始索引（含 overScan 缓冲）。二分查找 + 局部扫描，避免全量遍历。 */
+/**
+ * 按 top 升序排列的 item 下标 + 最大格子高度。
+ * 虚拟窗口靠二分查找定位可视范围，而 layout.items 的顺序不保证按 top 递增
+ * （如 pc-speaker 的 n=10 依次是 1,5,1,1,3,3,8,8,10,10 行），
+ * 直接在原数组上二分会把整行 item 判成不可见 —— 底部空出一条黑边。
+ */
+const geoOrder = computed(() => {
+  const geos = itemGeos.value
+  const order = geos.map((_, i) => i)
+  order.sort((a, b) => geos[a].top - geos[b].top)
+  let maxHeight = 0
+  for (let i = 0; i < geos.length; i++) {
+    if (geos[i].height > maxHeight) maxHeight = geos[i].height
+  }
+  return { order, maxHeight }
+})
+
+/** 当前可见的 item 原始索引（含 overScan 缓冲）。在有序下标上二分 + 局部扫描，避免全量遍历。 */
 const visibleIndices = computed(() => {
   const geos = itemGeos.value
   const n = geos.length
   if (n === 0) return []
+  if (overScan.value < 0) return Array.from({ length: n }, (_, i) => i) // 负数禁用虚拟列表
 
+  const { order, maxHeight } = geoOrder.value
   const viewH = pr_adaptive_grid_ref.value?.clientHeight ?? size.value.height
-  const rangeStart = scrollTop.value - props.overScan * viewH
-  const rangeEnd = scrollTop.value + viewH + props.overScan * viewH
+  const rangeStart = scrollTop.value - overScan.value * viewH
+  const rangeEnd = scrollTop.value + viewH + overScan.value * viewH
 
-  // 二分：第一个 top > rangeStart 的 item
+  // 二分：第一个 top >= rangeStart 的 item
   let lo = 0,
     hi = n
   while (lo < hi) {
     const mid = (lo + hi) >> 1
-    if (geos[mid].top < rangeStart) lo = mid + 1
+    if (geos[order[mid]].top < rangeStart) lo = mid + 1
     else hi = mid
   }
-  const scanStart = Math.max(0, lo - 20) // 回退一行，防止前一行大高度 item 漏掉
+  // 起点回退：跨多行的大格顶部在 rangeStart 之前，但底部压在可视区内
+  let scanStart = lo
+  while (scanStart > 0 && geos[order[scanStart - 1]].top + maxHeight >= rangeStart) scanStart--
 
   // 二分：第一个 top > rangeEnd 的 item
   lo = 0
   hi = n
   while (lo < hi) {
     const mid = (lo + hi) >> 1
-    if (geos[mid].top <= rangeEnd) lo = mid + 1
+    if (geos[order[mid]].top <= rangeEnd) lo = mid + 1
     else hi = mid
   }
   const scanEnd = lo
@@ -189,11 +212,13 @@ const visibleIndices = computed(() => {
   // 只在 scanStart~scanEnd 范围内做完整判断，通常几十个 item
   const result: number[] = []
   for (let i = scanStart; i < scanEnd; i++) {
-    const geo = geos[i]
+    const index = order[i]
+    const geo = geos[index]
     if (geo.top + geo.height >= rangeStart && geo.top <= rangeEnd) {
-      result.push(i)
+      result.push(index)
     }
   }
+  result.sort((a, b) => a - b) // 还原原始下标顺序，避免渲染顺序随滚动抖动
   return result
 })
 
@@ -235,14 +260,6 @@ const setItemOptions = (id: string, options?: GridItemsOptions) => {
   itemOptionsById.value.set(id, { ...current, ...merged })
 }
 
-/** 清理已经不再存在的 item 状态，避免 remove / setItems 后残留旧配置。 */
-const pruneItemOptions = (activeIds: string[]) => {
-  const activeIdSet = new Set(activeIds)
-  for (const id of itemOptionsById.value.keys()) {
-    if (!activeIdSet.has(id)) itemOptionsById.value.delete(id)
-  }
-}
-
 type DragState = {
   id: string
   startPointer: {
@@ -265,10 +282,19 @@ let syncLayoutDragTimerId = 0
 let syncLayoutLastDragRunAt = 0
 let syncLayoutQueued = false
 let syncLayoutResolvers: Array<() => void> = []
+let lastSyncedLayoutKey = '' // 最近一次真正执行过布局计算的 LayoutKey，用于跳过重复计算
 
-/** 同步 spanIds 到 itemIds */
-const getSpanGeos = async () => {
-  itemIds.value = [...spanIds.value]
+/** 拖拽期间缓存的容器视口信息（left / top / clientHeight）。
+ *  拖拽渲染里逐 item 读 getBoundingClientRect 会强制同步布局，
+ *  内容复杂 + 低性能设备时是拖拽卡顿/闪烁的主要来源，缓存后拖拽几何变纯计算。 */
+let _dragViewport: { left: number; top: number; clientHeight: number } | undefined
+
+/** 刷新拖拽期容器视口缓存；容器不存在时保持旧值 */
+const refreshDragViewport = () => {
+  const el = pr_adaptive_grid_ref.value
+  if (!el) return
+  const rect = el.getBoundingClientRect()
+  _dragViewport = { left: rect.left, top: rect.top, clientHeight: el.clientHeight }
 }
 
 /** item 退场动画完成后，真正从 span / item 列表中移除。 */
@@ -280,11 +306,20 @@ const onItemLeaveEnd = (id: string) => {
     dragState.value = undefined
   }
   leavingIds.value.splice(leavingIndex, 1)
-  const spanIndex = spanIds.value.indexOf(id)
-  if (spanIndex !== -1) spanIds.value.splice(spanIndex, 1)
-  const itemIndex = itemIds.value.indexOf(id)
-  if (itemIndex !== -1) itemIds.value.splice(itemIndex, 1)
+  const spanIdIndex = spanIds.value.indexOf(id)
   itemOptionsById.value.delete(id)
+  if (spanIdIndex === -1) return
+
+  // 先记下移除前各 fixed item 的槽位：splice 之后它们会整体前移，
+  // 事后再读 spanIds 拿到的是「已经前移过的」下标，按那个保位等于没保。
+  const fixedSlotBefore = new Map<string, number>()
+  spanIds.value.forEach((spanId, index) => {
+    if (index === spanIdIndex || !IsFixedItem(spanId)) return
+    fixedSlotBefore.set(spanId, index)
+  })
+
+  spanIds.value.splice(spanIdIndex, 1)
+  reorderKeepingFixedSlots(fixedSlotBefore)
 }
 
 /** 跟踪 item 回弹状态变化，维护 settlingCount。 */
@@ -307,7 +342,8 @@ const StickyGeo = computed(() => {
     const geo = itemGeos.value[index]
     if (!geo) return undefined
 
-    const viewportHeight = pr_adaptive_grid_ref.value?.clientHeight ?? size.value.height
+    // 拖拽中用缓存的 clientHeight，避免 render 里逐 item 触发同步布局
+    const viewportHeight = (dragState.value ? _dragViewport?.clientHeight : undefined) ?? pr_adaptive_grid_ref.value?.clientHeight ?? size.value.height
     if (viewportHeight <= 0) return geo
 
     const minCenterY = scrollTop.value + geo.height / 2
@@ -322,10 +358,10 @@ const StickyGeo = computed(() => {
   }
 })
 
-/** 布局重算 key：容器尺寸或 span 数量变化时触发重新计算。 */
+/** 布局重算 key：容器尺寸、span 数量或布局工厂版本变化时触发重新计算。 */
 const LayoutKey = computed(() => {
   const { width, height } = size.value
-  const key = `${width}-${height}-${spanIds.value.length}`
+  const key = `${width}-${height}-${spanIds.value.length}-${layoutVersion.value}`
   return key
 })
 
@@ -347,6 +383,47 @@ const IsFixedItem = (id?: string) => {
 
 const IsFixedSpanIndex = (index: number) => IsFixedItem(spanIds.value[index])
 
+/**
+ * 移除 item 之后重新平衡顺序：fixed item 回到移除前的槽位，其余 item 按原相对顺序填满剩余空位。
+ * 不做这步的话，`spanIds.splice` 会让被移除项之后的所有 item 整体前移一格，fixed item 也跟着挪，
+ * 与「锁定槽位」的语义直接冲突。
+ * @param fixedSlotBefore 移除**之前**记录的各 fixed item 槽位快照
+ */
+const reorderKeepingFixedSlots = (fixedSlotBefore: Map<string, number>) => {
+  const ids = spanIds.value
+  const total = ids.length
+  if (total === 0 || fixedSlotBefore.size === 0) return
+
+  const slots = new Array<string | undefined>(total)
+  const pinned = new Set<string>()
+
+  // fixed 先按移除前的槽位占位；越界（原本在末尾、总数变小）或撞车的往前找最近空位
+  fixedSlotBefore.forEach((slotBefore, id) => {
+    if (!ids.includes(id)) return
+    let pos = Math.min(slotBefore, total - 1)
+    while (pos > 0 && slots[pos] !== undefined) pos -= 1
+    if (slots[pos] !== undefined) return
+    slots[pos] = id
+    pinned.add(id)
+  })
+
+  // 其余 item 按原相对顺序填满剩下的空位
+  let cursor = 0
+  ids.forEach((id) => {
+    if (pinned.has(id)) return
+    while (cursor < total && slots[cursor] !== undefined) cursor += 1
+    if (cursor >= total) return
+    slots[cursor] = id
+    cursor += 1
+  })
+
+  const next = slots.filter((spanId): spanId is string => spanId !== undefined)
+  // 顺序真的变了才替换引用，避免无谓的响应式刷新
+  if (next.length === total && next.some((spanId, index) => spanId !== ids[index])) {
+    spanIds.value = next
+  }
+}
+
 /** 当前正在拖拽的 item id。 */
 const DraggingId = computed(() => dragState.value?.id)
 
@@ -360,13 +437,19 @@ const DragGeo = computed(() => {
   return (id: string) => {
     const state = dragState.value
     if (!state || state.id !== id) return undefined
-    const el = pr_adaptive_grid_ref.value
-    if (!el) return undefined
 
-    const rect = el.getBoundingClientRect()
+    // 优先用拖拽开始时缓存的容器视口信息：render 里逐 item 读 getBoundingClientRect
+    // 会在内容复杂时造成强制同步布局抖动，是低性能设备拖拽卡顿/闪烁的主要来源
+    let viewport = _dragViewport
+    if (!viewport) {
+      refreshDragViewport()
+      viewport = _dragViewport
+    }
+    if (!viewport) return undefined
+
     // 内容坐标 → 屏幕坐标：x 相对容器左边，y 额外减去已滚动的 scrollTop
-    const cx = rect.left + state.currentCenter.x
-    const cy = rect.top + state.currentCenter.y - scrollTop.value
+    const cx = viewport.left + state.currentCenter.x
+    const cy = viewport.top + state.currentCenter.y - scrollTop.value
     return {
       ...state.startGeo,
       cx,
@@ -377,20 +460,25 @@ const DragGeo = computed(() => {
   }
 })
 
-/** 真正执行布局同步；token 用来丢弃过期异步结果。 */
+/**
+ * 真正执行布局同步；token 用来丢弃过期异步结果。
+ * 同一 LayoutKey 只需算一次：setItems 等改动 spanIds 后会立即 syncLayout，
+ * 随后 LayoutKey watcher 还会再触发一次，不去重就会把布局工厂跑两遍。
+ */
 const executeSyncLayout = async () => {
   if (isReady.value === false) return
 
+  const key = LayoutKey.value
+  if (key === lastSyncedLayoutKey) return
+  lastSyncedLayoutKey = key
+
   const token = ++syncLayoutToken
-  layout.value = props.getLayout(spanIds.value.length)
+  layout.value = layoutFactory.value(spanIds.value.length)
   await nextTick()
   if (token !== syncLayoutToken) return
-  await getSpanGeos()
   _recentlyAddedIds.clear()
-  if (initializing.value) {
-    await nextTick()
-    initializing.value = false
-  }
+  // 入场动画开关只作用于本批新增项：渲染（上面的 nextTick）完成后立即恢复默认
+  skipEnterBatch.value = false
 }
 
 const resolveSyncLayoutWaiters = () => {
@@ -445,16 +533,27 @@ const syncLayout = (duringDrag = false) => {
   })
 }
 
-/** 拖拽换位后，让 sticky / fixed 跟随槽位而不是跟随 id。 */
+/**
+ * 拖拽换位后同步选项 —— 语义是「sticky / fixed 跟随槽位，不跟随 id」：
+ * 发生交换时，当前槽位的 sticky / fixed 保持不变，动的只是槽位上挂的 item。
+ * ⚠️ 这是有意设计，别改成「跟随 id」：那样子设过 sticky 的 item 一被拖走，
+ * 网格里就再没有吸附在视口里的格子了，整个 sticky 的意义直接没了。
+ */
 const applySlotOptionsAfterReorder = (prevSpanIds: string[], nextSpanIds: string[]) => {
   const prevSlotOptions = prevSpanIds.map((spanId) => itemOptionsById.value.get(spanId) ?? DEFAULT_ITEM_OPTIONS)
   const nextOptions = new Map(itemOptionsById.value)
+  let changed = false
 
   nextSpanIds.forEach((spanId, index) => {
-    nextOptions.set(spanId, { ...prevSlotOptions[index] })
+    const slotOptions = prevSlotOptions[index]
+    const current = nextOptions.get(spanId) ?? DEFAULT_ITEM_OPTIONS
+    if (current.sticky === slotOptions.sticky && current.fixed === slotOptions.fixed) return
+    nextOptions.set(spanId, { ...slotOptions })
+    changed = true
   })
 
-  itemOptionsById.value = nextOptions
+  // 选项没有任何变化时不替换 Map 引用，避免无谓的响应式刷新
+  if (changed) itemOptionsById.value = nextOptions
 }
 
 /** 将指定 id 移动到目标 span 下标，返回是否真的发生了排序变化。 */
@@ -555,9 +654,12 @@ const updateDragStateFromPointer = (state: DragState, event: PointerEvent) => {
 const onItemDragStart = (id: string, event: PointerEvent, origin?: { x: number; y: number }) => {
   if (IsFixedItem(id)) return
 
-  const fromIndex = itemIds.value.indexOf(id)
+  // 用实时 spanIds 定位：它与 itemGeos 的槽位一一对应（itemGeos 只由 layout 决定，与顺序无关）
+  const fromIndex = spanIds.value.indexOf(id)
   const slotGeo = fromIndex === -1 ? undefined : itemGeos.value[fromIndex]
   if (!slotGeo) return
+
+  refreshDragViewport() // 缓存容器视口信息，拖拽期间的渲染不再逐 item 读布局
 
   // sticky item 的视觉位置被吸附在视口内，与槽位占位不同；滚动越多偏差越大。
   // 拖拽跟随必须从视觉位置起步，否则 currentCenter 以槽位为基准会向上/向下偏移。
@@ -599,6 +701,7 @@ const onItemDragEnd = async (id: string, event: PointerEvent) => {
   updateDragStateFromPointer(state, event)
   dragState.value = undefined
   forcedVisibleId.value = null
+  _dragViewport = undefined // 拖拽结束，释放缓存
   await syncLayout()
 }
 
@@ -621,86 +724,165 @@ const ContainerStyle = computed(() => {
  * 避免矮容器下多行布局（如 lecture 的 11 行）内容溢出出现滚动条、item 被拉成竖条。
  */
 const VIRTUAL_TARGET_ROWS = 12
-const ItemHeight = computed(() => {
+/**
+ * 行高与余数分配：把「可视高度 - 行间距」平分给 targetRows 行。
+ * 除不尽的部分按 1px 依次补给前几行（行与行之间最多差 1px），让 rows 行正好铺满可视高度。
+ * 不能直接向下取整 —— 那会让 rows 行累计少掉「行数 × 小数部分」像素，
+ * 底部露出一条黑边（11 行布局最多差 10px，且随视口高度忽有忽无）。
+ * 容器高度可能带小数，先取整，避免总高度超出可视区挤出多余滚动条。
+ */
+const RowMetrics = computed(() => {
   const { gap, rows } = layout.value
-  const { height } = size.value
-  const targetRows = Math.min(rows, VIRTUAL_TARGET_ROWS)
-  if (targetRows <= 0) return 0
-  // 向下取整并防负值：保证总内容高度不超过可视高度，不产生多余滚动条
-  return Math.max(0, Math.floor((height - (targetRows - 1) * gap) / targetRows))
+  const totalRows = Math.min(rows, VIRTUAL_TARGET_ROWS)
+  if (totalRows <= 0) return { base: 0, extra: 0, gap }
+  const usable = Math.max(0, Math.floor(size.value.height) - (totalRows - 1) * gap)
+  const base = Math.floor(usable / totalRows)
+  return { base, extra: usable - base * totalRows, gap }
 })
 
-/** 计算跳过 fixed item 后的实际插入下标 */
 /**
- * 在非 fixed 序列的第 index 位插入 id，fixed item 保持原索引不动。
- * 返回新的 spanIds 数组。
+ * 把「目标位置」归一化成最终槽位序列。
+ * index 未传时按数组下标补齐，再按 (index 升序, 数组下标升序) 稳定排序后依次落位，冲突顺延到下一个空位。
+ * 所以结果与传入顺序无关；除非 index 全未传或全相同 —— 此时由数组先后顺序决定。
  */
-const insertNonFixedId = (ids: string[], targetId: string, index: number): string[] => {
-  // 记录每个 fixed item 的原始索引
-  const fixedSlots = new Map<number, string>()
-  ids.forEach((id, i) => {
-    if (IsFixedItem(id)) fixedSlots.set(i, id)
+const computeNextSpanIds = (list: GridItemInput[], current: string[]): string[] => {
+  const currentSet = new Set(current)
+  const currentIndexById = new Map(current.map((id, index) => [id, index]))
+
+  // 去重：同一个 id 只取最后一次声明，并记下它的数组下标
+  const declared = new Map<string, { index: number; order: number }>()
+  list.forEach((item, order) => {
+    if (!item?.id) return
+    // 已存在的 item 但没传 index ⇒ 保持它在当前顺序里的槽位，index 只当定位用、不重排。
+    // 否则「只改 sticky / fixed 状态」会被当成重排，把用户拖拽出来的顺序打回原样。
+    const existingIndex = currentIndexById.get(item.id)
+    const index = item.index ?? (existingIndex === undefined ? order : existingIndex)
+    declared.set(item.id, { index, order })
   })
-  // 非 fixed 序列
-  const nonFixed = ids.filter((id) => !IsFixedItem(id))
-  // 在指定位置插入
-  nonFixed.splice(index, 0, targetId)
-  // 重建：fixed 保持原槽位，非 fixed 按顺序填充
-  const result: string[] = []
-  let nfIdx = 0
-  for (let i = 0; i < ids.length + 1; i++) {
-    if (fixedSlots.has(i)) {
-      result.push(fixedSlots.get(i)!)
-    } else {
-      result.push(nonFixed[nfIdx++])
-    }
+
+  const addedCount = [...declared.keys()].filter((id) => !currentSet.has(id)).length
+  const total = current.length + addedCount
+  if (total === 0) return []
+
+  // 稳定排序：index 升序；index 相同则按数组下标升序
+  const ordered = [...declared.entries()].sort((a, b) => (a[1].index === b[1].index ? a[1].order - b[1].order : a[1].index - b[1].index))
+
+  const slots = new Array<string | undefined>(total)
+
+  // fixed item 先按当前槽位钉死：新增 / 重排都不许把它们顶走。
+  // 否则新 item 抢下槽位 0，后面所有 item 依次后移，fixed 那个也被挤开 —— 与「锁定槽位」的语义直接冲突。
+  const pinned = new Set<string>()
+  current.forEach((id, index) => {
+    if (!IsFixedItem(id)) return
+    slots[Math.min(index, total - 1)] = id
+    pinned.add(id)
+  })
+
+  /** 从 target 起找第一个空位落座；target 越界自动纠正到合法区间 */
+  const takeSlot = (id: string, target: number) => {
+    let pos = Math.max(0, Math.min(target, total - 1))
+    while (pos < total && slots[pos] !== undefined) pos += 1
+    if (pos >= total) return
+    slots[pos] = id
   }
-  return result
+
+  ordered.forEach(([id, meta]) => {
+    if (pinned.has(id)) return // fixed item 的槽位已经锁定，忽略它的重排请求
+    takeSlot(id, meta.index)
+  })
+
+  // 未被提及的已有项：按原相对顺序填满剩余空位（已钉死的 fixed item 跳过，避免被写进第二个槽位）
+  let cursor = 0
+  current.forEach((id) => {
+    if (declared.has(id) || pinned.has(id)) return
+    while (cursor < total && slots[cursor] !== undefined) cursor += 1
+    if (cursor >= total) return
+    slots[cursor] = id
+    cursor += 1
+  })
+
+  return slots.filter((id): id is string => id !== undefined)
 }
 
-/** 新增或更新 item；id 已存在时仅合并传入的 options */
-const setItem = (id: string, options?: GridItemOptions) => {
-  setItemOptions(id, options)
-  const { index = 0 } = options ?? {}
-  const isFixed = options?.fixed === true
-  const leavingIndex = leavingIds.value.indexOf(id)
-  // 情况 1：这个 id 正在退场，说明业务层又把它加回来了
-  if (leavingIndex !== -1) {
-    leavingIds.value.splice(leavingIndex, 1)
-    _recentlyAddedIds.add(id)
-    if (spanIds.value.includes(id)) {
-      return
-    }
-    if (isFixed) {
-      spanIds.value.push(id)
-    } else {
-      spanIds.value = insertNonFixedId(spanIds.value, id, index)
-    }
-    return
-  }
-  // 情况 2：已经存在，避免重复添加
-  if (spanIds.value.includes(id)) {
-    return
-  }
-  // 情况 3：真正的新 item
-  _recentlyAddedIds.add(id)
-  if (isFixed) {
-    spanIds.value.push(id)
-  } else {
-    spanIds.value = insertNonFixedId(spanIds.value, id, index)
-  }
+/** 结束进行中的拖拽（重排会让拖拽的起始下标失效） */
+const cancelDrag = () => {
+  if (!dragState.value) return
+  dragState.value = undefined
+  forcedVisibleId.value = null
+  _dragViewport = undefined
 }
 
-/** 按 ids 一次性设置 */
-const setItems = (ids: string[], options?: GridItemsOptions) => {
-  const nextIds = [...ids]
-  spanIds.value = [...nextIds]
+/** 完全重建 item 列表：清空顺序 / sticky / fixed，按传入顺序重排 */
+const replaceItems = (ids: string[]) => {
+  cancelDrag()
+  const nextIds: string[] = []
+  const seen = new Set<string>()
+  for (const id of ids) {
+    if (!id || seen.has(id)) continue
+    seen.add(id)
+    nextIds.push(id)
+  }
   leavingIds.value = []
-  pruneItemOptions(nextIds)
-  if (options !== undefined) {
-    nextIds.forEach((id) => setItemOptions(id, options))
-  }
+  itemOptionsById.value = new Map()
+  _recentlyAddedIds.clear()
+  nextIds.forEach((id) => _recentlyAddedIds.add(id))
+  spanIds.value = nextIds
   void syncLayout()
+}
+
+/**
+ * 批量设置 / 新增 / 重排 item。
+ * - 传 id：改该 id 的参数；同时传 index 就是把它重排到目标槽位
+ * - 传 id 但不传 index：只改参数，保持该 item 当前的槽位（不会动顺序）
+ * - 只传 index（不传 id）：改「当前第 index 个槽位」那个 item 的参数，不重排
+ * - 新 id 不传 index：按传入的数组顺序找空位落座
+ * 未提及的已有项保持原相对顺序。
+ */
+const setItems = (list: GridItemInput[]) => {
+  if (!Array.isArray(list) || list.length === 0) return
+  cancelDrag()
+
+  // 解析目标 id：显式 id 优先（允许是尚未存在的新 item）；只给 index 时按当前槽位定位
+  const resolved: (GridItemInput & { id: string })[] = []
+  list.forEach((item) => {
+    if (!item) return
+    const targetId = item.id ?? (item.index === undefined ? undefined : spanIds.value[item.index])
+    if (!targetId) return
+    resolved.push({ ...item, id: targetId })
+  })
+  if (resolved.length === 0) return
+
+  resolved.forEach((item) => {
+    // 正在退场的 id 被重新声明 → 复活，取消退场
+    const leavingIndex = leavingIds.value.indexOf(item.id)
+    if (leavingIndex !== -1) leavingIds.value.splice(leavingIndex, 1)
+    setItemOptions(item.id, item)
+    if (!spanIds.value.includes(item.id)) _recentlyAddedIds.add(item.id)
+  })
+
+  spanIds.value = computeNextSpanIds(resolved, spanIds.value)
+  void syncLayout()
+}
+
+/** 设置布局工厂；可选完全重建 item 列表与渲染配置 */
+const setLayout = (factory: LayoutFactory, options: SetLayoutOptions = {}) => {
+  if (options.overScan !== undefined) overScan.value = options.overScan
+
+  // 先换工厂并记版本，保证随后触发的重算用的是新工厂
+  if (factory !== layoutFactory.value) {
+    layoutFactory.value = factory
+    layoutVersion.value += 1
+  }
+
+  if (options.ids) {
+    skipEnterBatch.value = options.animate === false
+    replaceItems(options.ids)
+  }
+}
+
+/** 注册尺寸变化回调；覆盖式，重复调用替换上一个 */
+const onResize = (handler: ResizeHandler) => {
+  resizeHandler = handler
 }
 
 /** 移除 item 并重算布局 */
@@ -717,6 +899,8 @@ const onScroll = () => {
   const el = pr_adaptive_grid_ref.value
   if (!el) return
   scrollTop.value = el.scrollTop
+  // 拖拽中滚动会改变容器视口位置，同步刷新缓存，保证拖拽几何不漂移
+  if (dragState.value) refreshDragViewport()
   if (totalContentHeight.value > el.clientHeight) {
     showScrollbar()
     delayHideScrollbar()
@@ -823,20 +1007,26 @@ onMounted(async () => {
 
   let _size = { width: 0, height: 0 }
 
+  /**
+   * 先派发尺寸（外部可在回调里同步 setLayout），再写入 size 驱动同帧重算。
+   * 顺序不能反：反了会先用旧尺寸算一遍、再用新尺寸算一遍。
+   */
+  const applySize = () => {
+    resizeHandler?.({ width: _size.width, height: _size.height })
+    size.value = _size
+    // 拖拽中容器尺寸变化会改变视口位置，同步刷新缓存
+    if (dragState.value) refreshDragViewport()
+  }
+
   observer = new ResizeObserver((sizes) => {
     const [{ contentRect }] = sizes
-    const { width, height } = contentRect
-    _size = { width, height }
-    /** 写入最新容器尺寸，驱动 LayoutKey 变化后重算布局。 */
-    const setSize = () => {
-      size.value = _size
-    }
+    _size = { width: contentRect.width, height: contentRect.height }
     if (isReady.value === false) {
       isReady.value = true
-      return setSize()
+      return applySize()
     }
     if (resizeTimer) clearTimeout(resizeTimer)
-    resizeTimer = setTimeout(setSize, 50) // 节流
+    resizeTimer = setTimeout(applySize, 50) // 节流
   })
   // 全局 pointermove/up 监听拖拽
   document.addEventListener('pointermove', onScrollbarPointerMove)
@@ -855,16 +1045,11 @@ onBeforeUnmount(() => {
   resolveSyncLayoutWaiters()
 })
 
-/** 获取当前网格中 item 的顺序，按槽位（从 0 开始）返回所有 id。 */
-const getItemOrder = (): string[] => {
-  return [...spanIds.value]
-}
-
 defineExpose({
-  setItem,
+  setLayout,
+  onResize,
   setItems,
-  removeItems,
-  getItemOrder
+  removeItems
 })
 </script>
 

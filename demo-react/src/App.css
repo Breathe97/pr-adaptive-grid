@@ -372,6 +372,16 @@
   color: var(--text);
 }
 
+/* 当前生效的布局名（设备维度 · 展示模式） */
+.bar-layout {
+  padding: 0 12px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: rgba(245, 245, 245, 0.72);
+}
+
 .bar-sep {
   width: 1px;
   height: 28px;
@@ -596,11 +606,50 @@
   color: rgba(245, 245, 245, 0.75);
 }
 
-@media (max-width: 660px) {
+/* ── 响应式：断点与网格的响应式标准完全对齐（<1180 平板档，<768 移动档） ── */
+@media (max-width: 1179px) {
+  .float-bar {
+    gap: 6px;
+    padding: 8px 14px;
+    bottom: calc(12px + env(safe-area-inset-bottom));
+  }
+
+  .help-btn,
+  .bar-btn {
+    width: 40px;
+    height: 40px;
+    font-size: 1.125rem;
+  }
+
+  .bar-count {
+    min-width: 26px;
+    font-size: 1rem;
+  }
+
+  .bar-text {
+    height: 40px;
+    padding: 0 14px;
+    font-size: 0.875rem;
+  }
+
+  .bar-mode-btn {
+    height: 34px;
+    padding: 0 11px;
+  }
+
+  .bar-layout {
+    padding: 0 10px;
+  }
+
+  .bar-sep {
+    height: 22px;
+    margin: 0 2px;
+  }
+}
+
+@media (max-width: 767px) {
   .float-bar {
     width: calc(100% - 24px);
-    flex-wrap: wrap;
-    justify-content: center;
     border-radius: 16px;
   }
 
@@ -608,13 +657,18 @@
     display: none;
   }
 
-  .bar-text {
-    flex: 1;
-    min-width: 80px;
+  .bar-layout {
+    width: 100%;
+    padding: 0;
+    text-align: center;
   }
 
   .bar-mode {
     width: 100%;
     justify-content: center;
+  }
+
+  .bar-mode-btn {
+    flex: 1;
   }
 }

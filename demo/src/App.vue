@@ -1,7 +1,7 @@
 <template>
   <div class="demo" :style="demoStyle">
     <div class="grid-wrap">
-      <PrAdaptiveGrid ref="gridRef" :get-layout="resolveLayout">
+      <PrAdaptiveGrid ref="gridRef">
         <template #default="{ item }">
           <div class="tile" :class="{ 'is-sticky': item.sticky, 'is-fixed': item.fixed }" :style="{ backgroundColor: getTileColor(item.id) }">
             <div v-if="item.sticky || item.fixed" class="tile-badges">
@@ -32,7 +32,7 @@
           <p class="help-title">按钮说明</p>
           <div class="help-item">
             <span class="help-tag help-tag-sticky">📌 Sticky</span>
-            <p class="help-desc">滚动时固定在网格可视区域。模式 1/3 可随意 Sticky 多个；模式 2 只能 Sticky 一个，点击时自动排到首位。</p>
+            <p class="help-desc">滚动时固定在网格可视区域。平铺模式可随意 Sticky 多个；主讲模式只能 Sticky 一个，点击时自动排到首位。</p>
           </div>
           <div class="help-item">
             <span class="help-tag help-tag-fixed">🔒 Fixed</span>
@@ -45,13 +45,14 @@
       <span class="bar-count">{{ userCount }}</span>
       <button type="button" class="bar-btn" @click="changeUserCount(1)">+</button>
       <span class="bar-sep" />
-      <div class="bar-mode" role="group" aria-label="布局模式">
-        <button type="button" class="bar-mode-btn" :class="{ active: layoutMode === 1 }" @click="setLayoutMode(1)">布局 1</button>
-        <button type="button" class="bar-mode-btn" :class="{ active: layoutMode === 2 }" @click="setLayoutMode(2)">布局 2</button>
-        <button type="button" class="bar-mode-btn" :class="{ active: layoutMode === 3 }" @click="setLayoutMode(3)">布局 3</button>
+      <div class="bar-mode" role="group" aria-label="展示模式">
+        <button type="button" class="bar-mode-btn" :class="{ active: modeKind === 'grid' }" @click="setModeKind('grid')">平铺</button>
+        <button type="button" class="bar-mode-btn" :class="{ active: modeKind === 'speaker' }" @click="setModeKind('speaker')">主讲</button>
       </div>
       <span class="bar-sep" />
-      <button type="button" class="bar-text" :disabled="userCount <= 1" @click="shuffleItems">打乱</button>
+      <!-- 当前实际生效的设备维度：由容器宽度自动判定，这里只做展示 -->
+      <span class="bar-layout" aria-live="polite">{{ layoutLabel }}</span>
+      <span class="bar-sep" />
       <button type="button" class="bar-text" @click="resetGrid">重置</button>
       <span class="bar-sep" />
       <!-- 四边边距调试：点击按钮弹出面板控制 -->
@@ -72,12 +73,49 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
-import { PrAdaptiveGrid, getLayout, getLectureLayout, getMobileLayout } from '../../src/index.ts'
-import type { Geo, GetLayoutFn, GridItemsOptions, PrAdaptiveGridExpose } from '../../src/index.ts'
+import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
+import { PrAdaptiveGrid, layouts } from '../../src/index.ts'
+import type { Geo, GridItemsOptions, LayoutFactory, PrAdaptiveGridExpose, ResizePayload } from '../../src/index.ts'
+import { ensureTileColor, getTileColor } from './tileColorMap'
 
-const DEFAULT_USER_COUNT = 10 // 演示初始 item 数量
-const layoutMode = ref<1 | 2 | 3>(1) // 1 默认布局，2 讲座布局，3 移动布局
+const DEFAULT_USER_COUNT = 1 // 演示初始 item 数量
+type SizeKind = 'pc' | 'ipad' | 'mobile' // 设备维度：完全由容器宽度自动判定
+type ModeKind = 'speaker' | 'grid' // 展示模式：主讲 / 平铺
+const modeKind = ref<ModeKind>('grid') // 默认平铺，主讲由用户手动开
+const currentSize = ref<SizeKind | null>(null) // 实际测到的设备维度，未测到前不显示假值
+const currentLayout = ref<LayoutFactory | null>(null) // 当前生效的布局工厂，未确定前为 null
+const lastWidth = ref(0) // 最近一次测量到的容器宽度
+let pendingIds: string[] | null = null // 尺寸回调未到时挂起的首帧 ids
+let fallbackTimer = 0 // 尺寸回调兜底定时器
+
+const SIZE_LABEL: Record<SizeKind, string> = { pc: 'PC', ipad: 'iPad', mobile: 'Mobile' }
+
+/** 当前生效的设备维度（展示模式由按钮高亮体现，这里不重复显示） */
+const layoutLabel = computed(() => (currentSize.value ? SIZE_LABEL[currentSize.value] : '—'))
+
+/** 按容器宽度判定设备维度：<768 移动，<1180 平板，其余 PC（与网格响应式同一套断点） */
+const pickSize = (width: number): SizeKind => {
+  if (width < 768) return 'mobile'
+  if (width < 1180) return 'ipad'
+  return 'pc'
+}
+
+/** 解析当前应生效的布局工厂（纯计算，不改状态） */
+const resolveLayout = (): LayoutFactory => layouts[pickSize(lastWidth.value)][modeKind.value]
+
+/** 记录当前生效的布局状态，供底部工具栏展示 */
+const trackLayout = (factory: LayoutFactory) => {
+  // 宽度未测到时不更新维度，避免按 0 判成 mobile
+  if (lastWidth.value > 0) currentSize.value = pickSize(lastWidth.value)
+  currentLayout.value = factory
+}
+
+/** 换布局：只换几何，不触碰 item 顺序 / sticky / fixed */
+const applyLayout = () => {
+  const factory = resolveLayout()
+  trackLayout(factory)
+  gridRef.value?.setLayout(factory)
+}
 
 /** .demo 四边边距，滑块实时调试用，范围 0~80px，默认 0 */
 const padding = ref({ top: 0, right: 0, bottom: 0, left: 0 })
@@ -104,62 +142,20 @@ const onDocClick = (e: MouseEvent) => {
   if (el && !el.contains(e.target as Node)) paddingOpen.value = false
 }
 
-/** 闭包读取 layoutMode，组件只传 length */
-const resolveLayout: GetLayoutFn = (length) => {
-  let layout
-  switch (layoutMode.value) {
-    case 1:
-      layout = getLayout(length)
-      break
-    case 2:
-      layout = getLectureLayout(length)
-      break
-    case 3:
-      layout = getMobileLayout(length)
-      break
-    default:
-      layout = getLayout(length)
-      break
-  }
-
-  return layout
-}
-
 const gridRef = ref<PrAdaptiveGridExpose>() // 网格组件实例
 const userCount = ref(DEFAULT_USER_COUNT) // 工具栏显示的数量
-const tileColorMap = ref(new Map<string, string>()) // 每个 id 对应的 tile 背景色
 
 const ids: string[] = [] // 业务侧 id 顺序，与 gridItems 下标一致
-const stickyId = ref<string | null>(null) // 当前唯一 Sticky 的 item id
-const stickySwapIndex = ref<number | null>(null) // Sticky 时与 index 0 互换的原下标
 type GridSlotItem = Geo & Required<GridItemsOptions> & { id: string }
 
-/** 从前 10 项中筛选可移除候选；保护当前 Sticky 的 item。 */
+/** 从前 10 项中筛选可移除候选；主讲模式下槽位 0 就是主讲，不能移除。 */
 const getRemovableCandidates = () => {
   const pool = ids.slice(0, Math.min(10, ids.length))
-  if (stickyId.value) return pool.filter((id) => id !== stickyId.value)
+  if (modeKind.value === 'speaker') return pool.filter((id) => id !== ids[0])
   return pool
 }
 
 const canRemoveItem = computed(() => userCount.value > 1)
-
-/** 高饱和度随机色，亮度偏高以对比黑色背景 */
-const pickContrastColor = (): string => {
-  const hue = Math.floor(Math.random() * 360)
-  const sat = 88 + Math.floor(Math.random() * 13)
-  const light = 65 + Math.floor(Math.random() * 14)
-  return `hsl(${hue} ${sat}% ${light}%)`
-}
-
-/** 为新 id 分配并缓存随机背景色（单次添加用） */
-const ensureTileColor = (id: string) => {
-  if (tileColorMap.value.has(id)) return
-  tileColorMap.value.set(id, pickContrastColor())
-  tileColorMap.value = new Map(tileColorMap.value)
-}
-
-/** 读取 tile 背景色，未分配时用默认色 */
-const getTileColor = (id: string): string => tileColorMap.value.get(id) ?? 'hsl(210 95% 72%)'
 
 /** 交换 ids 中两个下标的 id（应用层换位） */
 const swapIdsAt = (a: number, b: number) => {
@@ -169,58 +165,22 @@ const swapIdsAt = (a: number, b: number) => {
   ids[b] = tmp
 }
 
-/** 取消当前 Sticky 并还原换位。 */
-const clearSticky = () => {
-  const prevId = stickyId.value
-  if (stickySwapIndex.value != null) swapIdsAt(0, stickySwapIndex.value)
-  stickyId.value = null
-  stickySwapIndex.value = null
-  if (prevId) gridRef.value?.setItem(prevId, { sticky: false })
+/**
+ * 切换展示模式。
+ * 主讲 = 槽位 0 那个 item 变成唯一 Sticky；取消主讲 = 清掉槽位 0 的 Sticky。
+ * 只动槽位 0 的状态、不重建列表，所以用户拖拽出来的顺序天然保留。
+ */
+const setModeKind = (kind: ModeKind) => {
+  if (modeKind.value === kind) return
+  modeKind.value = kind
+  gridRef.value?.setItems([{ index: 0, sticky: kind === 'speaker' }])
+  applyLayout()
 }
 
-/** 将指定 id 设为唯一 Sticky，并换到 index 0。 */
-const applyStickyToId = (targetId: string) => {
-  if (ids.length === 0) return
-  const wasSticky = stickyId.value === targetId
-
-  if (stickyId.value && stickyId.value !== targetId && stickySwapIndex.value != null) {
-    swapIdsAt(0, stickySwapIndex.value)
-  }
-
-  const index = ids.indexOf(targetId)
-  if (index === -1) return
-
-  if (index !== 0) {
-    swapIdsAt(0, index)
-    stickySwapIndex.value = index
-  } else if (!wasSticky || stickySwapIndex.value == null) {
-    stickySwapIndex.value = null
-  }
-
-  stickyId.value = targetId
-}
-
-/** 切换布局模式：切到模式 2 时自动清除所有 Sticky 并 Sticky 第一个 item。 */
-const setLayoutMode = async (mode: 1 | 2 | 3) => {
-  if (layoutMode.value === mode) return
-  layoutMode.value = mode
-
-  if (mode === 2) {
-    stickyId.value = null
-    stickySwapIndex.value = null
-    if (ids.length > 0) {
-      applyStickyToId(ids[0])
-      gridRef.value?.setItem(ids[0], { fixed: true })
-    }
-  }
-
-  await nextTick()
-  await initGrid()
-}
-
-/** 切换 Fixed：只锁定当前 id 的拖拽排序能力，不改变业务顺序。 */
+/** 切换 Fixed：只改 fixed 状态。不传 index，组件会保持该 id 当前槽位，
+ *  不会拿业务层 ids 的旧下标去重排（拖拽只改组件内部顺序，业务层 ids 不跟）。 */
 const setFixed = (item: GridSlotItem) => {
-  gridRef.value?.setItem(item.id, { fixed: !item.fixed })
+  gridRef.value?.setItems([{ id: item.id, fixed: !item.fixed }])
 }
 
 /** 增减 item：+1 插入新 id，-1 随机移除一个 */
@@ -228,10 +188,9 @@ const changeUserCount = (delta: number) => {
   if (delta === 1) {
     if (userCount.value < 1) return
     const id = `${Math.max(...ids.map(Number), 0) + 1}` // 递增数字 id
-    let index = 0 // 插入下标，Sticky 时避开首位
-    // if (layoutMode.value === 2) index = 1
+    const index = modeKind.value === 'speaker' ? 1 : 0 // 主讲模式下插到大格后面，不抢主讲位
     ensureTileColor(id)
-    gridRef.value?.setItem(id, { index })
+    gridRef.value?.setItems([{ id, index }])
     ids.splice(index, 0, id)
     userCount.value += 1
     return
@@ -242,112 +201,109 @@ const changeUserCount = (delta: number) => {
   if (!removeId) return
   gridRef.value?.removeItems([removeId])
   ids.splice(ids.indexOf(removeId), 1)
-  if (stickyId.value === removeId) {
-    stickyId.value = null
-    stickySwapIndex.value = null
-  }
   userCount.value -= 1
 }
 
-/** 切换 Sticky：模式 1/3 自由切换不影响布局；模式 2 唯一 Sticky + 自动排到 index 0。 */
-const setSticky = async (target: GridSlotItem) => {
+/** 切换 Sticky：主讲模式下唯一 Sticky 且必定在槽位 0；平铺模式自由切换。 */
+const setSticky = (target: GridSlotItem) => {
   if (ids.indexOf(target.id) < 0) return
 
-  if (layoutMode.value === 2) {
-    // 模式 2：唯一 Sticky，点击时排到 index 0
-    if (target.sticky) {
-      clearSticky()
-    } else {
-      applyStickyToId(target.id)
-    }
-    await nextTick()
-    await initGrid()
+  if (modeKind.value !== 'speaker') {
+    // 平铺模式自由切换；不传 index，组件保持当前槽位，不打乱拖拽出来的顺序
+    gridRef.value?.setItems([{ id: target.id, sticky: !target.sticky }])
     return
   }
 
-  // 模式 1/3：自由切换，不干涉布局
-  gridRef.value?.setItem(target.id, { sticky: !target.sticky })
-}
-
-/** Fisher-Yates 打乱 ids 后按当前 mode 重排 */
-const shuffleItems = () => {
-  if (ids.length <= 1) return
-  const shuffleIds = () => {
-    for (let i = ids.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1))
-      const tmp = ids[i]
-      ids[i] = ids[j]
-      ids[j] = tmp
-    }
-  }
-
-  shuffleIds()
-  void initGrid()
-}
-
-/** 一次 setItems，模式 2 时强制唯一 Sticky，模式 1/3 保留已有 sticky 不动。 */
-const initGrid = async () => {
-  if (!gridRef.value) return
-  gridRef.value.setItems(ids)
-  // 模式 2：强制只有 stickyId 是 sticky，清除其他
-  if (layoutMode.value === 2) {
-    ids.forEach((id) => {
-      gridRef.value?.setItem(id, { sticky: id === stickyId.value })
-    })
-  }
+  // 主讲模式：先清掉当前主讲（槽位 0），再把被点的那个换到槽位 0 并设为 Sticky
+  gridRef.value?.setItems([{ index: 0, sticky: false }])
+  if (target.sticky) return
+  swapIdsAt(0, ids.indexOf(target.id))
+  gridRef.value?.setItems([{ id: target.id, index: 0, sticky: true }])
 }
 
 /** 分块生成默认 ids，避免大量数据同步阻塞主线程。每块生成后 yield 给浏览器。 */
 const getDefaultIds = async () => {
   const next: string[] = []
-  const colors = new Map<string, string>()
   const CHUNK = 10000 // 每批 1 万条
 
   for (let start = DEFAULT_USER_COUNT; start >= 1; start -= CHUNK) {
     const end = Math.max(1, start - CHUNK + 1)
     for (let i = start; i >= end; i--) {
       const id = `${i}`
-      colors.set(id, pickContrastColor())
+      ensureTileColor(id) // 已有颜色的 id 原样复用，不重新生成
       next.push(id)
     }
     // 让出主线程，避免长时间阻塞
     await new Promise<void>((r) => setTimeout(r, 0))
   }
 
-  tileColorMap.value = colors
   return next
 }
 
-/** 重置为初始默认 ids，并清除 Sticky / Fixed 与布局模式。 */
+/** 重置为初始默认 ids，清除 Sticky / Fixed，回到自动布局；重建并播放入场动画。 */
 const resetGrid = async () => {
   if (!gridRef.value) return
   const newIds = await getDefaultIds()
   ids.length = 0
   for (let i = 0; i < newIds.length; i++) ids.push(newIds[i])
-  layoutMode.value = 1
-  stickyId.value = null
-  stickySwapIndex.value = null
+  modeKind.value = 'grid'
   userCount.value = DEFAULT_USER_COUNT
-  await nextTick()
-  gridRef.value.setItems(ids)
-  ids.forEach((id) => {
-    gridRef.value?.setItem(id, { sticky: false, fixed: false })
-  })
+  const factory = resolveLayout()
+  trackLayout(factory)
+  // 传入 ids 即完全重建（清空顺序 / sticky / fixed）；animate 为 true 播放入场动画
+  gridRef.value.setLayout(factory, { ids: [...ids], animate: true })
 }
 
-/** 一次性 setItems 初始化演示数据 */
+/** 首次：注册尺寸回调 + 建列表 + 设布局 + 整屏静默 */
 onMounted(async () => {
   document.addEventListener('click', onDocClick)
-  await nextTick()
+
+  // 尺寸变化 → 决策是否换布局；只有策略真的变了才 setLayout
+  gridRef.value?.onResize(({ width }: ResizePayload) => {
+    lastWidth.value = width
+    const next = resolveLayout()
+    const changed = next !== currentLayout.value
+    trackLayout(next) // 换不换布局，展示用的维度都要跟上宽度
+    if (pendingIds) {
+      // 首个尺寸回调：此刻宽度才是真的，用它建列表，避免断点按 0 判成 mobile
+      const ids = pendingIds
+      pendingIds = null
+      gridRef.value?.setLayout(next, { ids: [...ids], animate: false })
+      return
+    }
+    if (changed) gridRef.value?.setLayout(next)
+  })
+
+  // 兜底：尺寸回调始终不来时不能让首帧一直空着
+  fallbackTimer = window.setTimeout(() => {
+    if (!pendingIds) return
+    const ids = pendingIds
+    pendingIds = null
+    console.warn('[demo] 未收到网格尺寸回调，回退用窗口宽度判定断点')
+    lastWidth.value = window.innerWidth
+    const factory = resolveLayout()
+    trackLayout(factory)
+    gridRef.value?.setLayout(factory, { ids: [...ids], animate: false })
+  }, 800)
+
   const newIds = await getDefaultIds()
   for (let i = 0; i < newIds.length; i++) ids.push(newIds[i])
-  await initGrid()
   userCount.value = DEFAULT_USER_COUNT
+  // 尺寸回调还没来 → 挂起，等它带着实测宽度来建列表，否则断点会被判错
+  if (lastWidth.value <= 0) {
+    pendingIds = newIds
+    return
+  }
+  const factory = resolveLayout()
+  trackLayout(factory)
+  // ids 与 animate 原子绑定：首帧建列表并保持静默，之后新增 item 自动带入场动画
+  gridRef.value?.setLayout(factory, { ids: [...ids], animate: false })
 })
 
 /** 卸载时移除 Padding 面板的外部点击监听 */
 onBeforeUnmount(() => {
   document.removeEventListener('click', onDocClick)
+  window.clearTimeout(fallbackTimer)
 })
 </script>
 
@@ -726,6 +682,16 @@ onBeforeUnmount(() => {
   color: var(--text);
 }
 
+/* 当前生效的布局名（设备维度 · 展示模式） */
+.bar-layout {
+  padding: 0 12px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: rgba(245, 245, 245, 0.72);
+}
+
 .bar-sep {
   width: 1px;
   height: 28px;
@@ -875,11 +841,50 @@ onBeforeUnmount(() => {
   color: #fff;
 }
 
-@media (max-width: 660px) {
+/* ── 响应式：断点与网格的响应式标准完全对齐（<1180 平板档，<768 移动档） ── */
+@media (max-width: 1179px) {
+  .float-bar {
+    gap: 6px;
+    padding: 8px 14px;
+    bottom: calc(12px + env(safe-area-inset-bottom));
+  }
+
+  .help-btn,
+  .bar-btn {
+    width: 40px;
+    height: 40px;
+    font-size: 1.125rem;
+  }
+
+  .bar-count {
+    min-width: 26px;
+    font-size: 1rem;
+  }
+
+  .bar-text {
+    height: 40px;
+    padding: 0 14px;
+    font-size: 0.875rem;
+  }
+
+  .bar-mode-btn {
+    height: 34px;
+    padding: 0 11px;
+  }
+
+  .bar-layout {
+    padding: 0 10px;
+  }
+
+  .bar-sep {
+    height: 22px;
+    margin: 0 2px;
+  }
+}
+
+@media (max-width: 767px) {
   .float-bar {
     width: calc(100% - 24px);
-    flex-wrap: wrap;
-    justify-content: center;
     border-radius: 16px;
   }
 
@@ -887,14 +892,19 @@ onBeforeUnmount(() => {
     display: none;
   }
 
-  .bar-text {
-    flex: 1;
-    min-width: 80px;
+  .bar-layout {
+    width: 100%;
+    padding: 0;
+    text-align: center;
   }
 
   .bar-mode {
     width: 100%;
     justify-content: center;
+  }
+
+  .bar-mode-btn {
+    flex: 1;
   }
 }
 </style>
