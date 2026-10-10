@@ -608,7 +608,12 @@ export function PrAdaptiveGridItem(props: PrAdaptiveGridItemProps) {
     animation.finished
       .then((animate) => saveStyles(animate))
       .catch(() => {
-        // 兜底：动画失败时直接设置最终样式
+        // 动画被 cancel（后面新起的动画接管 / 退场动画接管）时 finished 会 reject，
+        // 此时**不能**把内联兜底成「完整态」：新动画带 delay 100（无 backwards fill），
+        // delay 相位显示的就是内联值 —— 于是 item 会先完整显示一瞬、再跳回起点播过渡；
+        // 退场动画进行中也会被这层内联污染。
+        // 只有真·异常（saveStyles 抛错等，此时动画不是 idle）才回落到最终样式。
+        if (animation.playState === 'idle') return;
         visual.style.opacity = '1';
         visual.style.transform = 'scale(1)';
       });

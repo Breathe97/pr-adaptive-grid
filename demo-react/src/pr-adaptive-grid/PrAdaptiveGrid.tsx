@@ -424,8 +424,16 @@ const PrAdaptiveGrid = forwardRef<PrAdaptiveGridExpose, PrAdaptiveGridProps>(
      */
     const executeSyncLayout = () => {
       if (isReadyRef.current === false) return;
-      if (layoutKey === lastSyncedLayoutKeyRef.current) return;
-      lastSyncedLayoutKeyRef.current = layoutKey;
+      // key 不能直接用闭包 layoutKey 里的 spanIds.length：setItems / replaceItems 会在与本次
+      // render 同一批里改完 spanIdsRef 后立即同步调用本函数，此刻组件尚未 re-render，闭包 layoutKey
+      // 仍是旧长度，比较会被误判成「已同步」而 return，逼得 layout 只能等下一次 render
+      // （layoutKey effect）才更新。于是出现中间态：spanIds 已是新长度、itemGeos 还是旧长度，
+      // visibleIndices 随之漏掉末尾 item，其 children 消失 → React 卸载该 item 又紧接着重挂，
+      // DOM 节点连同补位动画一起丢失（现象：被挤走的 item 位置硬跳、没有过渡动画）。
+      // 改用 ref 里的最新 spanIds 长度，就能与 spanIds 的 setState 同批提交布局，一次 render 到位。
+      const key = `${size.width}-${size.height}-${spanIdsRef.current.length}-${layoutVersion}`;
+      if (key === lastSyncedLayoutKeyRef.current) return;
+      lastSyncedLayoutKeyRef.current = key;
 
       syncLayoutTokenRef.current++;
       setLayoutState(layoutFactoryRef.current(spanIdsRef.current.length));
